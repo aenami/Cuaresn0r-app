@@ -1,0 +1,782 @@
+// =============================================================================
+// CorePOS — Esquema de base de datos en DBML (Database Markup Language)
+// Traducido 1:1 desde server/prisma/schema.prisma (PostgreSQL).
+// Visualizable en https://dbdiagram.io
+//
+// NOTA: los indices unicos PARCIALES (WHERE ...) no son expresables en DBML;
+// estan documentados como Note en cada tabla y viven en el SQL de las
+// migraciones de Prisma:
+//   - receta_activa_por_producto        (Receta.id_producto_receta WHERE receta_activa)
+//   - configuracion_facturacion_activa_unica (ConfiguracionFacturacion WHERE configuracion_activa)
+//   - tarifa_activa_por_empleado        (TarifaEmpleado.id_empleado WHERE tarifa_activa)
+//   - configuracion_nomina_activa_unica (ConfiguracionNomina WHERE configuracion_activa)
+//   - valor_activo_por_concepto         (ValorConceptoNomina.id_concepto WHERE valor_activo)
+//   - jornada_abierta_por_empleado      (Jornada.id_empleado WHERE estado = 'ABIERTA')
+//   - impresora_activa_por_destino      (Impresora.destino WHERE impresora_activa)
+// =============================================================================
+
+Project CorePOS {
+  database_type: 'PostgreSQL'
+  Note: 'Sistema POS para restaurante: salon, pedidos/comandas, catalogo con recetas e inventario, facturacion con caja/turnos, nomina e impresion de comandas en termicas.'
+}
+
+// ---------------------------------------------------------------------------
+// ENUMS
+// ---------------------------------------------------------------------------
+
+Enum EstadoMesa {
+  LIBRE
+  RESERVADA
+  OCUPADA
+  DESACTIVADA
+}
+
+Enum EstadoPedido {
+  EN_PREPARACION
+  ENTREGADO
+  PAGADO
+  CANCELADO
+}
+
+Enum EstadoDetalleComanda {
+  PREPARANDO
+  ENTREGADO
+  CANCELADO
+}
+
+Enum EstadoFactura {
+  EMITIDA
+  PAGADA
+  ANULADA
+}
+
+Enum MetodoPago {
+  TARJETA
+  TRANSFERENCIA
+  EFECTIVO
+}
+
+Enum EstadoTurno {
+  ABIERTO
+  CERRADO
+}
+
+Enum TipoMovimientoCaja {
+  INGRESO
+  EGRESO
+}
+
+Enum UnidadIngrediente {
+  kg
+  g
+  dg
+  mg
+  ml
+  L
+  UNIDADES
+}
+
+Enum TipoMovimientoInventario {
+  ENTRADA
+  SALIDA_RECETA
+  MERMA
+  AJUSTE_POSITIVO
+  AJUSTE_NEGATIVO
+  REVERSO
+}
+
+// GENERAL aplica SOLO a impresoras (una unica termica que recibe cocina Y
+// barra); categorias y registros de impresion usan COCINA/BARRA.
+Enum DestinoImpresion {
+  COCINA
+  BARRA
+  GENERAL
+}
+
+Enum EstadoImpresion {
+  PENDIENTE
+  IMPRESA
+  FALLIDA
+}
+
+Enum EstadoEmpleado {
+  ACTIVO
+  INACTIVO
+}
+
+Enum EstadoJornada {
+  ABIERTA
+  CERRADA
+}
+
+Enum TipoMarcacion {
+  ENTRADA
+  SALIDA
+}
+
+Enum TipoConceptoNomina {
+  INGRESO
+  DEDUCCION
+}
+
+Enum UnidadCalculoConceptoNomina {
+  DIA_TRABAJADO
+}
+
+Enum MetodoPagoNomina {
+  EFECTIVO
+  TRANSFERENCIA
+}
+
+// ---------------------------------------------------------------------------
+// 1. Roles y usuarios
+// ---------------------------------------------------------------------------
+
+Table Rol {
+  id_rol int [pk, increment]
+  nombre_rol varchar(20) [not null, unique, note: 'Roles fijos del sistema: ADMIN, CAJERO, MESERO']
+}
+
+Table Usuario {
+  id_usuario int [pk, increment]
+  id_empleado_usuario int [not null]
+  id_rol int [not null]
+  email_usuario varchar(100) [not null, unique]
+  fecha_creacion_usuario date [not null, default: `now()`]
+  password_usuario varchar(100) [not null, note: 'Hash bcrypt']
+
+  indexes {
+    id_empleado_usuario
+    id_rol
+  }
+}
+
+Ref: Usuario.id_empleado_usuario > Empleado.id_empleado
+Ref: Usuario.id_rol > Rol.id_rol
+
+// ---------------------------------------------------------------------------
+// 2. Salon: zonas y mesas
+// ---------------------------------------------------------------------------
+
+Table Zona {
+  id_zona int [pk, increment]
+  nombre_zona varchar(20) [not null]
+  identificador_zona varchar(3) [not null]
+}
+
+Table Mesa {
+  id_mesa int [pk, increment]
+  numero_mesa int [not null]
+  capacidad_mesa int
+  id_zona_mesa int [not null]
+  estado_mesa EstadoMesa [not null, default: 'LIBRE']
+
+  indexes {
+    id_zona_mesa
+    estado_mesa
+  }
+}
+
+Ref: Mesa.id_zona_mesa > Zona.id_zona
+
+// ---------------------------------------------------------------------------
+// 3. Pedidos, comandas y detalle
+// ---------------------------------------------------------------------------
+
+Table Pedido {
+  id_pedido int [pk, increment]
+  fecha_pedido timestamp [not null, default: `now()`]
+  estado_pedido EstadoPedido [not null, default: 'EN_PREPARACION']
+  mesa_pedido int [not null]
+  mesero_pedido int [not null, note: 'Sale del JWT, nunca del body']
+
+  indexes {
+    mesa_pedido
+    mesero_pedido
+    estado_pedido
+  }
+}
+
+Ref: Pedido.mesa_pedido > Mesa.id_mesa
+Ref: Pedido.mesero_pedido > Usuario.id_usuario
+
+Table Comanda {
+  id_comanda int [pk, increment]
+  id_pedido_comanda int [not null]
+  creacion_comanda timestamp [not null, default: `now()`]
+
+  indexes {
+    id_pedido_comanda
+  }
+}
+
+Ref: Comanda.id_pedido_comanda > Pedido.id_pedido
+
+Table DetalleComanda {
+  id_detalleComanda int [pk, increment]
+  id_comanda_dc int [not null]
+  id_detalleComandaPadre_dc int [note: 'Jerarquia: componentes de combo y adiciones cuelgan de su item padre']
+  id_producto_dc int [note: 'Exactamente uno de producto/combo']
+  id_combo_dc int
+  id_receta_usada_dc int [note: 'Snapshot: la receta activa al momento del pedido']
+  id_subcuenta_dc int [note: 'Exclusion mutua con el reparto proporcional (SubcuentaDetalleComanda)']
+  estado_dc EstadoDetalleComanda [not null, default: 'PREPARANDO']
+  cantidad_producto_dc int [not null]
+  precio_unitario_dc decimal(20,4) [not null, note: 'Snapshot del precio; hijos de combo van en 0, adiciones con su precio real']
+  indicaciones_dc varchar(150)
+
+  indexes {
+    id_comanda_dc
+    id_detalleComandaPadre_dc
+    id_producto_dc
+    id_combo_dc
+    id_receta_usada_dc
+    id_subcuenta_dc
+  }
+}
+
+Ref: DetalleComanda.id_comanda_dc > Comanda.id_comanda
+Ref: DetalleComanda.id_detalleComandaPadre_dc > DetalleComanda.id_detalleComanda
+Ref: DetalleComanda.id_producto_dc > Producto.id_producto
+Ref: DetalleComanda.id_combo_dc > Combo.id_combo
+Ref: DetalleComanda.id_receta_usada_dc > Receta.id_receta
+Ref: DetalleComanda.id_subcuenta_dc > Subcuenta.id_subcuenta
+
+// ---------------------------------------------------------------------------
+// 4. Combos
+// ---------------------------------------------------------------------------
+
+Table Combo {
+  id_combo int [pk, increment]
+  nombre_combo varchar(50) [not null]
+  precio_combo decimal(15,4) [not null]
+  combo_activo boolean [not null, default: true]
+}
+
+Table DetalleCombo {
+  id_detalleCombo int [pk, increment]
+  id_combo_detalleCombo int [not null]
+  id_producto_detalleCombo int [not null]
+  cantidad_detalleCombo decimal(10,4) [not null]
+
+  indexes {
+    id_combo_detalleCombo
+    id_producto_detalleCombo
+  }
+}
+
+Ref: DetalleCombo.id_combo_detalleCombo > Combo.id_combo
+Ref: DetalleCombo.id_producto_detalleCombo > Producto.id_producto
+
+// ---------------------------------------------------------------------------
+// 5. Facturacion y pagos
+// ---------------------------------------------------------------------------
+
+Table ConfiguracionFacturacion {
+  id_configuracionFacturacion int [pk, increment]
+  porcentaje_servicio decimal(5,2) [not null]
+  porcentaje_impuestos decimal(5,2) [not null]
+  configuracion_activa boolean [not null, default: true]
+  fecha_creacion_configuracionFacturacion timestamp [not null, default: `now()`]
+
+  Note: 'Versionada: nunca UPDATE, se desactiva y se inserta nueva. Indice parcial: a lo sumo una activa.'
+}
+
+Table Factura {
+  id_factura int [pk, increment]
+  id_subcuenta_factura int [not null]
+  fecha_emision_factura timestamp [not null, default: `now()`]
+  subtotal_factura decimal(20,4) [not null]
+  monto_servicio_factura decimal(20,4) [not null]
+  monto_impuestos_factura decimal(20,4) [not null]
+  monto_total_factura decimal(20,4) [not null]
+  estado_factura EstadoFactura [not null, default: 'EMITIDA']
+  motivo_anulacion_factura varchar(150)
+
+  indexes {
+    id_subcuenta_factura
+    fecha_emision_factura
+  }
+
+  Note: 'Inmutable: la correccion es anular + refacturar. Los montos son snapshots.'
+}
+
+Ref: Factura.id_subcuenta_factura > Subcuenta.id_subcuenta
+
+Table Pago {
+  id_pago int [pk, increment]
+  id_factura_pago int [not null]
+  id_turno_pago int [not null]
+  subtotal_pago decimal(20,4) [not null]
+  monto_servicio_pago decimal(20,4) [not null]
+  monto_impuestos_pago decimal(20,4) [not null]
+  monto_total_pago decimal(20,4) [not null]
+  metodo_pago MetodoPago [not null]
+
+  indexes {
+    id_factura_pago
+    id_turno_pago
+  }
+
+  Note: 'Pagos mixtos: varias filas por factura; el prorrateo telescopico garantiza que las columnas cuadren exacto con la factura.'
+}
+
+Ref: Pago.id_factura_pago > Factura.id_factura
+Ref: Pago.id_turno_pago > Turno.id_turno
+
+// ---------------------------------------------------------------------------
+// 6. Caja y turnos
+// ---------------------------------------------------------------------------
+
+Table Caja {
+  id_caja int [pk, increment]
+  nombre_caja varchar(30) [not null]
+
+  Note: 'Supuesto documentado: una sola caja activa.'
+}
+
+Table Turno {
+  id_turno int [pk, increment]
+  id_caja_turno int [not null]
+  id_usuario_turno int [not null]
+  fecha_apertura_turno timestamp [not null, default: `now()`]
+  fecha_cierre_turno timestamp
+  monto_apertura_turno decimal(20,4) [not null]
+  monto_cierre_esperado decimal(20,4) [note: 'Se recalcula desde pagos/movimientos al cerrar (fuente de verdad), no se confia en acumulados']
+  monto_cierre_real_turno decimal(20,4)
+  estado_turno EstadoTurno [not null, default: 'ABIERTO']
+
+  indexes {
+    id_caja_turno
+    id_usuario_turno
+  }
+}
+
+Ref: Turno.id_caja_turno > Caja.id_caja
+Ref: Turno.id_usuario_turno > Usuario.id_usuario
+
+Table MovimientoCaja {
+  id_mc int [pk, increment]
+  id_turno_mc int [not null]
+  tipo_mc TipoMovimientoCaja [not null]
+  monto_mc decimal(20,4) [not null]
+  concepto_mc varchar(150) [not null]
+  fecha_mc timestamp [not null, default: `now()`]
+
+  indexes {
+    id_turno_mc
+  }
+}
+
+Ref: MovimientoCaja.id_turno_mc > Turno.id_turno
+
+// ---------------------------------------------------------------------------
+// 7. Catalogo: categorias, productos, recetas, ingredientes
+// ---------------------------------------------------------------------------
+
+Table Categoria {
+  id_categoria int [pk, increment]
+  nombre_categoria varchar(30) [not null]
+  descripcion_categoria text
+  destino_categoria DestinoImpresion [not null, default: 'COCINA', note: 'Enruta las comandas: bebidas -> BARRA, platillos -> COCINA. Nunca GENERAL.']
+}
+
+Table Producto {
+  id_producto int [pk, increment]
+  nombre_producto varchar(25) [not null]
+  precio_producto decimal(20,4) [not null]
+  descripcion_producto varchar(300)
+  categoria_producto int
+  habilitado_producto boolean [not null, default: true, note: 'Soft delete: deshabilitar en vez de borrar']
+  imagen_producto varchar(300)
+
+  indexes {
+    categoria_producto
+  }
+}
+
+Ref: Producto.categoria_producto > Categoria.id_categoria
+
+Table Receta {
+  id_receta int [pk, increment]
+  id_producto_receta int [not null]
+  nombre_receta varchar(30) [not null]
+  receta_activa boolean [not null, default: false]
+  fecha_creacion_receta date [not null, default: `now()`]
+
+  indexes {
+    id_producto_receta
+  }
+
+  Note: 'Versionada: crear una nueva desactiva la anterior. Indice parcial: una activa por producto.'
+}
+
+Ref: Receta.id_producto_receta > Producto.id_producto
+
+Table DetalleReceta {
+  id_detalleReceta int [pk, increment]
+  id_receta_detalleReceta int [not null]
+  id_ingrediente_detalleReceta int [not null]
+  cantidad_ingrediente_detalleReceta decimal(10,4) [not null, note: 'Por unidad de producto']
+
+  indexes {
+    id_receta_detalleReceta
+    id_ingrediente_detalleReceta
+  }
+}
+
+Ref: DetalleReceta.id_receta_detalleReceta > Receta.id_receta
+Ref: DetalleReceta.id_ingrediente_detalleReceta > Ingrediente.id_ingrediente
+
+Table Ingrediente {
+  id_ingrediente int [pk, increment]
+  nombre_ingrediente varchar(25) [not null]
+  stock_ingrediente decimal(20,4) [not null, default: 0]
+  unidades_ingrediente UnidadIngrediente [not null]
+  precio_ingrediente decimal(20,4) [not null]
+}
+
+Table DetalleComandaIngrediente {
+  id_detalleComandaIngrediente int [pk, increment]
+  id_detalleComanda_dci int [not null]
+  id_ingrediente_dci int [not null]
+  cantidad_delta decimal(10,4) [not null, note: 'Positivo = extra, negativo = sin. Delta TOTAL del item, no por unidad.']
+
+  indexes {
+    id_detalleComanda_dci
+    id_ingrediente_dci
+  }
+}
+
+Ref: DetalleComandaIngrediente.id_detalleComanda_dci > DetalleComanda.id_detalleComanda
+Ref: DetalleComandaIngrediente.id_ingrediente_dci > Ingrediente.id_ingrediente
+
+Table MovimientoInventario {
+  id_movimiento int [pk, increment]
+  id_ingrediente_movimiento int [not null]
+  id_usuario_movimiento int [note: 'Solo movimientos manuales']
+  id_detalleComanda_movimiento int [note: 'Solo SALIDA_RECETA/REVERSO generados por pedidos']
+  id_movimiento_revertido int [note: 'Un REVERSO apunta al movimiento que revierte']
+  tipo_movimiento TipoMovimientoInventario [not null]
+  cantidad_movimiento decimal(20,4) [not null]
+  fecha_movimiento timestamp [not null, default: `now()`]
+  motivo_movimiento varchar(150) [note: 'Obligatorio (en aplicacion) para MERMA y AJUSTE_*']
+
+  indexes {
+    id_ingrediente_movimiento
+    id_usuario_movimiento
+    id_detalleComanda_movimiento
+    id_movimiento_revertido
+  }
+}
+
+Ref: MovimientoInventario.id_ingrediente_movimiento > Ingrediente.id_ingrediente
+Ref: MovimientoInventario.id_usuario_movimiento > Usuario.id_usuario
+Ref: MovimientoInventario.id_detalleComanda_movimiento > DetalleComanda.id_detalleComanda
+Ref: MovimientoInventario.id_movimiento_revertido > MovimientoInventario.id_movimiento
+
+// ---------------------------------------------------------------------------
+// 8. Division de cuenta
+// ---------------------------------------------------------------------------
+
+Table Subcuenta {
+  id_subcuenta int [pk, increment]
+  id_pedido_subcuenta int [not null]
+  nombre_subcuenta varchar(30) [note: 'Todo pedido nace con una "Cuenta principal"']
+  fecha_creacion_subcuenta timestamp [not null, default: `now()`]
+
+  indexes {
+    id_pedido_subcuenta
+  }
+}
+
+Ref: Subcuenta.id_pedido_subcuenta > Pedido.id_pedido
+
+Table SubcuentaDetalleComanda {
+  id_subcuentaDetalleComanda int [pk, increment]
+  id_detalleComanda_sdc int [not null]
+  id_subcuenta_sdc int [not null]
+  proporcion_sdc decimal(5,4) [not null, note: 'Reparto proporcional de un item compartido; las proporciones suman 1.0']
+
+  indexes {
+    id_detalleComanda_sdc
+    id_subcuenta_sdc
+  }
+}
+
+Ref: SubcuentaDetalleComanda.id_detalleComanda_sdc > DetalleComanda.id_detalleComanda
+Ref: SubcuentaDetalleComanda.id_subcuenta_sdc > Subcuenta.id_subcuenta
+
+// ---------------------------------------------------------------------------
+// 9-13. Nomina
+// ---------------------------------------------------------------------------
+
+Table Empleado {
+  id_empleado int [pk, increment]
+  nombre_empleado varchar(50) [not null]
+  apellido_empleado varchar(60) [not null]
+  fecha_ingreso_empleado date [not null]
+  fecha_retiro_empleado date
+  estado_empleado EstadoEmpleado [not null, default: 'ACTIVO', note: 'INACTIVO revoca el acceso del Usuario asociado de inmediato']
+}
+
+Table TarifaEmpleado {
+  id_tarifaEmpleado int [pk, increment]
+  id_empleado_tarifaEmpleado int [not null]
+  valor_hora_tarifaEmpleado decimal(10,2) [not null]
+  tarifa_activa boolean [not null, default: true]
+  fecha_inicio_tarifaEmpleado date [not null, default: `now()`]
+
+  indexes {
+    id_empleado_tarifaEmpleado
+  }
+
+  Note: 'Versionada. Indice parcial: una tarifa activa por empleado.'
+}
+
+Ref: TarifaEmpleado.id_empleado_tarifaEmpleado > Empleado.id_empleado
+
+Table Jornada {
+  id_jornada int [pk, increment]
+  id_empleado_jornada int [not null]
+  fecha_jornada date [not null, note: 'Fecha local del dia en que empezo (puede cruzar medianoche)']
+  estado_jornada EstadoJornada [not null, default: 'ABIERTA']
+
+  indexes {
+    id_empleado_jornada
+  }
+
+  Note: 'Indice parcial: una jornada ABIERTA por empleado.'
+}
+
+Ref: Jornada.id_empleado_jornada > Empleado.id_empleado
+
+Table Marcacion {
+  id_marcacion int [pk, increment]
+  id_jornada_marcacion int [not null]
+  tipo_marcacion TipoMarcacion [not null, note: 'Alterna automaticamente ENTRADA/SALIDA']
+  fecha_hora_marcacion timestamp [not null, default: `now()`]
+
+  indexes {
+    id_jornada_marcacion
+  }
+}
+
+Ref: Marcacion.id_jornada_marcacion > Jornada.id_jornada
+
+Table ConfiguracionNomina {
+  id_configuracionNomina int [pk, increment]
+  aplica_recargo_nocturno boolean [not null, default: false]
+  porcentaje_recargo_nocturno decimal(5,2)
+  hora_inicio_nocturno time [note: 'La franja puede cruzar medianoche']
+  hora_fin_nocturno time
+  configuracion_activa boolean [not null, default: true]
+  fecha_creacion_configuracionNomina timestamp [not null, default: `now()`]
+
+  Note: 'Versionada. Indice parcial: a lo sumo una activa.'
+}
+
+Table ConceptoNomina {
+  id_conceptoNomina int [pk, increment]
+  nombre_conceptoNomina varchar(50) [not null]
+  tipo_conceptoNomina TipoConceptoNomina [not null]
+  aplica_automaticamente boolean [not null, default: false, note: 'Automaticos se aplican al cerrar jornada']
+  unidad_calculo_conceptoNomina UnidadCalculoConceptoNomina
+}
+
+Table ValorConceptoNomina {
+  id_valorConceptoNomina int [pk, increment]
+  id_concepto_valorConceptoNomina int [not null]
+  monto_valorConceptoNomina decimal(10,2) [not null]
+  valor_activo boolean [not null, default: true]
+  fecha_inicio_valorConceptoNomina date [not null, default: `now()`]
+
+  indexes {
+    id_concepto_valorConceptoNomina
+  }
+
+  Note: 'Versionado. Indice parcial: un valor activo por concepto.'
+}
+
+Ref: ValorConceptoNomina.id_concepto_valorConceptoNomina > ConceptoNomina.id_conceptoNomina
+
+Table ConceptoNominaEmpleado {
+  id_conceptoNominaEmpleado int [pk, increment]
+  id_concepto_cne int [not null]
+  id_empleado_cne int [not null]
+  id_jornada_cne int [note: 'Presente si el concepto se aplico por una jornada']
+  fecha_cne date [not null]
+  cantidad_cne decimal(6,2)
+  valor_unitario_aplicado_cne decimal(10,2) [not null, note: 'Snapshot del valor vigente al aplicar']
+  monto_cne decimal(10,2) [not null]
+  observacion_cne varchar(150)
+
+  indexes {
+    id_concepto_cne
+    id_empleado_cne
+    id_jornada_cne
+  }
+}
+
+Ref: ConceptoNominaEmpleado.id_concepto_cne > ConceptoNomina.id_conceptoNomina
+Ref: ConceptoNominaEmpleado.id_empleado_cne > Empleado.id_empleado
+Ref: ConceptoNominaEmpleado.id_jornada_cne > Jornada.id_jornada
+
+Table DevengoNomina {
+  id_devengoNomina int [pk, increment]
+  id_empleado_devengoNomina int [not null]
+  id_jornada_devengoNomina int [note: 'Devengo por horas trabajadas']
+  id_conceptoNominaEmpleado_devengoNomina int [note: 'Devengo por concepto aplicado']
+  horas_ordinarias_devengoNomina decimal(6,2)
+  horas_recargo_devengoNomina decimal(6,2)
+  valor_hora_aplicado_devengoNomina decimal(10,2) [note: 'Snapshot de la tarifa usada']
+  porcentaje_recargo_aplicado_devengoNomina decimal(5,2) [note: 'Snapshot del recargo usado']
+  monto_devengoNomina decimal(10,2) [not null, note: 'Negativo para deducciones']
+  fecha_devengoNomina date [not null]
+
+  indexes {
+    id_empleado_devengoNomina
+    id_jornada_devengoNomina
+    id_conceptoNominaEmpleado_devengoNomina
+    fecha_devengoNomina
+  }
+}
+
+Ref: DevengoNomina.id_empleado_devengoNomina > Empleado.id_empleado
+Ref: DevengoNomina.id_jornada_devengoNomina > Jornada.id_jornada
+Ref: DevengoNomina.id_conceptoNominaEmpleado_devengoNomina > ConceptoNominaEmpleado.id_conceptoNominaEmpleado
+
+Table PagoNomina {
+  id_pagoNomina int [pk, increment]
+  id_empleado_pagoNomina int [not null]
+  id_turno_pagoNomina int [note: 'Obligatorio (en aplicacion) si el metodo es EFECTIVO: sale de la caja como EGRESO']
+  id_usuario_registra_pagoNomina int [not null]
+  monto_pagoNomina decimal(10,2) [not null, note: 'Sin adelantos: monto <= saldo pendiente']
+  fecha_pagoNomina timestamp [not null, default: `now()`]
+  metodo_pagoNomina MetodoPagoNomina [not null]
+  observacion_pagoNomina varchar(150)
+
+  indexes {
+    id_empleado_pagoNomina
+    id_turno_pagoNomina
+    id_usuario_registra_pagoNomina
+    fecha_pagoNomina
+  }
+}
+
+Ref: PagoNomina.id_empleado_pagoNomina > Empleado.id_empleado
+Ref: PagoNomina.id_turno_pagoNomina > Turno.id_turno
+Ref: PagoNomina.id_usuario_registra_pagoNomina > Usuario.id_usuario
+
+Table PagoNominaDetalle {
+  id_pagoNominaDetalle int [pk, increment]
+  id_pagoNomina_pnd int [not null]
+  id_devengoNomina_pnd int [not null]
+  monto_aplicado_pnd decimal(10,2) [not null, note: 'Asignacion FIFO: deducciones completas primero, luego devengos por fecha']
+
+  indexes {
+    id_pagoNomina_pnd
+    id_devengoNomina_pnd
+  }
+}
+
+Ref: PagoNominaDetalle.id_pagoNomina_pnd > PagoNomina.id_pagoNomina
+Ref: PagoNominaDetalle.id_devengoNomina_pnd > DevengoNomina.id_devengoNomina
+
+// ---------------------------------------------------------------------------
+// 14. Impresion de comandas (termicas ESC/POS por red)
+// ---------------------------------------------------------------------------
+
+Table Impresora {
+  id_impresora int [pk, increment]
+  nombre_impresora varchar(30) [not null]
+  destino_impresora DestinoImpresion [not null, note: 'GENERAL = unica termica del local: recibe cocina y barra; la especifica del destino tiene prioridad']
+  host_impresora varchar(45) [not null, note: 'IP/hostname en la LAN (protocolo RAW)']
+  puerto_impresora int [not null, default: 9100]
+  ancho_papel_impresora int [not null, default: 80, note: '80mm = 48 columnas, 58mm = 32']
+  impresora_activa boolean [not null, default: true]
+
+  Note: 'Indice parcial: una impresora activa por destino.'
+}
+
+Table ImpresionComanda {
+  id_impresionComanda int [pk, increment]
+  id_comanda_impresion int [not null]
+  destino_impresion DestinoImpresion [not null, note: 'Solo COCINA/BARRA']
+  estado_impresion EstadoImpresion [not null, default: 'PENDIENTE']
+  intentos_impresion int [not null, default: 0]
+  motivo_fallo varchar(200)
+  fecha_creacion timestamp [not null, default: `now()`]
+  fecha_actualizacion timestamp [not null, default: `now()`]
+
+  indexes {
+    estado_impresion
+    (id_comanda_impresion, destino_impresion) [unique]
+  }
+
+  Note: 'Un trabajo por (comanda, destino); reintentos y reimpresiones actualizan la misma fila.'
+}
+
+Ref: ImpresionComanda.id_comanda_impresion > Comanda.id_comanda
+
+// ---------------------------------------------------------------------------
+// Agrupacion visual por dominio
+// ---------------------------------------------------------------------------
+
+TableGroup auth {
+  Rol
+  Usuario
+}
+
+TableGroup salon {
+  Zona
+  Mesa
+}
+
+TableGroup pedidos {
+  Pedido
+  Comanda
+  DetalleComanda
+  Subcuenta
+  SubcuentaDetalleComanda
+}
+
+TableGroup catalogo {
+  Categoria
+  Producto
+  Combo
+  DetalleCombo
+  Receta
+  DetalleReceta
+  Ingrediente
+  DetalleComandaIngrediente
+  MovimientoInventario
+}
+
+TableGroup facturacion {
+  ConfiguracionFacturacion
+  Factura
+  Pago
+  Caja
+  Turno
+  MovimientoCaja
+}
+
+TableGroup nomina {
+  Empleado
+  TarifaEmpleado
+  Jornada
+  Marcacion
+  ConfiguracionNomina
+  ConceptoNomina
+  ValorConceptoNomina
+  ConceptoNominaEmpleado
+  DevengoNomina
+  PagoNominaDetalle
+  PagoNomina
+}
+
+TableGroup impresion {
+  Impresora
+  ImpresionComanda
+}

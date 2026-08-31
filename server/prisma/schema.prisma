@@ -1,0 +1,810 @@
+// Prisma schema — traducido 1:1 desde "POS (1).sql".
+// Nombres de modelos/campos preservados tal cual el SQL para mantener
+// trazabilidad directa con consideraciones_implementacion_pos.md.
+//
+// NOTA (sección 19 de consideraciones): los índices únicos PARCIALES
+// ("solo una fila activa por grupo", WHERE activa = true) en Receta,
+// TarifaEmpleado, ConfiguracionNomina y ValorConceptoNomina no son
+// expresables en el schema de Prisma (no soporta WHERE en @@index/@@unique).
+// Deben agregarse a mano en la migración generada, ej.:
+//   CREATE UNIQUE INDEX "receta_activa_por_producto"
+//     ON "Receta" ("id_producto_receta") WHERE "receta_activa" = true;
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =========================================================================
+// ENUMS
+// =========================================================================
+
+enum EstadoMesa {
+  LIBRE
+  RESERVADA
+  OCUPADA
+  DESACTIVADA
+}
+
+enum EstadoPedido {
+  EN_PREPARACION
+  ENTREGADO
+  PAGADO
+  CANCELADO
+}
+
+// Un pedido nace en una mesa (MESA) o entra como domicilio (DOMICILIO). El
+// domicilio no ocupa una mesa fisica del salon (ver Pedido.mesa_pedido).
+enum TipoPedido {
+  MESA
+  DOMICILIO
+}
+
+enum EstadoDetalleComanda {
+  PREPARANDO
+  ENTREGADO
+  CANCELADO
+}
+
+enum EstadoFactura {
+  EMITIDA
+  PAGADA
+  ANULADA
+}
+
+enum MetodoPago {
+  TARJETA
+  TRANSFERENCIA
+  EFECTIVO
+}
+
+// Destino del excedente que el cliente deja al pagar de mas ("quedese con el
+// vuelto"): la CASA (ingreso del negocio) o la PROPINA de los meseros (entra al
+// pool del dia). Lo elige el cajero al cobrar.
+enum DestinoExcedente {
+  CASA
+  PROPINA
+}
+
+enum EstadoTurno {
+  ABIERTO
+  CERRADO
+}
+
+enum TipoMovimientoCaja {
+  INGRESO
+  EGRESO
+}
+
+enum UnidadIngrediente {
+  kg
+  g
+  dg
+  mg
+  ml
+  L
+  UNIDADES
+}
+
+enum TipoMovimientoInventario {
+  ENTRADA
+  SALIDA_RECETA
+  MERMA
+  AJUSTE_POSITIVO
+  AJUSTE_NEGATIVO
+  REVERSO
+}
+
+// Donde se prepara un producto y a que impresora va su comanda.
+// GENERAL aplica SOLO a impresoras: una unica termica que recibe los tickets
+// de cocina Y barra (el mesero reparte los papelitos). Las categorias y los
+// registros de impresion siempre usan COCINA/BARRA.
+enum DestinoImpresion {
+  COCINA
+  BARRA
+  GENERAL
+}
+
+enum EstadoImpresion {
+  PENDIENTE
+  IMPRESA
+  FALLIDA
+}
+
+enum EstadoEmpleado {
+  ACTIVO
+  INACTIVO
+}
+
+enum EstadoJornada {
+  ABIERTA
+  CERRADA
+}
+
+enum TipoMarcacion {
+  ENTRADA
+  SALIDA
+}
+
+enum TipoConceptoNomina {
+  INGRESO
+  DEDUCCION
+}
+
+enum UnidadCalculoConceptoNomina {
+  DIA_TRABAJADO
+}
+
+enum MetodoPagoNomina {
+  EFECTIVO
+  TRANSFERENCIA
+}
+
+// =========================================================================
+// 1. Roles y usuarios
+// =========================================================================
+
+model Rol {
+  id_rol     Int    @id @default(autoincrement())
+  nombre_rol String @unique @db.VarChar(20)
+
+  usuarios Usuario[]
+}
+
+model Usuario {
+  id_usuario             Int      @id @default(autoincrement())
+  id_empleado_usuario    Int
+  id_rol                 Int
+  email_usuario          String   @unique @db.VarChar(100)
+  fecha_creacion_usuario DateTime @default(now()) @db.Date
+  password_usuario       String   @db.VarChar(100)
+
+  empleado Empleado @relation(fields: [id_empleado_usuario], references: [id_empleado])
+  rol      Rol      @relation(fields: [id_rol], references: [id_rol])
+
+  pedidosComoMesero      Pedido[]
+  turnos                 Turno[]
+  movimientosInventario  MovimientoInventario[]
+  pagosNominaRegistrados PagoNomina[]
+
+  @@index([id_empleado_usuario])
+  @@index([id_rol])
+}
+
+// =========================================================================
+// 2. Salón: zonas, mesas
+// =========================================================================
+
+model Zona {
+  id_zona            Int    @id @default(autoincrement())
+  nombre_zona        String @db.VarChar(20)
+  identificador_zona String @db.VarChar(3)
+
+  mesas Mesa[]
+}
+
+model Mesa {
+  id_mesa        Int        @id @default(autoincrement())
+  numero_mesa Int
+  capacidad_mesa Int?
+  id_zona_mesa   Int
+  estado_mesa    EstadoMesa @default(LIBRE)
+
+  zona Zona @relation(fields: [id_zona_mesa], references: [id_zona])
+
+  pedidos Pedido[]
+
+  @@index([id_zona_mesa])
+  @@index([estado_mesa])
+}
+
+// =========================================================================
+// 3. Pedidos, comandas y detalle
+// =========================================================================
+
+model Pedido {
+  id_pedido     Int          @id @default(autoincrement())
+  fecha_pedido  DateTime     @default(now()) @db.Timestamp(6)
+  estado_pedido EstadoPedido @default(EN_PREPARACION)
+  tipo_pedido   TipoPedido   @default(MESA)
+  // Un domicilio no ocupa mesa: mesa_pedido queda null cuando tipo = DOMICILIO.
+  mesa_pedido   Int?
+  mesero_pedido Int
+
+  // Datos de entrega: solo se llenan para DOMICILIO (null en pedidos de mesa).
+  nombre_cliente_pedido    String? @db.VarChar(80)
+  telefono_cliente_pedido  String? @db.VarChar(30)
+  direccion_cliente_pedido String? @db.VarChar(150)
+
+  mesa   Mesa?   @relation(fields: [mesa_pedido], references: [id_mesa])
+  mesero Usuario @relation(fields: [mesero_pedido], references: [id_usuario])
+
+  comandas   Comanda[]
+  subcuentas Subcuenta[]
+
+  @@index([mesa_pedido])
+  @@index([mesero_pedido])
+  @@index([estado_pedido])
+  @@index([tipo_pedido])
+}
+
+model Comanda {
+  id_comanda        Int      @id @default(autoincrement())
+  id_pedido_comanda Int
+  creacion_comanda  DateTime @default(now()) @db.Timestamp(6)
+
+  pedido Pedido @relation(fields: [id_pedido_comanda], references: [id_pedido])
+
+  detalles    DetalleComanda[]
+  impresiones ImpresionComanda[]
+
+  @@index([id_pedido_comanda])
+}
+
+model DetalleComanda {
+  id_detalleComanda         Int                  @id @default(autoincrement())
+  id_comanda_dc             Int
+  id_detalleComandaPadre_dc Int?
+  id_producto_dc            Int?
+  id_combo_dc               Int?
+  id_receta_usada_dc        Int?
+  id_subcuenta_dc           Int?
+  estado_dc                 EstadoDetalleComanda @default(PREPARANDO)
+  cantidad_producto_dc      Int
+  precio_unitario_dc        Decimal              @db.Decimal(20, 4)
+  indicaciones_dc           String?              @db.VarChar(150)
+
+  comanda     Comanda          @relation(fields: [id_comanda_dc], references: [id_comanda])
+  padre       DetalleComanda?  @relation("JerarquiaDetalleComanda", fields: [id_detalleComandaPadre_dc], references: [id_detalleComanda])
+  hijos       DetalleComanda[] @relation("JerarquiaDetalleComanda")
+  producto    Producto?        @relation(fields: [id_producto_dc], references: [id_producto])
+  combo       Combo?           @relation(fields: [id_combo_dc], references: [id_combo])
+  recetaUsada Receta?          @relation(fields: [id_receta_usada_dc], references: [id_receta])
+  subcuenta   Subcuenta?       @relation(fields: [id_subcuenta_dc], references: [id_subcuenta])
+
+  ingredientesPersonalizados DetalleComandaIngrediente[]
+  movimientosInventario      MovimientoInventario[]
+  subcuentasReparto          SubcuentaDetalleComanda[]
+
+  @@index([id_comanda_dc])
+  @@index([id_detalleComandaPadre_dc])
+  @@index([id_producto_dc])
+  @@index([id_combo_dc])
+  @@index([id_receta_usada_dc])
+  @@index([id_subcuenta_dc])
+}
+
+// =========================================================================
+// 4. Combos
+// =========================================================================
+
+model Combo {
+  id_combo     Int     @id @default(autoincrement())
+  nombre_combo String  @db.VarChar(50)
+  precio_combo Decimal @db.Decimal(15, 4)
+  combo_activo Boolean @default(true)
+
+  detallesCombo   DetalleCombo[]
+  detallesComanda DetalleComanda[]
+}
+
+model DetalleCombo {
+  id_detalleCombo          Int     @id @default(autoincrement())
+  id_combo_detalleCombo    Int
+  id_producto_detalleCombo Int
+  cantidad_detalleCombo    Decimal @db.Decimal(10, 4)
+
+  combo    Combo    @relation(fields: [id_combo_detalleCombo], references: [id_combo])
+  producto Producto @relation(fields: [id_producto_detalleCombo], references: [id_producto])
+
+  @@index([id_combo_detalleCombo])
+  @@index([id_producto_detalleCombo])
+}
+
+// =========================================================================
+// 5. Facturación y pagos
+// =========================================================================
+
+// Tarifas globales de servicio/impuestos aplicadas al emitir una Factura.
+// Versionada como ConfiguracionNomina/Receta: nunca se hace UPDATE, se
+// desactiva la vigente y se inserta una nueva (a lo sumo una activa,
+// garantizado por índice parcial en la migración). La Factura igual
+// snapshotea los montos calculados, así que el histórico no depende de esta
+// tabla; las versiones viejas solo documentan qué tarifa regía en cada época.
+model ConfiguracionFacturacion {
+  id_configuracionFacturacion             Int      @id @default(autoincrement())
+  porcentaje_servicio                     Decimal  @db.Decimal(5, 2)
+  porcentaje_impuestos                    Decimal  @db.Decimal(5, 2)
+  configuracion_activa                    Boolean  @default(true)
+  fecha_creacion_configuracionFacturacion DateTime @default(now()) @db.Timestamp(6)
+}
+
+// Datos del negocio que encabezan la factura del cliente (razon social, NIT,
+// direccion, telefono). Versionada como ConfiguracionFacturacion: nunca UPDATE,
+// se desactiva la vigente y se inserta una nueva (a lo sumo una activa,
+// garantizado por indice parcial en la migracion).
+model ConfiguracionNegocio {
+  id_configuracionNegocio             Int      @id @default(autoincrement())
+  nombre_negocio                      String   @db.VarChar(80)
+  nit_negocio                         String?  @db.VarChar(30)
+  direccion_negocio                   String?  @db.VarChar(120)
+  telefono_negocio                    String?  @db.VarChar(30)
+  configuracion_activa                Boolean  @default(true)
+  fecha_creacion_configuracionNegocio DateTime @default(now()) @db.Timestamp(6)
+}
+
+model Factura {
+  id_factura               Int           @id @default(autoincrement())
+  id_subcuenta_factura     Int
+  fecha_emision_factura    DateTime      @default(now()) @db.Timestamp(6)
+  subtotal_factura         Decimal       @db.Decimal(20, 4)
+  monto_servicio_factura   Decimal       @db.Decimal(20, 4)
+  monto_impuestos_factura  Decimal       @db.Decimal(20, 4)
+  monto_total_factura      Decimal       @db.Decimal(20, 4)
+  estado_factura           EstadoFactura @default(EMITIDA)
+  motivo_anulacion_factura String?       @db.VarChar(150)
+
+  subcuenta Subcuenta @relation(fields: [id_subcuenta_factura], references: [id_subcuenta])
+
+  pagos Pago[]
+
+  @@index([id_subcuenta_factura])
+  @@index([fecha_emision_factura])
+}
+
+model Pago {
+  id_pago              Int        @id @default(autoincrement())
+  id_factura_pago      Int
+  id_turno_pago        Int
+  subtotal_pago        Decimal    @db.Decimal(20, 4)
+  monto_servicio_pago  Decimal    @db.Decimal(20, 4)
+  monto_impuestos_pago Decimal    @db.Decimal(20, 4)
+  monto_total_pago     Decimal    @db.Decimal(20, 4)
+  // Excedente voluntario que el cliente deja al negocio (0 = sin excedente). NO
+  // hace parte de la factura: monto_total_pago sigue siendo lo aplicado a la
+  // cuenta (subtotal + servicio + impuestos). Solo se registra en efectivo.
+  monto_excedente_pago   Decimal           @default(0) @db.Decimal(20, 4)
+  destino_excedente_pago DestinoExcedente?
+  metodo_pago          MetodoPago
+  fecha_pago           DateTime   @default(now()) @db.Timestamp(6)
+
+  factura Factura @relation(fields: [id_factura_pago], references: [id_factura])
+  turno   Turno   @relation(fields: [id_turno_pago], references: [id_turno])
+
+  @@index([id_factura_pago])
+  @@index([id_turno_pago])
+}
+
+// =========================================================================
+// 6. Caja y turnos
+// =========================================================================
+
+model Caja {
+  id_caja     Int    @id @default(autoincrement())
+  nombre_caja String @db.VarChar(30)
+
+  turnos Turno[]
+}
+
+model Turno {
+  id_turno                Int         @id @default(autoincrement())
+  id_caja_turno           Int
+  id_usuario_turno        Int
+  fecha_apertura_turno    DateTime    @default(now()) @db.Timestamp(6)
+  fecha_cierre_turno      DateTime?   @db.Timestamp(6)
+  monto_apertura_turno    Decimal     @db.Decimal(20, 4)
+  monto_cierre_esperado   Decimal?    @db.Decimal(20, 4)
+  monto_cierre_real_turno Decimal?    @db.Decimal(20, 4)
+  // Desglose por denominacion del conteo de cierre (arqueo): { "100000": 2, ... }.
+  conteo_cierre_turno     Json?       @db.JsonB
+  estado_turno            EstadoTurno @default(ABIERTO)
+
+  caja    Caja    @relation(fields: [id_caja_turno], references: [id_caja])
+  usuario Usuario @relation(fields: [id_usuario_turno], references: [id_usuario])
+
+  pagos           Pago[]
+  movimientosCaja MovimientoCaja[]
+  pagosNomina     PagoNomina[]
+
+  @@index([id_caja_turno])
+  @@index([id_usuario_turno])
+}
+
+model MovimientoCaja {
+  id_mc       Int                @id @default(autoincrement())
+  id_turno_mc Int
+  tipo_mc     TipoMovimientoCaja
+  monto_mc    Decimal            @db.Decimal(20, 4)
+  concepto_mc String             @db.VarChar(150)
+  fecha_mc    DateTime           @default(now()) @db.Timestamp(6)
+
+  turno Turno @relation(fields: [id_turno_mc], references: [id_turno])
+
+  @@index([id_turno_mc])
+}
+
+// =========================================================================
+// 7. Catálogo: categorías, productos, recetas, ingredientes
+// =========================================================================
+
+model Categoria {
+  id_categoria          Int              @id @default(autoincrement())
+  nombre_categoria      String           @db.VarChar(30)
+  descripcion_categoria String?
+  // Enruta las comandas: los productos de la categoria se imprimen en la
+  // impresora de este destino (bebidas -> BARRA, platillos -> COCINA).
+  destino_categoria     DestinoImpresion @default(COCINA)
+  // Categoria de adiciones: sus productos NO se ofrecen sueltos en el menu de
+  // toma de pedidos; solo aparecen como adiciones (con precio) al personalizar
+  // un item. Permite agrupar las adiciones (ej. "Adiciones hamburguesas").
+  es_adicion            Boolean          @default(false)
+
+  productos Producto[]
+}
+
+model Producto {
+  id_producto         Int     @id @default(autoincrement())
+  nombre_producto     String  @db.VarChar(25)
+  precio_producto     Decimal @db.Decimal(20, 4)
+  descripcion_producto String? @db.VarChar(300)
+  categoria_producto  Int?
+  habilitado_producto Boolean @default(true)
+  imagen_producto     String? @db.VarChar(300)
+
+  categoria Categoria? @relation(fields: [categoria_producto], references: [id_categoria])
+
+  recetas         Receta[]
+  detallesCombo   DetalleCombo[]
+  detallesComanda DetalleComanda[]
+
+  @@index([categoria_producto])
+}
+
+model Receta {
+  id_receta             Int      @id @default(autoincrement())
+  id_producto_receta    Int
+  nombre_receta         String   @db.VarChar(30)
+  receta_activa         Boolean  @default(false)
+  fecha_creacion_receta DateTime @default(now()) @db.Date
+
+  producto Producto @relation(fields: [id_producto_receta], references: [id_producto])
+
+  detalles        DetalleReceta[]
+  detallesComanda DetalleComanda[]
+
+  @@index([id_producto_receta])
+}
+
+model DetalleReceta {
+  id_detalleReceta                   Int     @id @default(autoincrement())
+  id_receta_detalleReceta            Int
+  id_ingrediente_detalleReceta       Int
+  cantidad_ingrediente_detalleReceta Decimal @db.Decimal(10, 4)
+
+  receta      Receta      @relation(fields: [id_receta_detalleReceta], references: [id_receta])
+  ingrediente Ingrediente @relation(fields: [id_ingrediente_detalleReceta], references: [id_ingrediente])
+
+  @@index([id_receta_detalleReceta])
+  @@index([id_ingrediente_detalleReceta])
+}
+
+model Ingrediente {
+  id_ingrediente       Int               @id @default(autoincrement())
+  nombre_ingrediente   String            @db.VarChar(25)
+  stock_ingrediente    Decimal           @default(0) @db.Decimal(20, 4)
+  unidades_ingrediente UnidadIngrediente
+  precio_ingrediente   Decimal           @db.Decimal(20, 4)
+
+  detallesReceta             DetalleReceta[]
+  detallesComandaIngrediente DetalleComandaIngrediente[]
+  movimientos                MovimientoInventario[]
+}
+
+model DetalleComandaIngrediente {
+  id_detalleComandaIngrediente Int     @id @default(autoincrement())
+  id_detalleComanda_dci        Int
+  id_ingrediente_dci           Int
+  cantidad_delta               Decimal @db.Decimal(10, 4)
+
+  detalleComanda DetalleComanda @relation(fields: [id_detalleComanda_dci], references: [id_detalleComanda])
+  ingrediente    Ingrediente    @relation(fields: [id_ingrediente_dci], references: [id_ingrediente])
+
+  @@index([id_detalleComanda_dci])
+  @@index([id_ingrediente_dci])
+}
+
+model MovimientoInventario {
+  id_movimiento                Int                      @id @default(autoincrement())
+  id_ingrediente_movimiento    Int
+  id_usuario_movimiento        Int?
+  id_detalleComanda_movimiento Int?
+  id_movimiento_revertido      Int?
+  tipo_movimiento              TipoMovimientoInventario
+  cantidad_movimiento          Decimal                  @db.Decimal(20, 4)
+  fecha_movimiento             DateTime                 @default(now()) @db.Timestamp(6)
+  motivo_movimiento            String?                  @db.VarChar(150)
+
+  ingrediente         Ingrediente            @relation(fields: [id_ingrediente_movimiento], references: [id_ingrediente])
+  usuario             Usuario?               @relation(fields: [id_usuario_movimiento], references: [id_usuario])
+  detalleComanda      DetalleComanda?        @relation(fields: [id_detalleComanda_movimiento], references: [id_detalleComanda])
+  movimientoRevertido MovimientoInventario?  @relation("ReversoMovimientoInventario", fields: [id_movimiento_revertido], references: [id_movimiento])
+  reversos            MovimientoInventario[] @relation("ReversoMovimientoInventario")
+
+  @@index([id_ingrediente_movimiento])
+  @@index([id_usuario_movimiento])
+  @@index([id_detalleComanda_movimiento])
+  @@index([id_movimiento_revertido])
+}
+
+// =========================================================================
+// 8. División de cuenta
+// =========================================================================
+
+model Subcuenta {
+  id_subcuenta             Int      @id @default(autoincrement())
+  id_pedido_subcuenta      Int
+  nombre_subcuenta         String?  @db.VarChar(30)
+  fecha_creacion_subcuenta DateTime @default(now()) @db.Timestamp(6)
+
+  pedido Pedido @relation(fields: [id_pedido_subcuenta], references: [id_pedido])
+
+  detallesComanda DetalleComanda[]
+  facturas        Factura[]
+  repartoDetalles SubcuentaDetalleComanda[]
+
+  @@index([id_pedido_subcuenta])
+}
+
+model SubcuentaDetalleComanda {
+  id_subcuentaDetalleComanda Int     @id @default(autoincrement())
+  id_detalleComanda_sdc      Int
+  id_subcuenta_sdc           Int
+  proporcion_sdc             Decimal @db.Decimal(5, 4)
+
+  detalleComanda DetalleComanda @relation(fields: [id_detalleComanda_sdc], references: [id_detalleComanda])
+  subcuenta      Subcuenta      @relation(fields: [id_subcuenta_sdc], references: [id_subcuenta])
+
+  @@index([id_detalleComanda_sdc])
+  @@index([id_subcuenta_sdc])
+}
+
+// =========================================================================
+// 9. Nómina — Empleados y usuarios
+// =========================================================================
+
+model Empleado {
+  id_empleado            Int            @id @default(autoincrement())
+  nombre_empleado        String         @db.VarChar(50)
+  apellido_empleado      String         @db.VarChar(60)
+  fecha_ingreso_empleado DateTime       @db.Date
+  fecha_retiro_empleado  DateTime?      @db.Date
+  estado_empleado        EstadoEmpleado @default(ACTIVO)
+
+  usuarios        Usuario[]
+  tarifas         TarifaEmpleado[]
+  jornadas        Jornada[]
+  conceptosNomina ConceptoNominaEmpleado[]
+  devengos        DevengoNomina[]
+  pagosNomina     PagoNomina[]
+}
+
+model TarifaEmpleado {
+  id_tarifaEmpleado           Int      @id @default(autoincrement())
+  id_empleado_tarifaEmpleado  Int
+  valor_hora_tarifaEmpleado   Decimal  @db.Decimal(10, 2)
+  tarifa_activa               Boolean  @default(true)
+  fecha_inicio_tarifaEmpleado DateTime @default(now()) @db.Date
+
+  empleado Empleado @relation(fields: [id_empleado_tarifaEmpleado], references: [id_empleado])
+
+  @@index([id_empleado_tarifaEmpleado])
+}
+
+// =========================================================================
+// 10. Nómina — Jornadas y marcaciones
+// =========================================================================
+
+model Jornada {
+  id_jornada          Int           @id @default(autoincrement())
+  id_empleado_jornada Int
+  fecha_jornada       DateTime      @db.Date
+  estado_jornada      EstadoJornada @default(ABIERTA)
+
+  empleado Empleado @relation(fields: [id_empleado_jornada], references: [id_empleado])
+
+  marcaciones     Marcacion[]
+  conceptosNomina ConceptoNominaEmpleado[]
+  devengos        DevengoNomina[]
+
+  @@index([id_empleado_jornada])
+}
+
+model Marcacion {
+  id_marcacion         Int           @id @default(autoincrement())
+  id_jornada_marcacion Int
+  tipo_marcacion       TipoMarcacion
+  fecha_hora_marcacion DateTime      @default(now()) @db.Timestamp(6)
+
+  jornada Jornada @relation(fields: [id_jornada_marcacion], references: [id_jornada])
+
+  @@index([id_jornada_marcacion])
+}
+
+// =========================================================================
+// 11. Nómina — Configuración de recargo nocturno
+// =========================================================================
+
+model ConfiguracionNomina {
+  id_configuracionNomina             Int       @id @default(autoincrement())
+  aplica_recargo_nocturno            Boolean   @default(false)
+  porcentaje_recargo_nocturno        Decimal?  @db.Decimal(5, 2)
+  hora_inicio_nocturno               DateTime? @db.Time
+  hora_fin_nocturno                  DateTime? @db.Time
+  configuracion_activa               Boolean   @default(true)
+  fecha_creacion_configuracionNomina DateTime  @default(now()) @db.Timestamp(6)
+}
+
+// Retención del restaurante sobre las propinas: al repartir el servicio del día,
+// el local puede quedarse con un porcentaje y solo se distribuye el resto entre
+// los empleados. Versionada (nueva fila, nunca UPDATE); a lo sumo una activa
+// (índice parcial en la migración). La parte retenida no genera devengo: la
+// propina ya está cobrada en caja, el local simplemente reparte menos.
+model ConfiguracionPropinas {
+  id_configuracionPropinas             Int      @id @default(autoincrement())
+  retiene_casa                         Boolean  @default(false)
+  porcentaje_casa                      Decimal? @db.Decimal(5, 2)
+  configuracion_activa                 Boolean  @default(true)
+  fecha_creacion_configuracionPropinas DateTime @default(now()) @db.Timestamp(6)
+}
+
+// =========================================================================
+// 12. Nómina — Conceptos (auxilios, incentivos, deducciones)
+// =========================================================================
+
+model ConceptoNomina {
+  id_conceptoNomina             Int                          @id @default(autoincrement())
+  nombre_conceptoNomina         String                       @db.VarChar(50)
+  tipo_conceptoNomina           TipoConceptoNomina
+  aplica_automaticamente        Boolean                      @default(false)
+  unidad_calculo_conceptoNomina UnidadCalculoConceptoNomina?
+
+  valores           ValorConceptoNomina[]
+  conceptosEmpleado ConceptoNominaEmpleado[]
+}
+
+model ValorConceptoNomina {
+  id_valorConceptoNomina           Int      @id @default(autoincrement())
+  id_concepto_valorConceptoNomina  Int
+  monto_valorConceptoNomina        Decimal  @db.Decimal(10, 2)
+  valor_activo                     Boolean  @default(true)
+  fecha_inicio_valorConceptoNomina DateTime @default(now()) @db.Date
+
+  concepto ConceptoNomina @relation(fields: [id_concepto_valorConceptoNomina], references: [id_conceptoNomina])
+
+  @@index([id_concepto_valorConceptoNomina])
+}
+
+model ConceptoNominaEmpleado {
+  id_conceptoNominaEmpleado   Int      @id @default(autoincrement())
+  id_concepto_cne             Int
+  id_empleado_cne             Int
+  id_jornada_cne              Int?
+  fecha_cne                   DateTime @db.Date
+  cantidad_cne                Decimal? @db.Decimal(6, 2)
+  valor_unitario_aplicado_cne Decimal  @db.Decimal(10, 2)
+  monto_cne                   Decimal  @db.Decimal(10, 2)
+  observacion_cne             String?  @db.VarChar(150)
+
+  concepto ConceptoNomina @relation(fields: [id_concepto_cne], references: [id_conceptoNomina])
+  empleado Empleado       @relation(fields: [id_empleado_cne], references: [id_empleado])
+  jornada  Jornada?       @relation(fields: [id_jornada_cne], references: [id_jornada])
+
+  devengos DevengoNomina[]
+
+  @@index([id_concepto_cne])
+  @@index([id_empleado_cne])
+  @@index([id_jornada_cne])
+}
+
+// =========================================================================
+// 13. Nómina — Devengos y pagos ("cuenta corriente")
+// =========================================================================
+
+model DevengoNomina {
+  id_devengoNomina                          Int      @id @default(autoincrement())
+  id_empleado_devengoNomina                 Int
+  id_jornada_devengoNomina                  Int?
+  id_conceptoNominaEmpleado_devengoNomina   Int?
+  horas_ordinarias_devengoNomina            Decimal? @db.Decimal(6, 2)
+  horas_recargo_devengoNomina               Decimal? @db.Decimal(6, 2)
+  valor_hora_aplicado_devengoNomina         Decimal? @db.Decimal(10, 2)
+  porcentaje_recargo_aplicado_devengoNomina Decimal? @db.Decimal(5, 2)
+  monto_devengoNomina                       Decimal  @db.Decimal(10, 2)
+  fecha_devengoNomina                       DateTime @db.Date
+
+  empleado               Empleado                @relation(fields: [id_empleado_devengoNomina], references: [id_empleado])
+  jornada                Jornada?                @relation(fields: [id_jornada_devengoNomina], references: [id_jornada])
+  conceptoNominaEmpleado ConceptoNominaEmpleado? @relation(fields: [id_conceptoNominaEmpleado_devengoNomina], references: [id_conceptoNominaEmpleado])
+
+  pagoNominaDetalles PagoNominaDetalle[]
+
+  @@index([id_empleado_devengoNomina])
+  @@index([id_jornada_devengoNomina])
+  @@index([id_conceptoNominaEmpleado_devengoNomina])
+  @@index([fecha_devengoNomina])
+}
+
+model PagoNomina {
+  id_pagoNomina                  Int              @id @default(autoincrement())
+  id_empleado_pagoNomina         Int
+  id_turno_pagoNomina            Int?
+  id_usuario_registra_pagoNomina Int
+  monto_pagoNomina               Decimal          @db.Decimal(10, 2)
+  fecha_pagoNomina               DateTime         @default(now()) @db.Timestamp(6)
+  metodo_pagoNomina              MetodoPagoNomina
+  observacion_pagoNomina         String?          @db.VarChar(150)
+
+  empleado        Empleado @relation(fields: [id_empleado_pagoNomina], references: [id_empleado])
+  turno           Turno?   @relation(fields: [id_turno_pagoNomina], references: [id_turno])
+  usuarioRegistra Usuario  @relation(fields: [id_usuario_registra_pagoNomina], references: [id_usuario])
+
+  detalles PagoNominaDetalle[]
+
+  @@index([id_empleado_pagoNomina])
+  @@index([id_turno_pagoNomina])
+  @@index([id_usuario_registra_pagoNomina])
+  @@index([fecha_pagoNomina])
+}
+
+model PagoNominaDetalle {
+  id_pagoNominaDetalle Int     @id @default(autoincrement())
+  id_pagoNomina_pnd    Int
+  id_devengoNomina_pnd Int
+  monto_aplicado_pnd   Decimal @db.Decimal(10, 2)
+
+  pagoNomina    PagoNomina    @relation(fields: [id_pagoNomina_pnd], references: [id_pagoNomina])
+  devengoNomina DevengoNomina @relation(fields: [id_devengoNomina_pnd], references: [id_devengoNomina])
+
+  @@index([id_pagoNomina_pnd])
+  @@index([id_devengoNomina_pnd])
+}
+
+// =========================================================================
+// 12. Impresion de comandas (impresoras termicas ESC/POS por red)
+// =========================================================================
+
+model Impresora {
+  id_impresora     Int              @id @default(autoincrement())
+  nombre_impresora String           @db.VarChar(30)
+  // Que tipo de comandas imprime (una activa por destino: indice parcial en
+  // la migracion).
+  destino_impresora DestinoImpresion
+  host_impresora   String           @db.VarChar(45)
+  puerto_impresora Int              @default(9100)
+  // 80mm = 48 columnas, 58mm = 32 columnas.
+  ancho_papel_impresora Int         @default(80)
+  impresora_activa Boolean          @default(true)
+}
+
+// Un trabajo de impresion por (comanda, destino). El reintento/reimpresion
+// actualiza la misma fila (intentos acumulados), no crea otra.
+model ImpresionComanda {
+  id_impresionComanda  Int              @id @default(autoincrement())
+  id_comanda_impresion Int
+  destino_impresion    DestinoImpresion
+  estado_impresion     EstadoImpresion  @default(PENDIENTE)
+  intentos_impresion   Int              @default(0)
+  motivo_fallo         String?          @db.VarChar(200)
+  fecha_creacion       DateTime         @default(now()) @db.Timestamp(6)
+  fecha_actualizacion  DateTime         @default(now()) @db.Timestamp(6)
+
+  comanda Comanda @relation(fields: [id_comanda_impresion], references: [id_comanda])
+
+  @@unique([id_comanda_impresion, destino_impresion])
+  @@index([estado_impresion])
+}

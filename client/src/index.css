@@ -1,0 +1,265 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/space-grotesk";
+@import "@fontsource-variable/manrope";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * CorePOS — "Kinetic Obsidian" (ver design.md).
+ * Tema oscuro unico: comando de cocina, no app de consumo.
+ * Jerarquia por bloques de color (regla "no-line"), acentos de calor.
+ */
+@theme inline {
+    --font-heading: 'Space Grotesk Variable', sans-serif;
+    --font-sans: 'Manrope Variable', sans-serif;
+    /* Curva ease-out fuerte para micro-interacciones (Emil Kowalski) */
+    --ease-out-quart: cubic-bezier(0.23, 1, 0.32, 1);
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar: var(--sidebar);
+    --color-chart-5: var(--chart-5);
+    --color-chart-4: var(--chart-4);
+    --color-chart-3: var(--chart-3);
+    --color-chart-2: var(--chart-2);
+    --color-chart-1: var(--chart-1);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    /* Jerarquia de superficies (tonal layering) */
+    --color-surface-lowest: var(--surface-lowest);
+    --color-surface-low: var(--surface-low);
+    --color-surface: var(--surface);
+    --color-surface-high: var(--surface-high);
+    /* Acentos de estado "heat-map" */
+    --color-tertiary: var(--tertiary);
+    --color-tertiary-foreground: var(--tertiary-foreground);
+    --color-primary-container: var(--primary-container);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+    /* Paleta exacta del mockup "Kinetic Obsidian": neutros puros + naranja calido */
+    --background: #0E0E0E;
+    --foreground: #FFFFFF;
+    --surface-lowest: #000000;
+    --surface-low: #131313;
+    --surface: #1A1A1A;
+    --surface-high: #20201F;
+    --card: var(--surface-high);
+    --card-foreground: var(--foreground);
+    --popover: #1A1A1A;
+    --popover-foreground: var(--foreground);
+    /* Calor: accion y foco */
+    --primary: #FF9157;
+    --primary-foreground: #531E00;
+    --primary-container: #FF7A2C;               /* base del gradiente tactil */
+    /* Neutros / secundarios */
+    --secondary: #262626;
+    --secondary-foreground: #FFFFFF;
+    --muted: #262626;
+    --muted-foreground: #ADAAAA;
+    --accent: #262626;
+    --accent-foreground: var(--foreground);
+    /* Preparacion / atencion secundaria */
+    --tertiary: #FFE483;
+    --tertiary-foreground: #433700;
+    --destructive: #FF7351;
+    --border: rgb(255 255 255 / 12%);           /* hairline neutra */
+    --input: rgb(255 255 255 / 15%);
+    --ring: rgb(255 145 87 / 55%);
+    --chart-1: #FF9157;
+    --chart-2: #FFE483;
+    --chart-3: oklch(0.65 0.06 180);
+    --chart-4: oklch(0.55 0.12 27);
+    --chart-5: #ADAAAA;
+    --radius: 0.375rem;                          /* bordes industriales, poco redondeo */
+    --sidebar: var(--surface-low);
+    --sidebar-foreground: var(--foreground);
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: rgb(255 145 87 / 10%);
+    --sidebar-accent-foreground: var(--primary);
+    --sidebar-border: var(--border);
+    --sidebar-ring: var(--ring);
+}
+
+/* Tema unico oscuro: .dark hereda lo mismo para no romper el toggle de shadcn */
+.dark {
+    --background: #0E0E0E;
+    --foreground: #FFFFFF;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    }
+  body {
+    @apply bg-background text-foreground;
+    }
+  html {
+    @apply font-sans;
+    /* Barra de scroll de la ventana (la que aparece cuando una pagina scrollea
+     * a nivel de body, p. ej. mesas por debajo de xl): misma barra fina del
+     * resto de la app en vez de la gris por defecto de Chrome. Los paneles con
+     * overflow propio usan .scrollbar-fina. */
+    scrollbar-width: thin;
+    scrollbar-color: rgb(255 255 255 / 22%) transparent;
+    }
+  html::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+    }
+  html::-webkit-scrollbar-track {
+    background: transparent;
+    }
+  html::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+    background-color: rgb(255 255 255 / 22%);
+    }
+  html::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(255 145 87 / 55%);
+    }
+  /* Titulares y datos: Space Grotesk, precision tecnica */
+  h1, h2, h3, h4 {
+    font-family: var(--font-heading);
+    letter-spacing: -0.02em;
+    }
+}
+
+@layer components {
+  /* Etiqueta "blueprint": micro-label uppercase de metadatos */
+  .micro-label {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted-foreground);
+  }
+
+  /* Panel de vidrio para elementos flotantes/globales */
+  .glass-panel {
+    background: rgba(38, 38, 38, 0.6);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  /* Boton primario tactil: gradiente vertical primary -> primary-container */
+  .btn-heat {
+    background-image: linear-gradient(to bottom, var(--primary), var(--primary-container));
+    color: var(--primary-foreground);
+    box-shadow: 0 8px 24px -8px rgb(255 145 87 / 40%);
+  }
+  .btn-heat:hover {
+    filter: brightness(1.06);
+  }
+
+  /* Texto vertical para identificadores de zona (firma del sistema) */
+  .rail-vertical {
+    writing-mode: vertical-lr;
+    text-orientation: mixed;
+  }
+
+  /* Barra de scroll fina y sobria para los paneles con overflow en desktop
+   * (toma de pedidos: menu, comanda, chips). Pulgar translucido sobre riel
+   * transparente, mas discreto que la barra gris por defecto.
+   *
+   * Las props estandar (scrollbar-width/-color) son las que honra el Chromium
+   * de Windows (overlay/Fluent) y tambien Firefox. Las reglas ::-webkit-* van
+   * como bonus para Safari y Chromium clasico (pulgar redondeado que se
+   * calienta a naranja al pasar el cursor). */
+  .scrollbar-fina {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(255 255 255 / 22%) transparent;
+  }
+  .scrollbar-fina::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  .scrollbar-fina::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-fina::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+    background-color: rgb(255 255 255 / 22%);
+  }
+  .scrollbar-fina::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(255 145 87 / 55%);
+  }
+  .scrollbar-fina::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+/* Numeros tabulares para datos monetarios y contadores */
+@utility tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Impresion de factura: solo se imprime el recibo (.factura-print) que vive
+ * dentro del modal. Se oculta la app (#root) y se neutraliza el centrado por
+ * transform del modal para que el recibo quede al inicio de la hoja. Los
+ * controles del dialogo llevan .no-print. */
+@media print {
+  #root,
+  [data-slot="dialog-overlay"],
+  [data-slot="dialog-close"],
+  .no-print {
+    display: none !important;
+  }
+  [data-slot="dialog-content"] {
+    position: static !important;
+    transform: none !important;
+    width: auto !important;
+    max-width: none !important;
+    padding: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    outline: none !important;
+  }
+  .factura-print {
+    max-width: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}

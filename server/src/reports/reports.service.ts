@@ -1,0 +1,329 @@
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '../generated/prisma/client';
+
+// Reportes/analitica para el ADMIN. Fuente de verdad del dinero: facturas
+// PAGADA (excluye EMITIDA a medias y ANULADA) filtradas por fecha_emision, para
+// reconciliar con la vista de "cuentas pagadas" de caja.
+//
+// NOTA: este endpoint devuelve los montos como number (no como el string de
+// Prisma.Decimal del resto de la API) porque alimentan graficas; son valores de
+// visualizacion redondeados a 2 decimales, no cifras transaccionales.
+
+type Rango = { gte: Date; lte: Date };
+
+const FACTURA_SELECT = {
+  fecha_emision_factura: true,
+  monto_total_factura: true,
+  subcuenta: {
+    select: {
+      pedido: {
+        select: {
+          id_pedido: true,
+          tipo_pedido: true,
+          mesero: {
+            select: {
+              id_usuario: true,
+              empleado: { select: { nombre_empleado: true, apellido_empleado: true } },
+            },
+          },
+          mesa: {
+            select: { zona: { select: { id_zona: true, nombre_zona: true, identificador_zona: true } } },
+          },
+        },
+      },
+    },
+  },
+} satisfies Prisma.FacturaSelect;
+
+const DETALLE_SELECT = {
+  cantidad_producto_dc: true,
+  precio_unitario_dc: true,
+  producto: {
+    select: {
+      id_producto: true,
+      nombre_producto: true,
+      categoria: { select: { id_categoria: true, nombre_categoria: true } },
+    },
+  },
+  combo: { select: { id_combo: true, nombre_combo: true } },
+} satisfies Prisma.DetalleComandaSelect;
+
+type FacturaFila = Prisma.FacturaGetPayload<{ select: typeof FACTURA_SELECT }>;
+type DetalleFila = Prisma.DetalleComandaGetPayload<{ select: typeof DETALLE_SELECT }>;
+
+// Prisma.Decimal | null -> number a 2 decimales.
+function num(d: Prisma.Decimal | null | undefined): number {
+  return d ? Number(d.toFixed(2)) : 0;
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+// Dia local "YYYY-MM-DD" (el servidor corre en la zona del restaurante).
+function claveDiaLocal(fecha: Date): string {
+  const y = fecha.getFullYear();
+  const m = String(fecha.getMonth() + 1).padStart(2, '0');
+  const d = String(fecha.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// % de cambio vs periodo anterior. null cuando no hay base de comparacion
+// (evita "infinito" cuando el periodo previo fue 0).
+function deltaPct(actual: number, previo: number): number | null {
+  if (previo === 0) return null;
+  return round2(((actual - previo) / previo) * 100);
+}
+
+@Injectable()
+export class ReportsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async resumen(desdeStr?: string, hastaStr?: string) {
+    const ahora = new Date();
+    const hasta = hastaStr ? new Date(hastaStr) : ahora;
+    const desde = desdeStr ? new Date(desdeStr) : new Date(ahora.getTime() - 30 * 24 * 3600 * 1000);
+    if (isNaN(desde.getTime())) throw new BadRequestException('Fecha "desde" invalida');
+    if (isNaN(hasta.getTime())) throw new BadRequestException('Fecha "hasta" invalida');
+    if (desde.getTime() > hasta.getTime()) {
+      throw new BadRequestException('El rango de fechas es invalido (desde posterior a hasta)');
+    }
+
+    const rango: Rango = { gte: desde, lte: hasta };
+    // Periodo anterior de igual duracion, para los deltas de los KPIs.
+    const duracion = hasta.getTime() - desde.getTime();
+    const rangoPrevio: Rango = { gte: new Date(desde.getTime() - duracion), lte: desde };
+
+    const [kpis, kpisPrevio, facturas, metodos, detalles, ocupacion] = await Promise.all([
+      this.calcularKpis(rango),
+      this.calcularKpis(rangoPrevio),
+      this.facturasDelRango(rango),
+      this.metodosPago(rango),
+      this.detallesVendidos(rango),
+      this.ocupacionMesas(),
+    ]);
+
+    return {
+      rango: { desde: desde.toISOString(), hasta: hasta.toISOString() },
+      ventas: {
+        netas: kpis.netas,
+        propina: kpis.propina,
+        cuentas: kpis.cuentas,
+        items: kpis.items,
+        domicilios: kpis.domicilios,
+        ticketPromedio: kpis.cuentas > 0 ? round2(kpis.netas / kpis.cuentas) : 0,
+        delta: {
+          netas: deltaPct(kpis.netas, kpisPrevio.netas),
+          propina: deltaPct(kpis.propina, kpisPrevio.propina),
+          cuentas: deltaPct(kpis.cuentas, kpisPrevio.cuentas),
+          items: deltaPct(kpis.items, kpisPrevio.items),
+          domicilios: deltaPct(kpis.domicilios, kpisPrevio.domicilios),
+          ticketPromedio: deltaPct(
+            kpis.cuentas > 0 ? kpis.netas / kpis.cuentas : 0,
+            kpisPrevio.cuentas > 0 ? kpisPrevio.netas / kpisPrevio.cuentas : 0,
+          ),
+        },
+      },
+      porDia: this.agruparPorDia(facturas, desde, hasta),
+      porHora: this.agruparPorHora(facturas),
+      metodosPago: metodos,
+      topProductos: this.agruparTopProductos(detalles),
+      porCategoria: this.agruparPorCategoria(detalles),
+      porMesero: this.agruparPorMesero(facturas),
+      porZona: this.agruparPorZona(facturas),
+      ocupacionMesas: ocupacion,
+    };
+  }
+
+  // ---- KPIs (agregados rapidos, sin traer filas) ----
+
+  private async calcularKpis(rango: Rango) {
+    const facturaFiltro = { estado_factura: 'PAGADA' as const, fecha_emision_factura: rango };
+    const [agg, aggItems, domicilios] = await Promise.all([
+      this.prisma.factura.aggregate({
+        where: facturaFiltro,
+        _sum: { monto_total_factura: true, monto_servicio_factura: true },
+        _count: { _all: true },
+      }),
+      this.prisma.detalleComanda.aggregate({
+        where: this.detalleVendidoWhere(rango, true),
+        _sum: { cantidad_producto_dc: true },
+      }),
+      // Domicilios: pedidos DOMICILIO distintos con al menos una factura pagada
+      // en el rango (no cuenta por factura, para no inflar si se dividio la cuenta).
+      this.prisma.pedido.count({
+        where: { tipo_pedido: 'DOMICILIO', subcuentas: { some: { facturas: { some: facturaFiltro } } } },
+      }),
+    ]);
+    return {
+      netas: num(agg._sum.monto_total_factura),
+      propina: num(agg._sum.monto_servicio_factura),
+      cuentas: agg._count._all,
+      items: aggItems._sum.cantidad_producto_dc ?? 0,
+      domicilios,
+    };
+  }
+
+  // Detalles vendidos en el rango: los asignados directo a una subcuenta pagada
+  // + los repartidos (compartidos). `soloPadres` excluye hijos de combo/adiciones.
+  private detalleVendidoWhere(rango: Rango, soloPadres: boolean): Prisma.DetalleComandaWhereInput {
+    const facturaFiltro = { estado_factura: 'PAGADA' as const, fecha_emision_factura: rango };
+    return {
+      estado_dc: { not: 'CANCELADO' },
+      ...(soloPadres && { id_detalleComandaPadre_dc: null }),
+      OR: [
+        { subcuenta: { facturas: { some: facturaFiltro } } },
+        { subcuentasReparto: { some: { subcuenta: { facturas: { some: facturaFiltro } } } } },
+      ],
+    };
+  }
+
+  // ---- filas base para agrupar en JS ----
+
+  private facturasDelRango(rango: Rango): Promise<FacturaFila[]> {
+    return this.prisma.factura.findMany({
+      where: { estado_factura: 'PAGADA', fecha_emision_factura: rango },
+      select: FACTURA_SELECT,
+    });
+  }
+
+  private async metodosPago(rango: Rango) {
+    const grupos = await this.prisma.pago.groupBy({
+      by: ['metodo_pago'],
+      where: { factura: { estado_factura: 'PAGADA', fecha_emision_factura: rango } },
+      _sum: { monto_total_pago: true },
+      _count: { _all: true },
+    });
+    return grupos
+      .map((g) => ({ metodo: g.metodo_pago, monto: num(g._sum.monto_total_pago), cuenta: g._count._all }))
+      .sort((a, b) => b.monto - a.monto);
+  }
+
+  private detallesVendidos(rango: Rango): Promise<DetalleFila[]> {
+    return this.prisma.detalleComanda.findMany({
+      where: this.detalleVendidoWhere(rango, false),
+      select: DETALLE_SELECT,
+    });
+  }
+
+  private async ocupacionMesas() {
+    const grupos = await this.prisma.mesa.groupBy({ by: ['estado_mesa'], _count: { _all: true } });
+    const base = { LIBRE: 0, OCUPADA: 0, RESERVADA: 0, DESACTIVADA: 0 };
+    for (const g of grupos) base[g.estado_mesa] = g._count._all;
+    return base;
+  }
+
+  // ---- agrupaciones en memoria ----
+
+  private agruparPorDia(facturas: FacturaFila[], desde: Date, hasta: Date) {
+    // domicilios se cuenta por pedido DOMICILIO distinto del dia (Set), no por
+    // factura, para no inflar cuando una cuenta se dividio en varias facturas.
+    const acum = new Map<string, { total: number; cuentas: number; domicilios: Set<number> }>();
+    for (const f of facturas) {
+      const clave = claveDiaLocal(f.fecha_emision_factura);
+      const e = acum.get(clave) ?? { total: 0, cuentas: 0, domicilios: new Set<number>() };
+      e.total += num(f.monto_total_factura);
+      e.cuentas += 1;
+      if (f.subcuenta.pedido.tipo_pedido === 'DOMICILIO') {
+        e.domicilios.add(f.subcuenta.pedido.id_pedido);
+      }
+      acum.set(clave, e);
+    }
+    // Rellena los dias sin ventas con 0 para que la serie no tenga huecos.
+    const serie: { fecha: string; total: number; cuentas: number; domicilios: number }[] = [];
+    const cursor = new Date(desde.getFullYear(), desde.getMonth(), desde.getDate());
+    const fin = new Date(hasta.getFullYear(), hasta.getMonth(), hasta.getDate());
+    let guardas = 0; // tope defensivo (~370 dias)
+    while (cursor.getTime() <= fin.getTime() && guardas < 400) {
+      const clave = claveDiaLocal(cursor);
+      const e = acum.get(clave) ?? { total: 0, cuentas: 0, domicilios: new Set<number>() };
+      serie.push({ fecha: clave, total: round2(e.total), cuentas: e.cuentas, domicilios: e.domicilios.size });
+      cursor.setDate(cursor.getDate() + 1);
+      guardas += 1;
+    }
+    return serie;
+  }
+
+  private agruparPorHora(facturas: FacturaFila[]) {
+    const horas = Array.from({ length: 24 }, (_, h) => ({ hora: h, total: 0, cuentas: 0 }));
+    for (const f of facturas) {
+      const h = f.fecha_emision_factura.getHours();
+      horas[h].total += num(f.monto_total_factura);
+      horas[h].cuentas += 1;
+    }
+    return horas.map((x) => ({ ...x, total: round2(x.total) }));
+  }
+
+  private agruparTopProductos(detalles: DetalleFila[]) {
+    const acum = new Map<string, { nombre: string; unidades: number; ingresos: number }>();
+    for (const d of detalles) {
+      const clave = d.producto ? `p${d.producto.id_producto}` : d.combo ? `c${d.combo.id_combo}` : null;
+      if (!clave) continue;
+      const nombre = d.producto?.nombre_producto ?? d.combo?.nombre_combo ?? 'Item';
+      const e = acum.get(clave) ?? { nombre, unidades: 0, ingresos: 0 };
+      e.unidades += d.cantidad_producto_dc;
+      e.ingresos += d.cantidad_producto_dc * num(d.precio_unitario_dc);
+      acum.set(clave, e);
+    }
+    return [...acum.values()]
+      .map((e) => ({ ...e, ingresos: round2(e.ingresos) }))
+      .sort((a, b) => b.ingresos - a.ingresos)
+      .slice(0, 10);
+  }
+
+  private agruparPorCategoria(detalles: DetalleFila[]) {
+    const acum = new Map<string, { categoria: string; unidades: number; ingresos: number }>();
+    for (const d of detalles) {
+      const cat = d.producto?.categoria?.nombre_categoria ?? (d.combo ? 'Combos' : 'Sin categoria');
+      const clave = d.producto?.categoria
+        ? `cat${d.producto.categoria.id_categoria}`
+        : d.combo
+          ? 'combos'
+          : 'sin';
+      const e = acum.get(clave) ?? { categoria: cat, unidades: 0, ingresos: 0 };
+      e.unidades += d.cantidad_producto_dc;
+      e.ingresos += d.cantidad_producto_dc * num(d.precio_unitario_dc);
+      acum.set(clave, e);
+    }
+    return [...acum.values()]
+      .map((e) => ({ ...e, ingresos: round2(e.ingresos) }))
+      .sort((a, b) => b.ingresos - a.ingresos);
+  }
+
+  private agruparPorMesero(facturas: FacturaFila[]) {
+    const acum = new Map<number, { mesero: string; ventas: number; pedidos: Set<number> }>();
+    for (const f of facturas) {
+      const m = f.subcuenta.pedido.mesero;
+      const nombre = `${m.empleado.nombre_empleado} ${m.empleado.apellido_empleado}`.trim();
+      const e = acum.get(m.id_usuario) ?? { mesero: nombre, ventas: 0, pedidos: new Set<number>() };
+      e.ventas += num(f.monto_total_factura);
+      e.pedidos.add(f.subcuenta.pedido.id_pedido);
+      acum.set(m.id_usuario, e);
+    }
+    return [...acum.values()]
+      .map((e) => ({
+        mesero: e.mesero,
+        ventas: round2(e.ventas),
+        pedidos: e.pedidos.size,
+        ticketPromedio: e.pedidos.size > 0 ? round2(e.ventas / e.pedidos.size) : 0,
+      }))
+      .sort((a, b) => b.ventas - a.ventas);
+  }
+
+  private agruparPorZona(facturas: FacturaFila[]) {
+    const acum = new Map<number | string, { zona: string; ventas: number; cuentas: number }>();
+    for (const f of facturas) {
+      const zona = f.subcuenta.pedido.mesa?.zona;
+      const clave = zona?.id_zona ?? 'sin';
+      const nombre = zona ? zona.nombre_zona : 'Sin zona';
+      const e = acum.get(clave) ?? { zona: nombre, ventas: 0, cuentas: 0 };
+      e.ventas += num(f.monto_total_factura);
+      e.cuentas += 1;
+      acum.set(clave, e);
+    }
+    return [...acum.values()]
+      .map((e) => ({ ...e, ventas: round2(e.ventas) }))
+      .sort((a, b) => b.ventas - a.ventas);
+  }
+}

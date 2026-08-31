@@ -1,0 +1,30 @@
+# Blueprint de Render para el backend NestJS.
+# La base de datos vive en Neon y el frontend en Vercel: aqui solo el web service.
+# Uso: en Render, "New" > "Blueprint" y apuntar a este repo. Las variables con
+# `sync: false` se rellenan a mano en el panel (son secretos, no van al repo).
+services:
+  - type: web
+    name: pos-api
+    runtime: node
+    plan: free
+    region: virginia # us-east, el mas cercano a Colombia; usar la misma zona en Neon
+    rootDir: server
+    buildCommand: pnpm install && npx prisma generate && npx prisma migrate deploy && pnpm build
+    startCommand: pnpm start:prod
+    healthCheckPath: /health
+    envVars:
+      # Cadena de conexion de Neon (usar la conexion DIRECTA, no la pooled).
+      - key: DATABASE_URL
+        sync: false
+      # Secreto de firma de los JWT. Render genera uno aleatorio y lo persiste.
+      - key: JWT_SECRET
+        generateValue: true
+      # Credenciales de Cloudinary: cloudinary://<api_key>:<api_secret>@<cloud_name>
+      - key: CLOUDINARY_URL
+        sync: false
+      # Dominio(s) de Vercel permitidos por CORS (rellenar tras desplegar el front).
+      - key: CORS_ORIGIN
+        sync: false
+      # Zona horaria del restaurante: el recargo nocturno de nomina depende de ella.
+      - key: TZ
+        value: America/Bogota
