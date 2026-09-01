@@ -1,0 +1,12 @@
+{
+  "name": "pos-print-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Agente local USB/ESC-POS para el POS",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
