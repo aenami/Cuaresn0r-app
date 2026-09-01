@@ -32,13 +32,16 @@ function PaginaPedido() {
           {error instanceof ApiError ? error.message : 'No se pudo cargar el pedido'}
         </p>
         <Link to="/mesas" className="mt-4 inline-block text-sm text-primary underline-offset-4 hover:underline">
-          Volver a mesas
+          Volver a pedidos
         </Link>
       </div>
     )
   }
 
-  const pedidoAbierto = pedido.estado_pedido === 'EN_PREPARACION' || pedido.estado_pedido === 'ENTREGADO'
+  const pedidoAbierto =
+    pedido.estado_pedido !== 'CERRADO' &&
+    pedido.estado_pedido !== 'CANCELADO' &&
+    pedido.fecha_cierre_pedido === null
 
   return (
     <div className="flex min-h-svh flex-col lg:h-svh lg:flex-row lg:overflow-hidden">

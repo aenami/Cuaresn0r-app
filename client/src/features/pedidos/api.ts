@@ -1,23 +1,22 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import type { Comanda, DetalleComanda, Mesa, Pedido, Subcuenta } from '@/types/api'
+import type { Comanda, ComentarioCuenta, DetalleComanda, Ficha, Pedido, Subcuenta } from '@/types/api'
 
-export const mesasQuery = queryOptions({
-  queryKey: ['salon', 'mesas'],
-  queryFn: () => api.get<Mesa[]>('/salon/tables'),
+export const fichasQuery = queryOptions({
+  queryKey: ['fichas'],
+  queryFn: () => api.get<Ficha[]>('/fichas'),
   refetchInterval: 15_000,
 })
 
-// Un pedido "abierto" (mesa ocupada) esta EN_PREPARACION o ENTREGADO;
-// PAGADO/CANCELADO ya liberaron la mesa.
 export const pedidosAbiertosQuery = queryOptions({
   queryKey: ['pedidos', 'abiertos'],
   queryFn: async () => {
-    const [enPreparacion, entregados] = await Promise.all([
+    const [abiertos, enPreparacion, entregados] = await Promise.all([
+      api.get<Pedido[]>('/orders?estado=ABIERTO'),
       api.get<Pedido[]>('/orders?estado=EN_PREPARACION'),
       api.get<Pedido[]>('/orders?estado=ENTREGADO'),
     ])
-    return [...enPreparacion, ...entregados]
+    return [...abiertos, ...enPreparacion, ...entregados]
   },
   refetchInterval: 15_000,
 })
@@ -60,6 +59,7 @@ function useInvalidarPedidos() {
   return () => {
     void queryClient.invalidateQueries({ queryKey: ['pedidos'] })
     void queryClient.invalidateQueries({ queryKey: ['salon'] })
+    void queryClient.invalidateQueries({ queryKey: ['fichas'] })
     // Las comandas descuentan/reponen inventario.
     void queryClient.invalidateQueries({ queryKey: ['inventario'] })
   }
@@ -68,7 +68,7 @@ function useInvalidarPedidos() {
 export function useAbrirPedido() {
   const invalidar = useInvalidarPedidos()
   return useMutation({
-    mutationFn: (idMesa: number) => api.post<Pedido>('/orders', { idMesa }),
+    mutationFn: () => api.post<Pedido>('/orders', { tipo: 'LOCAL' }),
     onSuccess: invalidar,
   })
 }
@@ -79,7 +79,7 @@ export interface NuevoDomicilio {
   direccionCliente: string
 }
 
-// Abre un pedido de domicilio (sin mesa) con los datos de entrega del cliente.
+// Abre un pedido de domicilio (sin ficha) con los datos de entrega del cliente.
 export function useAbrirDomicilio() {
   const invalidar = useInvalidarPedidos()
   return useMutation({
@@ -94,6 +94,46 @@ export function useEnviarComanda(idPedido: number) {
   return useMutation({
     mutationFn: (items: ComandaItemPayload[]) =>
       api.post<Comanda>(`/orders/${idPedido}/comandas`, { items }),
+    onSuccess: invalidar,
+  })
+}
+
+export function useDespacharComanda(idPedido: number) {
+  const invalidar = useInvalidarPedidos()
+  return useMutation({
+    mutationFn: (idComanda: number) => api.patch<Comanda>(`/orders/${idPedido}/comandas/${idComanda}/enviar`),
+    onSuccess: async () => {
+      invalidar()
+      try {
+        await fetch('http://localhost:3001/sync', { method: 'POST' })
+      } catch {
+        // El backend conserva la cola; el agente tambien sondea por su cuenta.
+      }
+    },
+  })
+}
+
+export function useAsignarFicha(idPedido: number) {
+  const invalidar = useInvalidarPedidos()
+  return useMutation({
+    mutationFn: (idFicha: number) => api.patch<Pedido>(`/orders/${idPedido}/ficha`, { idFicha }),
+    onSuccess: invalidar,
+  })
+}
+
+export function useCrearFicha() {
+  const invalidar = useInvalidarPedidos()
+  return useMutation({
+    mutationFn: (numero: string) => api.post<Ficha>('/fichas', { numero }),
+    onSuccess: invalidar,
+  })
+}
+
+export function useActualizarFicha() {
+  const invalidar = useInvalidarPedidos()
+  return useMutation({
+    mutationFn: ({ id, ...datos }: { id: number; numero?: string; activa?: boolean }) =>
+      api.patch<Ficha>(`/fichas/${id}`, datos),
     onSuccess: invalidar,
   })
 }
@@ -131,17 +171,6 @@ export function useCancelarPedido(idPedido: number) {
   })
 }
 
-// Transfiere el pedido (con todas sus cuentas) a otra mesa libre; libera la de
-// origen. Falla con 409 si el destino no esta libre.
-export function useTransferirMesa(idPedido: number) {
-  const invalidar = useInvalidarPedidos()
-  return useMutation({
-    mutationFn: (idMesaDestino: number) =>
-      api.patch<Pedido>(`/orders/${idPedido}/transferir`, { idMesaDestino }),
-    onSuccess: invalidar,
-  })
-}
-
 // ---- subcuentas (cuentas divididas) ----
 
 // Crea una subcuenta adicional; el nombre es opcional (max 30 en el backend).
@@ -150,6 +179,26 @@ export function useCrearSubcuenta(idPedido: number) {
   return useMutation({
     mutationFn: (nombre?: string) =>
       api.post<Subcuenta>(`/orders/${idPedido}/subcuentas`, nombre ? { nombre } : {}),
+    onSuccess: invalidar,
+  })
+}
+
+export function useCrearComentarioCuenta(idPedido: number, idSubcuenta: number) {
+  const invalidar = useInvalidarPedidos()
+  return useMutation({
+    mutationFn: (texto: string) =>
+      api.post<ComentarioCuenta>(`/orders/${idPedido}/subcuentas/${idSubcuenta}/comentarios`, { texto }),
+    onSuccess: invalidar,
+  })
+}
+
+export function useResolverComentarioCuenta(idPedido: number, idSubcuenta: number) {
+  const invalidar = useInvalidarPedidos()
+  return useMutation({
+    mutationFn: (idComentario: number) =>
+      api.patch<ComentarioCuenta>(
+        `/orders/${idPedido}/subcuentas/${idSubcuenta}/comentarios/${idComentario}/resolver`,
+      ),
     onSuccess: invalidar,
   })
 }

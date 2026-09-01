@@ -25,6 +25,8 @@ export interface IngredientePayload {
   units: UnidadIngrediente
   stock: number
   price: number
+  lowThreshold?: number | null
+  highThreshold?: number | null
 }
 
 export interface MovimientoPayload {

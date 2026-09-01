@@ -38,7 +38,12 @@ const esquema = z.object({
   units: z.enum(UNIDADES as [UnidadIngrediente, ...UnidadIngrediente[]]),
   stock: z.coerce.number<number>().min(0, 'No puede ser negativo'),
   price: z.coerce.number<number>().min(0, 'No puede ser negativo'),
-})
+  lowThreshold: z.string().refine((v) => v === '' || (Number.isFinite(Number(v)) && Number(v) >= 0), 'Valor invalido'),
+  highThreshold: z.string().refine((v) => v === '' || (Number.isFinite(Number(v)) && Number(v) >= 0), 'Valor invalido'),
+}).refine(
+  (v) => v.lowThreshold === '' || v.highThreshold === '' || Number(v.lowThreshold) < Number(v.highThreshold),
+  { message: 'Debe ser mayor que el umbral bajo', path: ['highThreshold'] },
+)
 
 type Valores = z.infer<typeof esquema>
 
@@ -57,7 +62,7 @@ export function IngredienteFormDialog({
 
   const form = useForm<Valores>({
     resolver: zodResolver(esquema),
-    defaultValues: { name: '', units: 'UNIDADES', stock: 0, price: 0 },
+    defaultValues: { name: '', units: 'UNIDADES', stock: 0, price: 0, lowThreshold: '', highThreshold: '' },
   })
 
   useEffect(() => {
@@ -67,6 +72,8 @@ export function IngredienteFormDialog({
         units: ingrediente?.unidades_ingrediente ?? 'UNIDADES',
         stock: ingrediente ? Number(ingrediente.stock_ingrediente) : 0,
         price: ingrediente ? Number(ingrediente.precio_ingrediente) : 0,
+        lowThreshold: ingrediente?.umbral_bajo_ingrediente ?? '',
+        highThreshold: ingrediente?.umbral_alto_ingrediente ?? '',
       })
     }
   }, [abierto, ingrediente, form])
@@ -80,8 +87,17 @@ export function IngredienteFormDialog({
           name: valores.name,
           units: valores.units,
           price: valores.price,
+          lowThreshold: valores.lowThreshold === '' ? null : Number(valores.lowThreshold),
+          highThreshold: valores.highThreshold === '' ? null : Number(valores.highThreshold),
         })
-      : crear.mutateAsync(valores)
+      : crear.mutateAsync({
+          name: valores.name,
+          units: valores.units,
+          stock: valores.stock,
+          price: valores.price,
+          lowThreshold: valores.lowThreshold === '' ? null : Number(valores.lowThreshold),
+          highThreshold: valores.highThreshold === '' ? null : Number(valores.highThreshold),
+        })
     promesa
       .then(() => {
         toast.success(ingrediente ? 'Ingrediente actualizado' : 'Ingrediente creado')
@@ -166,6 +182,34 @@ export function IngredienteFormDialog({
                     <FormLabel>Costo unitario</FormLabel>
                     <FormControl>
                       <Input type="number" min={0} step="any" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                control={form.control}
+                name="lowThreshold"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Umbral bajo (opcional)</FormLabel>
+                    <FormControl>
+                      <Input type="number" min={0} step="any" placeholder="Sin definir" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="highThreshold"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Umbral alto (opcional)</FormLabel>
+                    <FormControl>
+                      <Input type="number" min={0} step="any" placeholder="Sin definir" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

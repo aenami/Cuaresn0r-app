@@ -18,6 +18,7 @@ import { Route as AuthMiNominaRouteImport } from './routes/_auth/mi-nomina'
 import { Route as AuthMesasRouteImport } from './routes/_auth/mesas'
 import { Route as AuthInventarioRouteImport } from './routes/_auth/inventario'
 import { Route as AuthImpresorasRouteImport } from './routes/_auth/impresoras'
+import { Route as AuthCuentasPorPagarRouteImport } from './routes/_auth/cuentas-por-pagar'
 import { Route as AuthCatalogoRouteImport } from './routes/_auth/catalogo'
 import { Route as AuthCajaRouteImport } from './routes/_auth/caja'
 import { Route as AuthPedidosIdPedidoRouteImport } from './routes/_auth/pedidos.$idPedido'
@@ -68,6 +69,11 @@ const AuthImpresorasRoute = AuthImpresorasRouteImport.update({
   path: '/impresoras',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthCuentasPorPagarRoute = AuthCuentasPorPagarRouteImport.update({
+  id: '/cuentas-por-pagar',
+  path: '/cuentas-por-pagar',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthCatalogoRoute = AuthCatalogoRouteImport.update({
   id: '/catalogo',
   path: '/catalogo',
@@ -99,6 +105,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/caja': typeof AuthCajaRoute
   '/catalogo': typeof AuthCatalogoRoute
+  '/cuentas-por-pagar': typeof AuthCuentasPorPagarRoute
   '/impresoras': typeof AuthImpresorasRoute
   '/inventario': typeof AuthInventarioRoute
   '/mesas': typeof AuthMesasRoute
@@ -113,6 +120,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/caja': typeof AuthCajaRoute
   '/catalogo': typeof AuthCatalogoRoute
+  '/cuentas-por-pagar': typeof AuthCuentasPorPagarRoute
   '/impresoras': typeof AuthImpresorasRoute
   '/inventario': typeof AuthInventarioRoute
   '/mesas': typeof AuthMesasRoute
@@ -130,6 +138,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_auth/caja': typeof AuthCajaRoute
   '/_auth/catalogo': typeof AuthCatalogoRoute
+  '/_auth/cuentas-por-pagar': typeof AuthCuentasPorPagarRoute
   '/_auth/impresoras': typeof AuthImpresorasRoute
   '/_auth/inventario': typeof AuthInventarioRoute
   '/_auth/mesas': typeof AuthMesasRoute
@@ -148,6 +157,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/caja'
     | '/catalogo'
+    | '/cuentas-por-pagar'
     | '/impresoras'
     | '/inventario'
     | '/mesas'
@@ -162,6 +172,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/caja'
     | '/catalogo'
+    | '/cuentas-por-pagar'
     | '/impresoras'
     | '/inventario'
     | '/mesas'
@@ -178,6 +189,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/_auth/caja'
     | '/_auth/catalogo'
+    | '/_auth/cuentas-por-pagar'
     | '/_auth/impresoras'
     | '/_auth/inventario'
     | '/_auth/mesas'
@@ -260,6 +272,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthImpresorasRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/cuentas-por-pagar': {
+      id: '/_auth/cuentas-por-pagar'
+      path: '/cuentas-por-pagar'
+      fullPath: '/cuentas-por-pagar'
+      preLoaderRoute: typeof AuthCuentasPorPagarRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_auth/catalogo': {
       id: '/_auth/catalogo'
       path: '/catalogo'
@@ -301,6 +320,7 @@ declare module '@tanstack/react-router' {
 interface AuthRouteChildren {
   AuthCajaRoute: typeof AuthCajaRoute
   AuthCatalogoRoute: typeof AuthCatalogoRoute
+  AuthCuentasPorPagarRoute: typeof AuthCuentasPorPagarRoute
   AuthImpresorasRoute: typeof AuthImpresorasRoute
   AuthInventarioRoute: typeof AuthInventarioRoute
   AuthMesasRoute: typeof AuthMesasRoute
@@ -316,6 +336,7 @@ interface AuthRouteChildren {
 const AuthRouteChildren: AuthRouteChildren = {
   AuthCajaRoute: AuthCajaRoute,
   AuthCatalogoRoute: AuthCatalogoRoute,
+  AuthCuentasPorPagarRoute: AuthCuentasPorPagarRoute,
   AuthImpresorasRoute: AuthImpresorasRoute,
   AuthInventarioRoute: AuthInventarioRoute,
   AuthMesasRoute: AuthMesasRoute,

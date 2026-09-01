@@ -37,23 +37,42 @@ function PaginaCobro() {
     const detalles = (pedido.comandas ?? []).flatMap((c) => c.detalles ?? [])
     const facturaDe = new Map<number, Factura>()
     for (const f of facturas ?? []) {
-      if (f.estado_factura !== 'ANULADA') facturaDe.set(f.id_subcuenta_factura, f)
+      if (f.estado_factura === 'EMITIDA') facturaDe.set(f.id_subcuenta_factura, f)
     }
     const subcuentas = [...(pedido.subcuentas ?? [])].sort((a, b) => a.id_subcuenta - b.id_subcuenta)
 
     return subcuentas
       .map((sub, i): CuentaCobro => {
-        const items = detalles.filter(
-          (d) =>
-            d.id_detalleComandaPadre_dc === null &&
-            d.id_subcuenta_dc === sub.id_subcuenta &&
-            d.estado_dc !== 'CANCELADO',
+        const idsFacturasSubcuenta = new Set(
+          (facturas ?? [])
+            .filter((f) => f.id_subcuenta_factura === sub.id_subcuenta && f.estado_factura !== 'ANULADA')
+            .map((f) => f.id_factura),
         )
-        const subtotal = detalles
-          .filter((d) => d.id_subcuenta_dc === sub.id_subcuenta && d.estado_dc !== 'CANCELADO')
-          .reduce((acc, d) => acc + Number(d.precio_unitario_dc) * d.cantidad_producto_dc, 0)
-        const hayPreparando = detalles.some(
-          (d) => d.id_subcuenta_dc === sub.id_subcuenta && d.estado_dc === 'PREPARANDO',
+        const asignaciones = detalles.flatMap((detalle) => {
+          if (detalle.estado_dc === 'CANCELADO') return []
+          const reparto = (detalle.subcuentasReparto ?? []).find((r) => r.id_subcuenta_sdc === sub.id_subcuenta)
+          const proporcionAsignada = detalle.id_subcuenta_dc === sub.id_subcuenta ? 1 : reparto ? Number(reparto.proporcion_sdc) : 0
+          if (proporcionAsignada <= 0) return []
+          const usada = (detalle.facturasDetalle ?? [])
+            .filter((registro) => registro.factura.id_factura !== undefined && idsFacturasSubcuenta.has(registro.factura.id_factura))
+            .reduce((total, registro) => total + Number(registro.proporcion_facturada_fd), 0)
+          const proporcionPendiente = Math.max(0, proporcionAsignada - usada)
+          return proporcionPendiente > 0 ? [{ detalle, proporcionPendiente }] : []
+        })
+        const idsPendientes = new Set(asignaciones.map((asignacion) => asignacion.detalle.id_detalleComanda))
+        const items = detalles.filter(
+          (detalle) =>
+            detalle.id_detalleComandaPadre_dc === null &&
+            (idsPendientes.has(detalle.id_detalleComanda) ||
+              (detalle.hijos ?? []).some((hijo) => idsPendientes.has(hijo.id_detalleComanda))),
+        )
+        const subtotal = asignaciones.reduce(
+          (total, asignacion) =>
+            total +
+            Number(asignacion.detalle.precio_unitario_dc) *
+              asignacion.detalle.cantidad_producto_dc *
+              asignacion.proporcionPendiente,
+          0,
         )
         return {
           id: sub.id_subcuenta,
@@ -61,7 +80,8 @@ function PaginaCobro() {
           esPrincipal: i === 0,
           items,
           subtotal,
-          hayPreparando,
+          hayPreparando: false,
+          idsDetalleFacturar: [...idsPendientes],
           factura: facturaDe.get(sub.id_subcuenta),
         }
       })
@@ -88,7 +108,7 @@ function PaginaCobro() {
           {error instanceof ApiError ? error.message : 'No se pudo cargar el pedido'}
         </p>
         <Link to="/mesas" className="mt-4 inline-block text-sm text-primary underline-offset-4 hover:underline">
-          Volver a mesas
+          Volver a pedidos
         </Link>
       </div>
     )
@@ -98,7 +118,7 @@ function PaginaCobro() {
     (acc, c) => acc + (c.factura ? Number(c.factura.monto_total_factura) : c.subtotal),
     0,
   )
-  const pagado = pedido.estado_pedido === 'PAGADO'
+  const pagado = pedido.estado_pedido === 'CERRADO'
 
   return (
     <div className="flex min-h-svh flex-col xl:h-svh xl:flex-row xl:overflow-hidden">
@@ -114,7 +134,7 @@ function PaginaCobro() {
                 to="/mesas"
                 className="micro-label inline-flex items-center gap-1 hover:text-foreground"
               >
-                <ArrowLeft className="size-3.5" /> Mesas
+                <ArrowLeft className="size-3.5" /> Pedidos
               </Link>
             ) : (
               <Link
@@ -131,7 +151,9 @@ function PaginaCobro() {
             <h1 className="font-heading text-3xl font-semibold tracking-tighter md:text-4xl">
               {pedido.tipo_pedido === 'DOMICILIO'
                 ? `Domicilio · ${pedido.nombre_cliente_pedido ?? 'Cliente'}`
-                : `Mesa ${pedido.mesa?.numero_mesa ?? pedido.mesa_pedido}`}
+                : pedido.ficha
+                  ? `Ficha ${pedido.ficha.numero_ficha}`
+                  : 'Pedido sin ficha'}
               <span className="ml-3 text-base font-normal text-muted-foreground">
                 Pedido #{pedido.id_pedido}
               </span>
@@ -149,7 +171,7 @@ function PaginaCobro() {
           <div className="mt-6 flex items-center gap-3 rounded-xl border-l-4 border-primary bg-surface-high p-4">
             <CheckCircle2 className="size-5 shrink-0 text-primary" />
             <p className="text-sm">
-              Pedido pagado por completo; la mesa quedo libre. Puedes anular una factura si hubo un error.
+              Pedido entregado y pagado por completo; la ficha vuelve a estar disponible.
             </p>
           </div>
         )}

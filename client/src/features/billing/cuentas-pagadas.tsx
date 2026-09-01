@@ -23,6 +23,11 @@ const ICONO_METODO: Record<MetodoPago, typeof Banknote> = {
   TRANSFERENCIA: ArrowLeftRight,
 }
 
+function cantidadFacturada(cantidad: number, proporcion: string) {
+  const valor = cantidad * Number(proporcion)
+  return Number.isInteger(valor) ? String(valor) : valor.toFixed(2)
+}
+
 export function CuentasPagadas() {
   const [dia, setDia] = useState(() => ymdLocal(new Date()))
   const rango = useMemo(() => rangoDia(dia), [dia])
@@ -190,15 +195,15 @@ function TarjetaCuentaPagada({ cuenta, onFactura }: { cuenta: CuentaPagada; onFa
             <p className="font-heading text-lg font-semibold tracking-tight">
               {cuenta.pedido.tipo === 'DOMICILIO'
                 ? `Domicilio${cuenta.pedido.cliente?.nombre ? ` · ${cuenta.pedido.cliente.nombre}` : ''}`
-                : cuenta.pedido.mesa_numero !== null
-                  ? `Mesa ${cuenta.pedido.mesa_numero}`
-                  : 'Cuenta'}
+                : cuenta.pedido.ficha_numero
+                  ? `Ficha ${cuenta.pedido.ficha_numero}`
+                  : 'Pedido sin ficha'}
               {cuenta.nombre_cuenta ? (
                 <span className="ml-2 text-sm font-normal text-muted-foreground">{cuenta.nombre_cuenta}</span>
               ) : null}
             </p>
             <p className="micro-label mt-0.5 truncate">
-              {cuenta.pedido.zona ? `${cuenta.pedido.zona} · ` : ''}Pedido #{cuenta.pedido.id_pedido} · {horaCorta(cuenta.fecha)}
+              Pedido #{cuenta.pedido.id_pedido} · {horaCorta(cuenta.fecha)}
             </p>
           </div>
         </div>
@@ -227,32 +232,12 @@ function TarjetaCuentaPagada({ cuenta, onFactura }: { cuenta: CuentaPagada; onFa
               <li key={item.id}>
                 <div className="flex items-start justify-between gap-3">
                   <span className="text-sm">
-                    <span className="tabular-nums text-muted-foreground">{item.cantidad}×</span> {item.nombre}
+                    <span className="tabular-nums text-muted-foreground">{cantidadFacturada(item.cantidad, item.proporcion)}×</span> {item.nombre}
                   </span>
                   <span className="shrink-0 text-sm tabular-nums">
-                    {formatearPrecio(Number(item.precio_unitario) * item.cantidad)}
+                    {formatearPrecio(item.subtotal)}
                   </span>
                 </div>
-                {item.hijos.length > 0 ? (
-                  <ul className="mt-0.5 space-y-0.5 border-l border-border pl-3">
-                    {item.hijos.map((h) => {
-                      const esAdicion = Number(h.precio_unitario) > 0
-                      return (
-                        <li key={h.id} className="flex items-start justify-between gap-3 text-xs text-muted-foreground">
-                          <span>
-                            {esAdicion ? '+ ' : '· '}
-                            {h.cantidad}× {h.nombre}
-                          </span>
-                          {esAdicion ? (
-                            <span className="shrink-0 tabular-nums">
-                              {formatearPrecio(Number(h.precio_unitario) * h.cantidad)}
-                            </span>
-                          ) : null}
-                        </li>
-                      )
-                    })}
-                  </ul>
-                ) : null}
               </li>
             ))}
           </ul>

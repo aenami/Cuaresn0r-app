@@ -34,8 +34,7 @@ import {
 const esquema = z.object({
   nombre: z.string().min(1, 'Ingresa el nombre').max(30, 'Maximo 30 caracteres'),
   destino: z.enum(['COCINA', 'BARRA', 'GENERAL']),
-  host: z.string().min(1, 'Ingresa la IP o hostname').max(45),
-  puerto: z.coerce.number<number>().int().min(1).max(65535),
+  dispositivo: z.string().min(1, 'Ingresa el nombre de la cola de Windows').max(100),
   anchoPapel: z.enum(['80', '58']),
 })
 
@@ -56,7 +55,7 @@ export function ImpresoraFormDialog({
 
   const form = useForm<Valores>({
     resolver: zodResolver(esquema),
-    defaultValues: { nombre: '', destino: 'COCINA', host: '', puerto: 9100, anchoPapel: '80' },
+    defaultValues: { nombre: '', destino: 'COCINA', dispositivo: '', anchoPapel: '80' },
   })
 
   useEffect(() => {
@@ -64,8 +63,7 @@ export function ImpresoraFormDialog({
       form.reset({
         nombre: impresora?.nombre_impresora ?? '',
         destino: impresora?.destino_impresora ?? 'COCINA',
-        host: impresora?.host_impresora ?? '',
-        puerto: impresora?.puerto_impresora ?? 9100,
+        dispositivo: impresora?.dispositivo_impresora ?? '',
         anchoPapel: String(impresora?.ancho_papel_impresora ?? 80) as '80' | '58',
       })
     }
@@ -75,8 +73,7 @@ export function ImpresoraFormDialog({
     const payload = {
       nombre: valores.nombre,
       destino: valores.destino,
-      host: valores.host,
-      puerto: valores.puerto,
+      dispositivo: valores.dispositivo,
       anchoPapel: Number(valores.anchoPapel),
     }
     const promesa = impresora
@@ -98,7 +95,7 @@ export function ImpresoraFormDialog({
             {impresora ? 'Editar impresora' : 'Nueva impresora'}
           </DialogTitle>
           <DialogDescription>
-            Termica ESC/POS conectada por red (protocolo RAW, puerto 9100 tipico). Solo hay
+            Termica USB Epson TM-m30II instalada como impresora de Windows. Solo hay
             una impresora activa por destino: crear o activar otra desactiva la anterior. Si el
             local tiene una sola termica, usa el destino General: recibe los tickets de cocina
             y barra por separado y el mesero los reparte.
@@ -143,34 +140,19 @@ export function ImpresoraFormDialog({
                 )}
               />
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <FormField
-                control={form.control}
-                name="host"
-                render={({ field }) => (
-                  <FormItem className="col-span-2">
-                    <FormLabel>IP / hostname</FormLabel>
-                    <FormControl>
-                      <Input placeholder="192.168.1.50" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="puerto"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Puerto</FormLabel>
-                    <FormControl>
-                      <Input type="number" min={1} max={65535} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+            <FormField
+              control={form.control}
+              name="dispositivo"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Nombre de la impresora en Windows</FormLabel>
+                  <FormControl>
+                    <Input placeholder="EPSON TM-m30II Receipt" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <FormField
               control={form.control}
               name="anchoPapel"

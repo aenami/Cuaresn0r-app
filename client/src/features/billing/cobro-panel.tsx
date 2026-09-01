@@ -121,11 +121,11 @@ function EmisionDeFactura({
   const presets = Array.from(new Set([propinaSugerida, 10, 15, 20].filter((n) => n > 0))).sort((a, b) => a - b)
 
   function emitirFactura() {
-    if (cuenta.hayPreparando || subtotal <= 0) return
+    if (subtotal <= 0) return
     const datos =
       modo === 'monto'
-        ? { idSubcuenta: cuenta.id, montoServicio: montoServicioNum }
-        : { idSubcuenta: cuenta.id, porcentajePropina: pctEfectivo }
+        ? { idSubcuenta: cuenta.id, idsDetalle: cuenta.idsDetalleFacturar, montoServicio: montoServicioNum }
+        : { idSubcuenta: cuenta.id, idsDetalle: cuenta.idsDetalleFacturar, porcentajePropina: pctEfectivo }
     emitir
       .mutateAsync(datos)
       .then(() => toast.success('Factura emitida'))
@@ -211,17 +211,10 @@ function EmisionDeFactura({
         </span>
       </div>
 
-      {cuenta.hayPreparando && (
-        <p className="mt-3 flex items-start gap-2 text-xs text-tertiary">
-          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
-          Hay items de esta cuenta aún en preparación; entrégalos o cancélalos antes de facturar.
-        </p>
-      )}
-
       <div className="mt-auto pt-5">
         <Button
           className="btn-heat h-12 w-full gap-2 font-heading text-sm font-semibold uppercase tracking-wide"
-          disabled={cuenta.hayPreparando || subtotal <= 0 || emitir.isPending}
+          disabled={subtotal <= 0 || emitir.isPending}
           onClick={emitirFactura}
         >
           {emitir.isPending ? <Loader2 className="size-4 animate-spin" /> : <Receipt className="size-4" />}

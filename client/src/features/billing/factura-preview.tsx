@@ -90,10 +90,7 @@ export function FacturaPreviewDialog({
               {p.cliente?.direccion ? <p className="text-[11px]">Dir: {p.cliente.direccion}</p> : null}
             </>
           ) : (
-            <p className="text-[11px]">
-              Mesa {p.mesa_numero ?? '—'}
-              {p.zona ? ` · ${p.zona}` : ''}
-            </p>
+            <p className="text-[11px]">{p.ficha_numero ? `Ficha ${p.ficha_numero}` : 'Pedido sin ficha'}</p>
           )}
           {p.mesero ? <p className="text-[11px]">Mesero: {p.mesero}</p> : null}
           {cuenta.cajero ? <p className="text-[11px]">Cajero: {cuenta.cajero}</p> : null}
@@ -101,23 +98,11 @@ export function FacturaPreviewDialog({
           <Separador />
 
           <div className="space-y-1">
-            {cuenta.items.map((item) => (
-              <div key={item.id}>
-                <Linea izq={`${item.cantidad}× ${item.nombre}`} der={Number(item.precio_unitario) * item.cantidad} />
-                {item.hijos.map((h) => {
-                  const esAdicion = Number(h.precio_unitario) > 0
-                  return (
-                    <div key={h.id} className="pl-3 text-[10px] text-black/70">
-                      {esAdicion ? (
-                        <Linea izq={`+ ${h.cantidad}× ${h.nombre}`} der={Number(h.precio_unitario) * h.cantidad} pequeno />
-                      ) : (
-                        <p>· {h.cantidad}× {h.nombre}</p>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            ))}
+            {cuenta.items.map((item) => {
+              const cantidad = item.cantidad * Number(item.proporcion)
+              const cantidadTexto = Number.isInteger(cantidad) ? String(cantidad) : cantidad.toFixed(2)
+              return <Linea key={item.id} izq={`${cantidadTexto}× ${item.nombre}`} der={Number(item.subtotal)} />
+            })}
           </div>
 
           <Separador />

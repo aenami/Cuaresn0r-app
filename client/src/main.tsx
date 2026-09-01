@@ -8,7 +8,7 @@ import './index.css'
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // Un POS consulta datos que cambian con frecuencia (mesas, pedidos):
+      // Un POS consulta datos que cambian con frecuencia (fichas, pedidos):
       // staleTime corto y sin reintentos agresivos sobre errores 4xx.
       staleTime: 30 * 1000,
       retry: 1,

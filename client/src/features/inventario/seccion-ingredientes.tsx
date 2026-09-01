@@ -14,7 +14,7 @@ import { BotonHeat } from './boton-heat'
 export function SeccionIngredientes({ esAdmin }: { esAdmin: boolean }) {
   const { data: ingredientes, isPending } = useQuery(ingredientesQuery)
   const [busqueda, setBusqueda] = useState('')
-  const [filtro, setFiltro] = useState<'todos' | 'agotados'>('todos')
+  const [filtro, setFiltro] = useState<'todos' | 'agotados' | 'bajos' | 'altos'>('todos')
   const [formulario, setFormulario] = useState<{ abierto: boolean; ingrediente: Ingrediente | null }>({
     abierto: false,
     ingrediente: null,
@@ -25,11 +25,17 @@ export function SeccionIngredientes({ esAdmin }: { esAdmin: boolean }) {
 
   const lista = ingredientes ?? []
   const agotados = lista.filter((i) => Number(i.stock_ingrediente) <= 0).length
+  const bajos = lista.filter((i) => i.estado_stock === 'BAJO').length
+  const altos = lista.filter((i) => i.estado_stock === 'ALTO').length
 
   const termino = busqueda.trim().toLowerCase()
   const visibles = lista.filter((i) => {
     const porTexto = termino === '' || i.nombre_ingrediente.toLowerCase().includes(termino)
-    const porFiltro = filtro === 'todos' || Number(i.stock_ingrediente) <= 0
+    const porFiltro =
+      filtro === 'todos' ||
+      (filtro === 'agotados' && i.estado_stock === 'AGOTADO') ||
+      (filtro === 'bajos' && i.estado_stock === 'BAJO') ||
+      (filtro === 'altos' && i.estado_stock === 'ALTO')
     return porTexto && porFiltro
   })
 
@@ -44,6 +50,8 @@ export function SeccionIngredientes({ esAdmin }: { esAdmin: boolean }) {
             etiqueta="Todos"
             conteo={lista.length}
           />
+          <PastillaFiltro activo={filtro === 'bajos'} onClick={() => setFiltro('bajos')} etiqueta="Bajos" conteo={bajos} alerta />
+          <PastillaFiltro activo={filtro === 'altos'} onClick={() => setFiltro('altos')} etiqueta="Altos" conteo={altos} />
           <PastillaFiltro
             activo={filtro === 'agotados'}
             onClick={() => setFiltro('agotados')}
@@ -123,14 +131,14 @@ function FilaIngrediente({
   onEditar: () => void
   onMovimiento: () => void
 }) {
-  const stock = Number(ingrediente.stock_ingrediente)
-  const agotado = stock <= 0
+  const agotado = ingrediente.estado_stock === 'AGOTADO'
+  const alerta = agotado || ingrediente.estado_stock === 'BAJO'
 
   return (
     <li
       className={cn(
         'rounded-lg border-l-2 bg-surface-low p-4 transition-colors',
-        agotado ? 'border-destructive' : 'border-transparent hover:bg-surface',
+        alerta ? 'border-destructive' : 'border-transparent hover:bg-surface',
       )}
     >
       <div className="flex items-center gap-4">
@@ -138,10 +146,10 @@ function FilaIngrediente({
         <span
           className={cn(
             'grid size-9 shrink-0 place-items-center rounded-md',
-            agotado ? 'bg-destructive/15 text-destructive' : 'bg-surface-high text-muted-foreground',
+            alerta ? 'bg-destructive/15 text-destructive' : 'bg-surface-high text-muted-foreground',
           )}
         >
-          {agotado ? <TriangleAlert className="size-4" /> : <Check className="size-4" strokeWidth={2.5} />}
+          {alerta ? <TriangleAlert className="size-4" /> : <Check className="size-4" strokeWidth={2.5} />}
         </span>
 
         {/* Nombre (+ meta compacta en movil) */}
@@ -173,7 +181,7 @@ function FilaIngrediente({
 
         {/* Estado */}
         <div className="flex justify-end sm:w-28">
-          <BadgeEstadoStock agotado={agotado} />
+          <BadgeEstadoStock estado={ingrediente.estado_stock} />
         </div>
 
         {/* Acciones admin (desktop) */}
@@ -208,15 +216,23 @@ function FilaIngrediente({
   )
 }
 
-function BadgeEstadoStock({ agotado }: { agotado: boolean }) {
+function BadgeEstadoStock({ estado }: { estado: Ingrediente['estado_stock'] }) {
+  const etiquetas: Record<Ingrediente['estado_stock'], string> = {
+    AGOTADO: 'Agotado',
+    BAJO: 'Bajo',
+    IDEAL: 'Ideal',
+    ALTO: 'Alto',
+    SIN_UMBRALES: 'Sin umbrales',
+  }
+  const alerta = estado === 'AGOTADO' || estado === 'BAJO'
   return (
     <span
       className={cn(
         'inline-flex items-center rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider',
-        agotado ? 'bg-destructive/15 text-destructive' : 'bg-surface-high text-muted-foreground',
+        alerta ? 'bg-destructive/15 text-destructive' : 'bg-surface-high text-muted-foreground',
       )}
     >
-      {agotado ? 'Agotado' : 'En stock'}
+      {etiquetas[estado]}
     </span>
   )
 }

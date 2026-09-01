@@ -109,8 +109,7 @@ function useInvalidarBilling() {
   return () => void queryClient.invalidateQueries({ queryKey: ['billing'] })
 }
 
-// Cobrar/anular puede mover el pedido a PAGADO y liberar la mesa: hay que
-// refrescar tambien pedidos y salon.
+// Cobrar/anular puede cerrar el pedido y cambiar la disponibilidad de su ficha.
 function useInvalidarCobro() {
   const queryClient = useQueryClient()
   return () => {
@@ -125,7 +124,7 @@ function useInvalidarCobro() {
 export function useAbrirTurno() {
   const invalidar = useInvalidarBilling()
   return useMutation({
-    mutationFn: (datos: { idCaja: number; montoApertura: number }) =>
+    mutationFn: (datos: { idCaja: number }) =>
       api.post<Turno>('/billing/turnos', datos),
     onSuccess: invalidar,
   })
@@ -201,7 +200,7 @@ export function useImprimirFactura() {
 export function useEmitirFactura() {
   const invalidar = useInvalidarCobro()
   return useMutation({
-    mutationFn: (datos: { idSubcuenta: number; porcentajePropina?: number; montoServicio?: number }) =>
+    mutationFn: (datos: { idSubcuenta: number; idsDetalle?: number[]; porcentajePropina?: number; montoServicio?: number }) =>
       api.post<Factura>('/billing/facturas', datos),
     onSuccess: invalidar,
   })

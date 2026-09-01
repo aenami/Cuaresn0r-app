@@ -3,7 +3,7 @@ import type { ComponentType, ReactNode } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Network, Plus, Power, Printer, RefreshCw, Server, SquarePen, Trash2, TriangleAlert } from 'lucide-react'
+import { Plus, Power, Printer, RefreshCw, Server, SquarePen, Trash2, TriangleAlert } from 'lucide-react'
 import { ApiError } from '@/lib/api'
 import { useEsAdmin } from '@/stores/auth.store'
 import {
@@ -130,7 +130,7 @@ function PaginaImpresoras() {
               <span className="micro-label w-8">Sts</span>
               <span className="micro-label flex-1">Impresora</span>
               <span className="micro-label w-28">Ruta</span>
-              <span className="micro-label w-44">Direccion</span>
+              <span className="micro-label w-44">Dispositivo USB</span>
               <span className="micro-label w-16">Papel</span>
               <span className="micro-label w-40 text-right">Acciones</span>
             </div>
@@ -209,7 +209,7 @@ function FilaImpresora({
   onEliminar: () => void
 }) {
   const activa = impresora.impresora_activa
-  const direccion = `${impresora.host_impresora}:${impresora.puerto_impresora}`
+  const dispositivo = impresora.dispositivo_impresora ?? 'Sin configurar'
 
   return (
     <li className="px-5 py-4">
@@ -230,7 +230,7 @@ function FilaImpresora({
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-muted-foreground md:hidden">
             <BadgeRuta destino={impresora.destino_impresora} />
             <span className="inline-flex items-center gap-1.5 tabular-nums">
-              <Network className="size-3.5" /> {direccion}
+              <Printer className="size-3.5" /> {dispositivo}
             </span>
             <span>{impresora.ancho_papel_impresora}mm</span>
           </div>
@@ -243,8 +243,8 @@ function FilaImpresora({
 
         {/* Direccion (desktop) */}
         <div className="hidden w-44 items-center gap-2 text-sm tabular-nums text-muted-foreground md:flex">
-          <Network className="size-4 shrink-0" />
-          {direccion}
+          <Printer className="size-4 shrink-0" />
+          <span className="truncate" title={dispositivo}>{dispositivo}</span>
         </div>
 
         {/* Papel (desktop) */}

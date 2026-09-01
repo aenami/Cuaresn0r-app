@@ -138,6 +138,10 @@ export function FlujoEfectivo({ turno }: { turno: TurnoResumen }) {
   const tarjetas = Number(turno.pagosPorMetodo.find((p) => p.metodo === 'TARJETA')?.total ?? 0)
   const egresos = turno.movimientosCaja.filter((m) => m.tipo_mc === 'EGRESO')
   const retiros = egresos.reduce((acc, m) => acc + Number(m.monto_mc), 0)
+  const transferenciasVentas = Number(turno.resumenCuadre.ventas.transferencia)
+  const transferenciasEgresos =
+    Number(turno.resumenCuadre.egresos.nominaTransferencia) + Number(turno.resumenCuadre.egresos.cuentasTransferencia)
+  const transferenciasNetas = Number(turno.resumenCuadre.netoTransferencias)
 
   const filas = construirLedger(turno)
 
@@ -188,7 +192,7 @@ export function FlujoEfectivo({ turno }: { turno: TurnoResumen }) {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           icono={Banknote}
           titulo="Total efectivo"
@@ -200,8 +204,15 @@ export function FlujoEfectivo({ turno }: { turno: TurnoResumen }) {
           icono={TrendingUp}
           titulo="Ventas netas"
           valor={formatearPrecio(ventasNetas)}
-          sub={`Tarjetas: ${formatearPrecio(tarjetas)}`}
+          sub={`Tarjetas: ${formatearPrecio(tarjetas)} · Transferencias: ${formatearPrecio(transferenciasVentas)}`}
           acento="border-b-2 border-tertiary"
+        />
+        <KpiCard
+          icono={ArrowDownLeft}
+          titulo="Transferencias netas"
+          valor={formatearPrecio(transferenciasNetas)}
+          sub={`Ventas ${formatearPrecio(transferenciasVentas)} · Pagos ${formatearPrecio(transferenciasEgresos)}`}
+          acento="border-b-2 border-secondary"
         />
         <KpiCard
           icono={ArrowUpRight}
@@ -560,16 +571,14 @@ export function AbrirTurnoForm() {
   const { data: cajas } = useQuery(cajasQuery)
   const abrir = useAbrirTurno()
   const [idCaja, setIdCaja] = useState<string>('')
-  const [montoApertura, setMontoApertura] = useState('')
 
   const cajasLibres = (cajas ?? []).filter((c) => (c.turnos ?? []).length === 0)
-  const monto = Number(montoApertura)
-  const valido = idCaja !== '' && montoApertura !== '' && !Number.isNaN(monto) && monto >= 0
+  const valido = idCaja !== ''
 
   function abrirTurno() {
     if (!valido) return
     abrir
-      .mutateAsync({ idCaja: Number(idCaja), montoApertura: monto })
+      .mutateAsync({ idCaja: Number(idCaja) })
       .then(() => toast.success('Turno abierto'))
       .catch((e: unknown) => toast.error(errorApi(e)))
   }
@@ -610,18 +619,10 @@ export function AbrirTurnoForm() {
           )}
         </div>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="monto-apertura">Base de efectivo</Label>
-          <Input
-            id="monto-apertura"
-            type="number"
-            min={0}
-            step={100}
-            inputMode="numeric"
-            placeholder="0"
-            value={montoApertura}
-            onChange={(e) => setMontoApertura(e.target.value)}
-          />
+        <div className="rounded-lg bg-surface-low p-3">
+          <p className="micro-label">Base fija de caja</p>
+          <p className="mt-1 font-heading text-xl font-semibold tabular-nums">{formatearPrecio(300000)}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Se recibe y se deja intacta en cada cambio de turno.</p>
         </div>
 
         <Button

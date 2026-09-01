@@ -8,6 +8,7 @@ import {
   useCancelarItem,
   useCancelarPedido,
   useEntregarComanda,
+  useDespacharComanda,
   useEnviarComanda,
 } from '@/features/pedidos/api'
 import { useReimprimirComanda } from '@/features/impresion/api'
@@ -36,7 +37,7 @@ export function PanelComanda({ pedido, editable }: { pedido: Pedido; editable: b
   const borrador = useCarritoStore((s) => s.carritos[idPedido]) ?? CARRITO_VACIO
   const quitar = useCarritoStore((s) => s.quitar)
   const limpiar = useCarritoStore((s) => s.limpiar)
-  const enviar = useEnviarComanda(idPedido)
+  const guardar = useEnviarComanda(idPedido)
   const cancelarPedido = useCancelarPedido(idPedido)
   const esCaja = useEsCaja()
   const [confirmandoCancelacion, setConfirmandoCancelacion] = useState(false)
@@ -53,13 +54,13 @@ export function PanelComanda({ pedido, editable }: { pedido: Pedido; editable: b
     .filter((d) => d.estado_dc !== 'CANCELADO')
     .reduce((acc, d) => acc + Number(d.precio_unitario_dc) * d.cantidad_producto_dc, 0)
 
-  function enviarComanda() {
+  function guardarComanda() {
     if (borrador.length === 0) return
-    enviar
+    guardar
       .mutateAsync(borrador.map(itemAPayload))
       .then(() => {
         limpiar(idPedido)
-        toast.success('Comanda enviada a cocina')
+        toast.success('Ronda guardada; ya puede cobrarse o enviarse a preparacion')
       })
       .catch((e: unknown) => toast.error(errorATexto(e)))
   }
@@ -90,7 +91,7 @@ export function PanelComanda({ pedido, editable }: { pedido: Pedido; editable: b
         {comandas.length > 0 ? (
           <div className="mt-6">
             <div className="mb-3 flex items-center justify-between gap-2">
-              <p className="micro-label">Enviado a cocina</p>
+              <p className="micro-label">Rondas del pedido</p>
               <ToggleVista vista={vista} onCambiar={setVista} />
             </div>
 
@@ -147,10 +148,10 @@ export function PanelComanda({ pedido, editable }: { pedido: Pedido; editable: b
             <Button
               type="button"
               className="btn-heat w-full font-heading uppercase tracking-wide"
-              disabled={borrador.length === 0 || enviar.isPending}
-              onClick={enviarComanda}
+              disabled={borrador.length === 0 || guardar.isPending}
+              onClick={guardarComanda}
             >
-              {enviar.isPending ? 'Enviando…' : `Enviar a cocina (${borrador.length})`}
+              {guardar.isPending ? 'Guardando…' : `Guardar ronda (${borrador.length})`}
             </Button>
             <Button
               type="button"
@@ -169,7 +170,7 @@ export function PanelComanda({ pedido, editable }: { pedido: Pedido; editable: b
                   .mutateAsync()
                   .then(() => {
                     limpiar(idPedido)
-                    toast.success('Pedido cancelado; la mesa quedo libre')
+                    toast.success('Pedido cancelado')
                     // Cancelar la toma del pedido regresa al salon: la vista del
                     // pedido cancelado ya no admite acciones utiles.
                     void navigate({ to: '/mesas' })
@@ -271,15 +272,35 @@ function ComandaEnviada({
   editable: boolean
 }) {
   const entregarComanda = useEntregarComanda(idPedido)
+  const despachar = useDespacharComanda(idPedido)
   const detalles = comanda.detalles ?? []
   const principales = detalles.filter((d) => d.id_detalleComandaPadre_dc === null)
   const hayPendientes = detalles.some((d) => d.estado_dc === 'PREPARANDO')
+  const esBorrador = comanda.estado_comanda === 'BORRADOR'
 
   return (
     <div className="rounded-md bg-surface p-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="micro-label">Comanda {numero}</p>
-        {editable && hayPendientes ? (
+        <div>
+          <p className="micro-label">Ronda {numero}</p>
+          {comanda.autorizada_sin_pago ? <p className="mt-0.5 text-[10px] uppercase tracking-wide text-destructive">Autorizada sin pago total</p> : null}
+        </div>
+        {editable && esBorrador ? (
+          <Button
+            type="button"
+            size="sm"
+            className="btn-heat h-7 px-2 text-xs"
+            disabled={despachar.isPending}
+            onClick={() =>
+              despachar
+                .mutateAsync(comanda.id_comanda)
+                .then(() => toast.success(`Ronda ${numero} enviada a cocina`))
+                .catch((e: unknown) => toast.error(errorATexto(e)))
+            }
+          >
+            {despachar.isPending ? 'Enviando…' : 'Enviar a cocina'}
+          </Button>
+        ) : editable && hayPendientes ? (
           <Button
             type="button"
             size="sm"
@@ -297,7 +318,7 @@ function ComandaEnviada({
           </Button>
         ) : null}
       </div>
-      <EstadoImpresiones comanda={comanda} />
+      {esBorrador ? <p className="mt-1.5 text-xs text-muted-foreground">Borrador persistente · aun no descuenta inventario</p> : <EstadoImpresiones comanda={comanda} />}
       <ul className="mt-2 space-y-2">
         {principales.map((detalle) => (
           <ItemEnviado key={detalle.id_detalleComanda} detalle={detalle} idPedido={idPedido} editable={editable} />
@@ -391,7 +412,7 @@ function ItemEnviado({
         </span>
         <span className="flex shrink-0 items-center gap-2">
           <EstadoItem estado={detalle.estado_dc} />
-          {editable && detalle.estado_dc === 'PREPARANDO' ? (
+          {editable && (detalle.estado_dc === 'PENDIENTE' || detalle.estado_dc === 'PREPARANDO') ? (
             <Button
               type="button"
               variant="ghost"
@@ -410,6 +431,8 @@ function ItemEnviado({
           ) : null}
         </span>
       </div>
+
+      <EstadoPagoItem detalle={detalle} />
 
       <DetalleExtras detalle={detalle} />
 
@@ -458,6 +481,9 @@ function DetalleExtras({ detalle }: { detalle: DetalleComanda }) {
 }
 
 function EstadoItem({ estado }: { estado: DetalleComanda['estado_dc'] }) {
+  if (estado === 'PENDIENTE') {
+    return <span className="micro-label rounded-full bg-surface-high px-2 py-0.5">Borrador</span>
+  }
   if (estado === 'PREPARANDO') {
     return (
       <span className="micro-label animate-pulse rounded-full bg-tertiary/15 px-2 py-0.5 !text-tertiary">
@@ -473,4 +499,18 @@ function EstadoItem({ estado }: { estado: DetalleComanda['estado_dc'] }) {
     )
   }
   return <span className="micro-label rounded-full bg-surface-lowest px-2 py-0.5">Cancelado</span>
+}
+
+function EstadoPagoItem({ detalle }: { detalle: DetalleComanda }) {
+  if (Number(detalle.precio_unitario_dc) === 0) return null
+  const registros = (detalle.facturasDetalle ?? []).filter((registro) => registro.factura.estado_factura !== 'ANULADA')
+  const pagado = registros
+    .filter((registro) => registro.factura.estado_factura === 'PAGADA')
+    .reduce((total, registro) => total + Number(registro.proporcion_facturada_fd), 0)
+  const texto = pagado >= 0.9999 ? 'Pagado' : registros.length > 0 ? 'Facturado · pago pendiente' : 'Por cobrar'
+  return (
+    <span className={cn('mt-1 inline-flex text-[10px] font-semibold uppercase tracking-wide', pagado >= 0.9999 ? 'text-secondary' : 'text-muted-foreground')}>
+      {texto}
+    </span>
+  )
 }

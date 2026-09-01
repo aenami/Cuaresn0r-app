@@ -10,8 +10,8 @@ export const impresorasQuery = queryOptions({
 export interface ImpresoraPayload {
   nombre: string
   destino: DestinoImpresion
-  host: string
-  puerto?: number
+  dispositivo: string
+  host?: string
   anchoPapel?: number
 }
 

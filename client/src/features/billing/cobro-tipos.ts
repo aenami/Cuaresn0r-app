@@ -10,5 +10,6 @@ export interface CuentaCobro {
   items: DetalleComanda[]
   subtotal: number
   hayPreparando: boolean
+  idsDetalleFacturar: number[]
   factura: Factura | undefined
 }

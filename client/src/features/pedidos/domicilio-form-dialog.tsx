@@ -37,7 +37,7 @@ type Valores = z.infer<typeof esquema>
 
 const VACIO: Valores = { nombreCliente: '', telefonoCliente: '', direccionCliente: '' }
 
-// Abre un pedido de domicilio (sin mesa) y navega directo a tomar sus items.
+// Abre un pedido de domicilio (sin ficha) y navega directo a tomar sus items.
 export function DomicilioFormDialog({ abierto, onCerrar }: { abierto: boolean; onCerrar: () => void }) {
   const navigate = useNavigate()
   const abrir = useAbrirDomicilio()
@@ -67,7 +67,7 @@ export function DomicilioFormDialog({ abierto, onCerrar }: { abierto: boolean; o
             <Bike className="size-5 text-primary" /> Nuevo domicilio
           </DialogTitle>
           <DialogDescription>
-            El pedido no ocupa mesa. Registra a quien y donde se entrega.
+            El pedido no ocupa ficha. Registra a quien y donde se entrega.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>

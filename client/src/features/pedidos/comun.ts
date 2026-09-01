@@ -5,9 +5,10 @@ import type { EstadoPedido } from '@/types/api'
 // (encabezado, menu, panel de comanda, vista por cuenta).
 
 export const TEXTO_ESTADO_PEDIDO: Record<EstadoPedido, string> = {
+  ABIERTO: 'Abierto',
   EN_PREPARACION: 'En preparacion',
   ENTREGADO: 'Entregado',
-  PAGADO: 'Pagado',
+  CERRADO: 'Cerrado',
   CANCELADO: 'Cancelado',
 }
 

@@ -238,25 +238,25 @@ function Contenido({ data }: { data: ReporteResumen }) {
             </TarjetaGrafica>
           </div>
 
-          {/* Fila: zona + ocupacion actual */}
+          {/* Fila: ventas por ficha + disponibilidad actual */}
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <TarjetaGrafica titulo="Ventas por zona">
-              {data.porZona.length === 0 ? (
+            <TarjetaGrafica titulo="Ventas por ficha">
+              {data.porFicha.length === 0 ? (
                 <SinDatos />
               ) : (
                 <ul className="space-y-2.5">
-                  {data.porZona.map((z, i) => (
-                    <BarraZona key={z.zona + i} nombre={z.zona} valor={z.ventas} maximo={data.porZona[0].ventas} cuentas={z.cuentas} />
+                  {data.porFicha.map((f, i) => (
+                    <BarraFicha key={f.ficha + i} nombre={f.ficha} valor={f.ventas} maximo={data.porFicha[0].ventas} cuentas={f.cuentas} />
                   ))}
                 </ul>
               )}
             </TarjetaGrafica>
 
-            <TarjetaGrafica titulo="Ocupacion de mesas" sufijoTitulo="ahora">
+            <TarjetaGrafica titulo="Estado de fichas" sufijoTitulo="ahora">
               <div className="grid grid-cols-3 gap-3">
-                <TileMesa etiqueta="Libres" valor={data.ocupacionMesas.LIBRE} acento="muted" />
-                <TileMesa etiqueta="Ocupadas" valor={data.ocupacionMesas.OCUPADA} acento="primary" />
-                <TileMesa etiqueta="Reservadas" valor={data.ocupacionMesas.RESERVADA} acento="tertiary" />
+                <TileFicha etiqueta="Disponibles" valor={data.ocupacionFichas.DISPONIBLES} acento="muted" />
+                <TileFicha etiqueta="En uso" valor={data.ocupacionFichas.OCUPADAS} acento="primary" />
+                <TileFicha etiqueta="Inactivas" valor={data.ocupacionFichas.DESACTIVADAS} acento="tertiary" />
               </div>
             </TarjetaGrafica>
           </div>
@@ -359,7 +359,7 @@ function SinDatos() {
   return <p className="py-10 text-center text-sm text-muted-foreground">Sin datos en este periodo</p>
 }
 
-function BarraZona({
+function BarraFicha({
   nombre,
   valor,
   maximo,
@@ -386,7 +386,7 @@ function BarraZona({
   )
 }
 
-function TileMesa({
+function TileFicha({
   etiqueta,
   valor,
   acento,

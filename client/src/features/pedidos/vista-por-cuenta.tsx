@@ -1,10 +1,15 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { toast } from 'sonner'
-import { ArrowRightLeft, Loader2, Plus, Receipt } from 'lucide-react'
+import { ArrowRightLeft, Check, Loader2, MessageSquarePlus, Plus, Receipt } from 'lucide-react'
 import { formatearPrecio } from '@/lib/formato'
-import { useCrearSubcuenta, useReasignarItem } from '@/features/pedidos/api'
-import type { DetalleComanda, Pedido } from '@/types/api'
+import {
+  useCrearComentarioCuenta,
+  useCrearSubcuenta,
+  useReasignarItem,
+  useResolverComentarioCuenta,
+} from '@/features/pedidos/api'
+import type { ComentarioCuenta, DetalleComanda, Pedido } from '@/types/api'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -43,6 +48,7 @@ export function VistaPorCuenta({ pedido, editable }: { pedido: Pedido; editable:
     id: sub.id_subcuenta,
     nombre: sub.nombre_subcuenta ?? `Cuenta ${i + 1}`,
     esPrincipal: i === 0,
+    comentarios: sub.comentarios ?? [],
   }))
 
   // Padres no cancelados de una cuenta (los hijos se muestran anidados).
@@ -92,6 +98,9 @@ export function VistaPorCuenta({ pedido, editable }: { pedido: Pedido; editable:
             titulo={cuenta.nombre}
             esPrincipal={cuenta.esPrincipal}
             subtotal={subtotalDe(cuenta.id)}
+            comentarios={cuenta.comentarios}
+            idPedido={idPedido}
+            idSubcuenta={cuenta.id}
           >
             {items.length === 0 ? (
               <p className="text-xs text-muted-foreground">Sin items en esta cuenta.</p>
@@ -194,11 +203,17 @@ function TarjetaCuenta({
   esPrincipal,
   subtotal,
   children,
+  comentarios = [],
+  idPedido,
+  idSubcuenta,
 }: {
   titulo: string
   esPrincipal?: boolean
   subtotal: number
   children: ReactNode
+  comentarios?: ComentarioCuenta[]
+  idPedido?: number
+  idSubcuenta?: number
 }) {
   return (
     <section
@@ -217,7 +232,61 @@ function TarjetaCuenta({
         </span>
       </div>
       {children}
+      {idPedido !== undefined && idSubcuenta !== undefined ? (
+        <ComentariosCuenta idPedido={idPedido} idSubcuenta={idSubcuenta} comentarios={comentarios} />
+      ) : null}
     </section>
+  )
+}
+
+function ComentariosCuenta({
+  idPedido,
+  idSubcuenta,
+  comentarios,
+}: {
+  idPedido: number
+  idSubcuenta: number
+  comentarios: ComentarioCuenta[]
+}) {
+  const crear = useCrearComentarioCuenta(idPedido, idSubcuenta)
+  const resolver = useResolverComentarioCuenta(idPedido, idSubcuenta)
+  const [texto, setTexto] = useState('')
+  const pendientes = comentarios.filter((comentario) => !comentario.comentario_resuelto)
+
+  return (
+    <div className="mt-3 border-t border-border pt-3">
+      {pendientes.length > 0 ? (
+        <ul className="mb-2 space-y-1.5">
+          {pendientes.map((comentario) => (
+            <li key={comentario.id_comentarioCuenta} className="flex items-start gap-2 rounded-md bg-destructive/[0.07] p-2 text-xs">
+              <span className="min-w-0 flex-1">{comentario.texto_comentarioCuenta}</span>
+              <button
+                type="button"
+                title="Marcar resuelto"
+                disabled={resolver.isPending}
+                onClick={() => resolver.mutate(comentario.id_comentarioCuenta)}
+                className="grid size-6 shrink-0 place-items-center rounded text-muted-foreground hover:bg-secondary hover:text-secondary-foreground"
+              >
+                <Check className="size-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <form
+        className="flex gap-1.5"
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (!texto.trim()) return
+          crear.mutateAsync(texto.trim()).then(() => setTexto('')).catch((e: unknown) => toast.error(errorATexto(e)))
+        }}
+      >
+        <Input value={texto} onChange={(event) => setTexto(event.target.value)} maxLength={300} className="h-8 text-xs" placeholder="Ej. Debemos $5.000 de regreso" />
+        <Button type="submit" size="icon-sm" variant="secondary" disabled={crear.isPending} title="Agregar recordatorio">
+          <MessageSquarePlus className="size-3.5" />
+        </Button>
+      </form>
+    </div>
   )
 }
 

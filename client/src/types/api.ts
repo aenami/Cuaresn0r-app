@@ -55,6 +55,9 @@ export interface Ingrediente {
   stock_ingrediente: string
   unidades_ingrediente: UnidadIngrediente
   precio_ingrediente: string
+  umbral_bajo_ingrediente: string | null
+  umbral_alto_ingrediente: string | null
+  estado_stock: 'AGOTADO' | 'BAJO' | 'IDEAL' | 'ALTO' | 'SIN_UMBRALES'
 }
 
 export interface DetalleReceta {
@@ -113,10 +116,17 @@ export interface Mesa {
 
 // ---- pedidos y comandas ----
 
-export type EstadoPedido = 'EN_PREPARACION' | 'ENTREGADO' | 'PAGADO' | 'CANCELADO'
-export type EstadoDetalleComanda = 'PREPARANDO' | 'ENTREGADO' | 'CANCELADO'
-// MESA: pedido de salon (ocupa una mesa). DOMICILIO: entrega a domicilio (sin mesa).
-export type TipoPedido = 'MESA' | 'DOMICILIO'
+export type EstadoPedido = 'ABIERTO' | 'EN_PREPARACION' | 'ENTREGADO' | 'CERRADO' | 'CANCELADO'
+export type EstadoDetalleComanda = 'PENDIENTE' | 'PREPARANDO' | 'ENTREGADO' | 'CANCELADO'
+export type TipoPedido = 'LOCAL' | 'DOMICILIO'
+
+export interface Ficha {
+  id_ficha: number
+  numero_ficha: string
+  ficha_activa: boolean
+  disponible?: boolean
+  pedidoActivo?: { id_pedido: number; estado_pedido: EstadoPedido } | null
+}
 
 export interface DetalleComandaIngrediente {
   id_detalleComandaIngrediente: number
@@ -152,15 +162,21 @@ export interface DetalleComanda {
   ingredientesPersonalizados?: DetalleComandaIngrediente[]
   hijos?: DetalleComanda[]
   subcuentasReparto?: SubcuentaDetalleComanda[]
+  facturasDetalle?: {
+    proporcion_facturada_fd: string
+    factura: { id_factura?: number; estado_factura: EstadoFactura }
+  }[]
 }
 
-export type EstadoImpresion = 'PENDIENTE' | 'IMPRESA' | 'FALLIDA'
+export type EstadoImpresion = 'PENDIENTE' | 'EN_PROCESO' | 'REINTENTO' | 'IMPRESA' | 'FALLIDA'
 
 export interface Impresora {
   id_impresora: number
   nombre_impresora: string
   destino_impresora: DestinoImpresion
-  host_impresora: string
+  dispositivo_impresora: string | null
+  modelo_impresora: string
+  host_impresora: string | null
   puerto_impresora: number
   ancho_papel_impresora: number
   impresora_activa: boolean
@@ -180,6 +196,9 @@ export interface Comanda {
   id_comanda: number
   id_pedido_comanda: number
   creacion_comanda: string
+  estado_comanda: 'BORRADOR' | 'ENVIADA'
+  fecha_envio_comanda: string | null
+  autorizada_sin_pago: boolean
   detalles?: DetalleComanda[]
   impresiones?: ImpresionComanda[]
 }
@@ -189,6 +208,17 @@ export interface Subcuenta {
   id_pedido_subcuenta: number
   nombre_subcuenta: string | null
   fecha_creacion_subcuenta: string
+  comentarios?: ComentarioCuenta[]
+  facturas?: Factura[]
+}
+
+export interface ComentarioCuenta {
+  id_comentarioCuenta: number
+  texto_comentarioCuenta: string
+  fecha_comentarioCuenta: string
+  comentario_resuelto: boolean
+  usuario?: { id_usuario: number; email_usuario: string }
+  usuarioResuelve?: { id_usuario: number; email_usuario: string } | null
 }
 
 export interface Pedido {
@@ -196,14 +226,14 @@ export interface Pedido {
   fecha_pedido: string
   estado_pedido: EstadoPedido
   tipo_pedido: TipoPedido
-  // null en domicilios (no ocupan mesa).
-  mesa_pedido: number | null
+  id_ficha_pedido: number | null
+  fecha_cierre_pedido: string | null
   mesero_pedido: number
   // Solo presentes en domicilios.
   nombre_cliente_pedido: string | null
   telefono_cliente_pedido: string | null
   direccion_cliente_pedido: string | null
-  mesa?: Mesa | null
+  ficha?: Ficha | null
   mesero?: { id_usuario: number; email_usuario: string }
   subcuentas?: Subcuenta[]
   comandas?: Comanda[]
@@ -272,8 +302,17 @@ export interface Factura {
   motivo_anulacion_factura: string | null
   pagos?: Pago[]
   subcuenta?: Subcuenta & {
-    pedido?: { id_pedido: number; estado_pedido: EstadoPedido; mesa_pedido: number | null }
+    pedido?: { id_pedido: number; estado_pedido: EstadoPedido; id_ficha_pedido: number | null }
   }
+  detalles?: FacturaDetalle[]
+}
+
+export interface FacturaDetalle {
+  id_facturaDetalle: number
+  id_detalleComanda_fd: number
+  proporcion_facturada_fd: string
+  subtotal_facturado_fd: string
+  detalleComanda?: DetalleComanda
 }
 
 export interface MovimientoCaja {
@@ -322,18 +361,69 @@ export interface TurnoResumen extends Turno {
   movimientosCaja: MovimientoCaja[]
   pagosPorMetodo: PagoPorMetodo[]
   pagos: PagoLedger[]
+  baseCaja: string
+  resumenCuadre: {
+    ventas: { efectivo: string; transferencia: string; tarjeta: string }
+    egresos: {
+      nominaEfectivo: string
+      nominaTransferencia: string
+      cuentasEfectivo: string
+      cuentasTransferencia: string
+    }
+    netoTransferencias: string
+    efectivoEsperadoSinBase: string
+  }
+}
+
+export interface Proveedor {
+  id_proveedor: number
+  nombre_proveedor: string
+  contacto_proveedor: string | null
+  telefono_proveedor: string | null
+  nit_proveedor: string | null
+  proveedor_activo: boolean
+}
+
+export interface DetalleCuentaPorPagar {
+  id_detalleCuentaPorPagar: number
+  cantidad_detalleCuenta: string
+  precio_unitario_detalleCuenta: string
+  ingrediente: Ingrediente
+}
+
+export interface PagoCuentaPorPagar {
+  id_pagoCuentaPorPagar: number
+  metodo_pagoCuentaPorPagar: 'EFECTIVO' | 'TRANSFERENCIA'
+  monto_pagoCuentaPorPagar: string
+  fecha_pagoCuentaPorPagar: string
+}
+
+export interface CuentaPorPagar {
+  id_cuentaPorPagar: number
+  concepto_cuentaPorPagar: string
+  documento_cuentaPorPagar: string | null
+  fecha_emision_cuentaPorPagar: string
+  fecha_vencimiento_cuentaPorPagar: string | null
+  monto_total_cuentaPorPagar: string
+  estado_cuentaPorPagar: 'PENDIENTE' | 'PARCIAL' | 'PAGADA' | 'ANULADA'
+  observacion_cuentaPorPagar: string | null
+  fecha_recepcion_mercancia: string | null
+  proveedor: Proveedor
+  detalles: DetalleCuentaPorPagar[]
+  pagos: PagoCuentaPorPagar[]
 }
 
 // ---- reporte de cuentas cobradas (GET /billing/facturas/pagadas) ----
 
-// Un item consumido de la cuenta; los hijos son componentes de combo (precio 0)
-// y adiciones (precio > 0).
+// Un item exactamente incluido en una factura. La proporcion y el subtotal se
+// congelan al emitirla, para que las rondas posteriores no alteren el recibo.
 export interface ItemCuentaPagada {
   id: number
   nombre: string
   cantidad: number
   precio_unitario: string
-  hijos: { id: number; nombre: string; cantidad: number; precio_unitario: string }[]
+  proporcion: string
+  subtotal: string
 }
 
 export interface PagoCuenta {
@@ -358,8 +448,7 @@ export interface CuentaPagada {
   pedido: {
     id_pedido: number
     tipo: TipoPedido
-    mesa_numero: number | null
-    zona: string | null
+    ficha_numero: string | null
     mesero: string | null
     // Solo en domicilios.
     cliente: { nombre: string | null; telefono: string | null; direccion: string | null } | null
@@ -629,6 +718,6 @@ export interface ReporteResumen {
   topProductos: { nombre: string; unidades: number; ingresos: number }[]
   porCategoria: { categoria: string; unidades: number; ingresos: number }[]
   porMesero: { mesero: string; ventas: number; pedidos: number; ticketPromedio: number }[]
-  porZona: { zona: string; ventas: number; cuentas: number }[]
-  ocupacionMesas: { LIBRE: number; OCUPADA: number; RESERVADA: number; DESACTIVADA: number }
+  porFicha: { ficha: string; ventas: number; cuentas: number }[]
+  ocupacionFichas: { DISPONIBLES: number; OCUPADAS: number; DESACTIVADAS: number }
 }
