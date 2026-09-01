@@ -2,10 +2,14 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException, 
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, EstadoFactura } from '../generated/prisma/client';
 import { BillingConfigService } from './billing-config.service';
+import { recalcularEstadoPedido } from '../orders/estado-pedido';
 
 const FACTURA_INCLUDE = {
   pagos: true,
-  subcuenta: { include: { pedido: { select: { id_pedido: true, estado_pedido: true, mesa_pedido: true } } } },
+  detalles: { include: { detalleComanda: { include: { producto: true, combo: true } } } },
+  subcuenta: {
+    include: { pedido: { select: { id_pedido: true, estado_pedido: true, id_ficha_pedido: true } } },
+  },
 } satisfies Prisma.FacturaInclude;
 
 // Nombre para mostrar de un usuario: el del empleado si lo tiene, si no el email.
@@ -36,10 +40,10 @@ export class FacturasService {
   // config activa (el "servicio" de este dominio ES la propina sugerida). Se
   // guarda como monto_servicio_factura, asi el prorrateo de pagos y la
   // anulacion (que ya operan sobre esa columna) no necesitan cambios.
-  async emitir(idSubcuenta: number, porcentajePropina?: number, montoServicio?: number) {
+  async emitir(idSubcuenta: number, porcentajePropina?: number, montoServicio?: number, idsDetalle?: number[]) {
     return this.prisma.$transaction(async (tx) => {
-      // Bloqueo: dos emisiones simultaneas sobre la misma subcuenta crearian
-      // dos facturas vigentes (el chequeo de abajo pasaria en ambas).
+      // Bloqueo: dos cobros simultaneos no pueden tomar la misma proporcion
+      // pendiente de un producto.
       const filas = await tx.$queryRaw<{ id_subcuenta: number }[]>`
         SELECT id_subcuenta FROM "Subcuenta" WHERE id_subcuenta = ${idSubcuenta} FOR UPDATE
       `;
@@ -49,15 +53,8 @@ export class FacturasService {
         where: { id_subcuenta: idSubcuenta },
         include: { pedido: true },
       });
-      if (subcuenta.pedido.estado_pedido === 'CANCELADO' || subcuenta.pedido.estado_pedido === 'PAGADO') {
+      if (subcuenta.pedido.estado_pedido === 'CANCELADO' || subcuenta.pedido.estado_pedido === 'CERRADO') {
         throw new ConflictException(`No se puede facturar: el pedido esta ${subcuenta.pedido.estado_pedido}`);
-      }
-
-      const vigente = await tx.factura.findFirst({
-        where: { id_subcuenta_factura: idSubcuenta, estado_factura: { not: 'ANULADA' } },
-      });
-      if (vigente) {
-        throw new ConflictException('Esta subcuenta ya tiene una factura vigente; anulala si necesitas refacturar');
       }
 
       // Defensa (seccion 5): ningun item del pedido puede quedar sin asignar
@@ -80,37 +77,83 @@ export class FacturasService {
       // hijos (seccion 15): los hijos de combo van en 0 pero podrian tener
       // precio propio en el futuro (adiciones catalogadas).
       const directos = await tx.detalleComanda.findMany({
-        where: { id_subcuenta_dc: idSubcuenta, estado_dc: { not: 'CANCELADO' } },
+        where: {
+          id_subcuenta_dc: idSubcuenta,
+          estado_dc: { not: 'CANCELADO' },
+          ...(idsDetalle !== undefined && { id_detalleComanda: { in: idsDetalle } }),
+        },
+        include: {
+          facturasDetalle: {
+            where: {
+              factura: { id_subcuenta_factura: idSubcuenta, estado_factura: { not: 'ANULADA' } },
+            },
+          },
+        },
       });
       const repartos = await tx.subcuentaDetalleComanda.findMany({
-        where: { id_subcuenta_sdc: idSubcuenta, detalleComanda: { estado_dc: { not: 'CANCELADO' } } },
-        include: { detalleComanda: true },
+        where: {
+          id_subcuenta_sdc: idSubcuenta,
+          detalleComanda: {
+            estado_dc: { not: 'CANCELADO' },
+            ...(idsDetalle !== undefined && { id_detalleComanda: { in: idsDetalle } }),
+          },
+        },
+        include: {
+          detalleComanda: {
+            include: {
+              facturasDetalle: {
+                where: {
+                  factura: { id_subcuenta_factura: idSubcuenta, estado_factura: { not: 'ANULADA' } },
+                },
+              },
+            },
+          },
+        },
       });
       if (directos.length === 0 && repartos.length === 0) {
-        throw new UnprocessableEntityException('Esta subcuenta no tiene items para facturar');
+        throw new UnprocessableEntityException('La subcuenta no tiene los productos indicados');
       }
 
-      // Solo se factura comida ya entregada: lo pendiente se entrega o se
-      // cancela primero (el pedido pasa a PAGADO despues de ENTREGADO).
-      const hayPendientes =
-        directos.some((d) => d.estado_dc === 'PREPARANDO') ||
-        repartos.some((r) => r.detalleComanda.estado_dc === 'PREPARANDO');
-      if (hayPendientes) {
-        throw new ConflictException('Hay items de esta subcuenta aun en preparacion; entregalos o cancelalos antes de facturar');
-      }
-
+      const asignaciones: Array<{
+        idDetalle: number;
+        proporcion: Prisma.Decimal;
+        subtotal: Prisma.Decimal;
+      }> = [];
       let subtotal = new Prisma.Decimal(0);
       for (const d of directos) {
-        subtotal = subtotal.plus(d.precio_unitario_dc.times(d.cantidad_producto_dc));
+        const usada = d.facturasDetalle.reduce(
+          (total, registro) => total.plus(registro.proporcion_facturada_fd),
+          new Prisma.Decimal(0),
+        );
+        const disponible = Prisma.Decimal.max(new Prisma.Decimal(0), new Prisma.Decimal(1).minus(usada));
+        if (disponible.isZero()) continue;
+        const valor = d.precio_unitario_dc.times(d.cantidad_producto_dc).times(disponible).toDecimalPlaces(4);
+        if (valor.isZero()) continue;
+        asignaciones.push({ idDetalle: d.id_detalleComanda, proporcion: disponible, subtotal: valor });
+        subtotal = subtotal.plus(valor);
       }
       for (const r of repartos) {
-        subtotal = subtotal.plus(
-          r.detalleComanda.precio_unitario_dc.times(r.detalleComanda.cantidad_producto_dc).times(r.proporcion_sdc),
+        const usada = r.detalleComanda.facturasDetalle.reduce(
+          (total, registro) => total.plus(registro.proporcion_facturada_fd),
+          new Prisma.Decimal(0),
         );
+        const disponible = Prisma.Decimal.max(new Prisma.Decimal(0), r.proporcion_sdc.minus(usada));
+        if (disponible.isZero()) continue;
+        const valor = r.detalleComanda.precio_unitario_dc
+          .times(r.detalleComanda.cantidad_producto_dc)
+          .times(disponible)
+          .toDecimalPlaces(4);
+        if (valor.isZero()) continue;
+        asignaciones.push({
+          idDetalle: r.detalleComanda.id_detalleComanda,
+          proporcion: disponible,
+          subtotal: valor,
+        });
+        subtotal = subtotal.plus(valor);
       }
       subtotal = subtotal.toDecimalPlaces(4);
       if (subtotal.isZero()) {
-        throw new UnprocessableEntityException('El total a facturar de esta subcuenta es 0');
+        throw new UnprocessableEntityException('Los productos seleccionados ya estan facturados o su total es 0');
       }
 
       const config = await this.billingConfigService.findActiva(tx);
@@ -131,6 +174,13 @@ export class FacturasService {
           monto_servicio_factura: servicio,
           monto_impuestos_factura: impuestos,
           monto_total_factura: total,
+          detalles: {
+            create: asignaciones.map((asignacion) => ({
+              id_detalleComanda_fd: asignacion.idDetalle,
+              proporcion_facturada_fd: asignacion.proporcion,
+              subtotal_facturado_fd: asignacion.subtotal,
+            })),
+          },
         },
         include: FACTURA_INCLUDE,
       });
@@ -198,14 +248,8 @@ export class FacturasService {
         include: FACTURA_INCLUDE,
       });
 
-      // El pedido deja de estar totalmente pagado: vuelve a ENTREGADO para
-      // poder refacturar. La mesa NO se toca (ya se libero al pagar y puede
-      // estar ocupada por otro pedido).
       const subcuenta = await tx.subcuenta.findUniqueOrThrow({ where: { id_subcuenta: factura.id_subcuenta_factura } });
-      const pedido = await tx.pedido.findUniqueOrThrow({ where: { id_pedido: subcuenta.id_pedido_subcuenta } });
-      if (pedido.estado_pedido === 'PAGADO') {
-        await tx.pedido.update({ where: { id_pedido: pedido.id_pedido }, data: { estado_pedido: 'ENTREGADO' } });
-      }
+      await recalcularEstadoPedido(tx, subcuenta.id_pedido_subcuenta);
 
       return {
         factura: anulada,
@@ -266,7 +310,7 @@ export class FacturasService {
   }
 
   // Cuentas cobradas (facturas PAGADA) con su detalle para el reporte de caja:
-  // mesa, montos snapshoteados, metodos de pago y los productos de la cuenta.
+  // ficha, montos snapshoteados, metodos de pago y los productos de la cuenta.
   // El rango filtra por fecha_emision (en el flujo de cobro emitir y pagar
   // ocurren en la misma sesion, asi que equivale a "cobradas" en la ventana).
   // Se devuelve un shape ya aplanado para no acoplar el cliente al modelo.
@@ -314,7 +358,7 @@ export class FacturasService {
                 nombre_cliente_pedido: true,
                 telefono_cliente_pedido: true,
                 direccion_cliente_pedido: true,
-                mesa: { select: { numero_mesa: true, zona: { select: { identificador_zona: true } } } },
+                ficha: { select: { numero_ficha: true } },
                 mesero: {
                   select: {
                     email_usuario: true,
@@ -323,19 +367,15 @@ export class FacturasService {
                 },
               },
             },
-            // Items asignados directo a la cuenta (padres); los hijos (combo y
-            // adiciones) anidados. La suma de padres + adiciones = subtotal.
-            detallesComanda: {
-              where: { estado_dc: { not: 'CANCELADO' }, id_detalleComandaPadre_dc: null },
-              orderBy: { id_detalleComanda: 'asc' },
+          },
+        },
+        detalles: {
+          orderBy: { id_facturaDetalle: 'asc' },
+          include: {
+            detalleComanda: {
               include: {
                 producto: { select: { nombre_producto: true } },
                 combo: { select: { nombre_combo: true } },
-                hijos: {
-                  where: { estado_dc: { not: 'CANCELADO' } },
-                  orderBy: { id_detalleComanda: 'asc' },
-                  include: { producto: { select: { nombre_producto: true } } },
-                },
               },
             },
           },
@@ -356,8 +396,7 @@ export class FacturasService {
       pedido: {
         id_pedido: f.subcuenta.pedido.id_pedido,
         tipo: f.subcuenta.pedido.tipo_pedido,
-        mesa_numero: f.subcuenta.pedido.mesa?.numero_mesa ?? null,
-        zona: f.subcuenta.pedido.mesa?.zona?.identificador_zona ?? null,
+        ficha_numero: f.subcuenta.pedido.ficha?.numero_ficha ?? null,
         mesero: nombreUsuario(f.subcuenta.pedido.mesero),
         cliente:
           f.subcuenta.pedido.tipo_pedido === 'DOMICILIO'
@@ -375,17 +414,14 @@ export class FacturasService {
         excedente: p.monto_excedente_pago,
         destino: p.destino_excedente_pago,
       })),
-      items: f.subcuenta.detallesComanda.map((d) => ({
-        id: d.id_detalleComanda,
-        nombre: d.producto?.nombre_producto ?? d.combo?.nombre_combo ?? 'Item',
-        cantidad: d.cantidad_producto_dc,
-        precio_unitario: d.precio_unitario_dc,
-        hijos: d.hijos.map((h) => ({
-          id: h.id_detalleComanda,
-          nombre: h.producto?.nombre_producto ?? 'Producto',
-          cantidad: h.cantidad_producto_dc,
-          precio_unitario: h.precio_unitario_dc,
-        })),
+      items: f.detalles.map((registro) => ({
+        id: registro.detalleComanda.id_detalleComanda,
+        nombre:
+          registro.detalleComanda.producto?.nombre_producto ?? registro.detalleComanda.combo?.nombre_combo ?? 'Item',
+        cantidad: registro.detalleComanda.cantidad_producto_dc,
+        precio_unitario: registro.detalleComanda.precio_unitario_dc,
+        proporcion: registro.proporcion_facturada_fd,
+        subtotal: registro.subtotal_facturado_fd,
       })),
     }));
   }

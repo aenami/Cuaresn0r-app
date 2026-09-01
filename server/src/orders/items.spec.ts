@@ -16,6 +16,7 @@ function setup(opts: { item?: Record<string, unknown> | null; hijos?: { id_detal
     dcUpdate: jest.fn().mockResolvedValue({}),
     dcFindMany: jest.fn().mockResolvedValue(hijos),
     dcFind: jest.fn().mockResolvedValue({ id_detalleComanda: 1 }),
+    facturaDetalleFindFirst: jest.fn().mockResolvedValue(null),
     recalcular: jest.fn().mockResolvedValue(undefined),
     revertir: jest.fn().mockResolvedValue(undefined),
   };
@@ -26,6 +27,7 @@ function setup(opts: { item?: Record<string, unknown> | null; hijos?: { id_detal
       findMany: spies.dcFindMany,
       findUniqueOrThrow: spies.dcFind,
     },
+    facturaDetalle: { findFirst: spies.facturaDetalleFindFirst },
   };
   const prisma = { $transaction: (cb: (t: typeof tx) => unknown) => cb(tx) } as unknown as PrismaService;
   const pedidos = { recalcularEstadoPedido: spies.recalcular } as unknown as PedidosService;
@@ -67,8 +69,13 @@ describe('ItemsService.cancelar', () => {
     expect(spies.revertir).toHaveBeenCalledWith(expect.anything(), 1);
   });
 
-  it('cancela en cascada los hijos del combo, cada uno con su reverso', async () => {
-    const { svc, spies } = setup({ hijos: [{ id_detalleComanda: 2 }, { id_detalleComanda: 3 }] });
+  it('cancela en cascada los hijos del combo y revierte los que ya estaban preparando', async () => {
+    const { svc, spies } = setup({
+      hijos: [
+        { id_detalleComanda: 2, estado_dc: 'PREPARANDO' },
+        { id_detalleComanda: 3, estado_dc: 'PREPARANDO' },
+      ],
+    });
     await svc.cancelar(10, 1);
     // 2 hijos + el header = 3 updates a CANCELADO y 3 reversos de inventario.
     expect(spies.dcUpdate).toHaveBeenCalledTimes(3);

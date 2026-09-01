@@ -1,4 +1,12 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { InventoryService } from '../recipes/inventory.service';
 import { ImpresionService } from '../printing/impresion.service';
@@ -22,7 +30,7 @@ export class ComandasService {
     const comanda = await this.prisma.$transaction(async (tx) => {
       const pedido = await tx.pedido.findUnique({ where: { id_pedido: idPedido } });
       if (!pedido) throw new NotFoundException('Pedido no encontrado');
-      if (pedido.estado_pedido === 'PAGADO' || pedido.estado_pedido === 'CANCELADO') {
+      if (pedido.estado_pedido === 'CERRADO' || pedido.estado_pedido === 'CANCELADO' || pedido.fecha_cierre_pedido !== null) {
         throw new ConflictException(`No se pueden agregar items: el pedido esta ${pedido.estado_pedido}`);
       }
 
@@ -39,19 +47,95 @@ export class ComandasService {
         await this.crearItem(tx, idPedido, comanda.id_comanda, item, subcuentaPrincipal.id_subcuenta);
       }
 
-      await this.pedidosService.recalcularEstadoPedido(tx, idPedido);
-
       return tx.comanda.findUniqueOrThrow({ where: { id_comanda: comanda.id_comanda }, include: COMANDA_INCLUDE });
     });
+    return comanda;
+  }
 
-    // Impresion SIEMPRE fuera de la transaccion: si la termica esta apagada
-    // la comanda ya quedo guardada (el papel se reimprime; el pedido no).
-    // Fire-and-forget: el mesero no espera a la impresora.
-    void this.impresionService
-      .imprimirComanda(comanda.id_comanda)
-      .catch((error: unknown) =>
-        this.logger.error(`Impresion de comanda ${comanda.id_comanda} fallo: ${error instanceof Error ? error.message : String(error)}`),
+  async enviar(idPedido: number, idComanda: number, idUsuario: number, rolUsuario: string) {
+    const comanda = await this.prisma.$transaction(async (tx) => {
+      const filas = await tx.$queryRaw<Array<{ id_comanda: number }>>`
+        SELECT id_comanda FROM "Comanda" WHERE id_comanda = ${idComanda} FOR UPDATE
+      `;
+      if (!filas[0]) throw new NotFoundException('Comanda no encontrada');
+
+      const actual = await tx.comanda.findUniqueOrThrow({
+        where: { id_comanda: idComanda },
+        include: {
+          pedido: true,
+          detalles: {
+            include: {
+              ingredientesPersonalizados: true,
+              facturasDetalle: {
+                include: { factura: { select: { estado_factura: true } } },
+              },
+            },
+          },
+        },
+      });
+      if (actual.id_pedido_comanda !== idPedido) throw new NotFoundException('Comanda no encontrada en este pedido');
+      if (actual.estado_comanda !== 'BORRADOR') throw new ConflictException('Esta comanda ya fue enviada');
+      if (actual.pedido.estado_pedido === 'CERRADO' || actual.pedido.estado_pedido === 'CANCELADO') {
+        throw new ConflictException(`No se puede enviar: el pedido esta ${actual.pedido.estado_pedido}`);
+      }
+
+      const comerciales = actual.detalles.filter(
+        (detalle) => detalle.estado_dc === 'PENDIENTE' && detalle.precio_unitario_dc.times(detalle.cantidad_producto_dc).greaterThan(0),
       );
+      const haySinPagar = comerciales.some((detalle) => {
+        const proporcionPagada = detalle.facturasDetalle
+          .filter((registro) => registro.factura.estado_factura === 'PAGADA')
+          .reduce((total, registro) => total.plus(registro.proporcion_facturada_fd), new Prisma.Decimal(0));
+        return proporcionPagada.lessThan(1);
+      });
+
+      if (haySinPagar && rolUsuario !== 'ADMIN' && rolUsuario !== 'CAJERO') {
+        throw new ForbiddenException('Un cajero o administrador debe autorizar el envio de productos sin pagar');
+      }
+      if (actual.pedido.tipo_pedido === 'LOCAL' && !haySinPagar && actual.pedido.id_ficha_pedido === null) {
+        throw new ConflictException('Asigna una ficha antes de enviar una comanda pagada');
+      }
+
+      for (const detalle of actual.detalles.filter((item) => item.estado_dc === 'PENDIENTE')) {
+        if (detalle.id_receta_usada_dc !== null) {
+          await this.inventoryService.descontarPorReceta(tx, {
+            idReceta: detalle.id_receta_usada_dc,
+            cantidadProducto: detalle.cantidad_producto_dc,
+            idDetalleComanda: detalle.id_detalleComanda,
+            deltasPersonalizados: detalle.ingredientesPersonalizados.map((personalizacion) => ({
+              idIngrediente: personalizacion.id_ingrediente_dci,
+              delta: Number(personalizacion.cantidad_delta),
+            })),
+          });
+        }
+      }
+
+      await tx.detalleComanda.updateMany({
+        where: { id_comanda_dc: idComanda, estado_dc: 'PENDIENTE' },
+        data: { estado_dc: 'PREPARANDO' },
+      });
+      await tx.comanda.update({
+        where: { id_comanda: idComanda },
+        data: {
+          estado_comanda: 'ENVIADA',
+          fecha_envio_comanda: new Date(),
+          id_usuario_envia_comanda: idUsuario,
+          autorizada_sin_pago: haySinPagar,
+        },
+      });
+      await this.pedidosService.recalcularEstadoPedido(tx, idPedido);
+
+      return tx.comanda.findUniqueOrThrow({ where: { id_comanda: idComanda }, include: COMANDA_INCLUDE });
+    });
+
+    // La impresion se agenda despues de confirmar la transaccion. El servicio
+    // conserva el trabajo aunque la termica no tenga papel o el agente local
+    // este temporalmente desconectado.
+    void this.impresionService.imprimirComanda(comanda.id_comanda).catch((error: unknown) => {
+      this.logger.error(
+        `Impresion de comanda ${comanda.id_comanda} fallo: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
 
     return comanda;
   }
@@ -60,6 +144,7 @@ export class ComandasService {
     return this.prisma.$transaction(async (tx) => {
       const comanda = await tx.comanda.findUnique({ where: { id_comanda: idComanda } });
       if (!comanda || comanda.id_pedido_comanda !== idPedido) throw new NotFoundException('Comanda no encontrada en este pedido');
+      if (comanda.estado_comanda !== 'ENVIADA') throw new ConflictException('Primero envia la comanda a preparacion');
 
       await tx.detalleComanda.updateMany({
         where: { id_comanda_dc: idComanda, estado_dc: 'PREPARANDO' },
@@ -79,19 +164,6 @@ export class ComandasService {
       throw new UnprocessableEntityException(`La subcuenta ${idSubcuenta} no pertenece a este pedido`);
     }
     return idSubcuenta;
-  }
-
-  // Una subcuenta con factura vigente esta congelada: un item agregado a
-  // ella ya no entraria en esa factura (inmutable) y quedaria sin cobrar.
-  private async assertSubcuentaSinFacturaVigente(tx: Prisma.TransactionClient, idSubcuenta: number) {
-    const factura = await tx.factura.findFirst({
-      where: { id_subcuenta_factura: idSubcuenta, estado_factura: { not: 'ANULADA' } },
-    });
-    if (factura) {
-      throw new ConflictException(
-        `La subcuenta ${idSubcuenta} ya tiene una factura vigente; agrega el item a otra subcuenta o anula la factura`,
-      );
-    }
   }
 
   private async crearItem(
@@ -114,7 +186,6 @@ export class ComandasService {
     }
 
     const idSubcuenta = await this.resolveSubcuenta(tx, idPedido, item.idSubcuenta, idSubcuentaDefault);
-    await this.assertSubcuentaSinFacturaVigente(tx, idSubcuenta);
 
     const principal = esProducto
       ? await this.crearDetalleProducto(
@@ -176,18 +247,8 @@ export class ComandasService {
       },
     });
 
-    let deltas: { idIngrediente: number; delta: number }[] = [];
     if (datos.personalizaciones?.length) {
-      deltas = await this.crearPersonalizaciones(tx, detalle.id_detalleComanda, datos.personalizaciones);
-    }
-
-    if (recetaActiva) {
-      await this.inventoryService.descontarPorReceta(tx, {
-        idReceta: recetaActiva.id_receta,
-        cantidadProducto: datos.cantidad,
-        idDetalleComanda: detalle.id_detalleComanda,
-        deltasPersonalizados: deltas,
-      });
+      await this.crearPersonalizaciones(tx, detalle.id_detalleComanda, datos.personalizaciones);
     }
 
     return detalle;
@@ -260,18 +321,8 @@ export class ComandasService {
       // personalizaciones se aplican solo a la primera (delete tras consumir).
       const personalizaciones = personalizacionesPorProducto.get(componente.id_producto_detalleCombo);
       personalizacionesPorProducto.delete(componente.id_producto_detalleCombo);
-      let deltas: { idIngrediente: number; delta: number }[] = [];
       if (personalizaciones?.length) {
-        deltas = await this.crearPersonalizaciones(tx, hijo.id_detalleComanda, personalizaciones);
-      }
-
-      if (recetaActiva) {
-        await this.inventoryService.descontarPorReceta(tx, {
-          idReceta: recetaActiva.id_receta,
-          cantidadProducto: cantidadHijo,
-          idDetalleComanda: hijo.id_detalleComanda,
-          deltasPersonalizados: deltas,
-        });
+        await this.crearPersonalizaciones(tx, hijo.id_detalleComanda, personalizaciones);
       }
     }
 

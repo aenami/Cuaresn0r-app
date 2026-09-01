@@ -6,7 +6,7 @@ import { EscPosBuilder, columnasPorAncho } from './escpos';
 export const COMANDA_PARA_IMPRESION = {
   pedido: {
     include: {
-      mesa: { include: { zona: true } },
+      ficha: true,
       mesero: { select: { email_usuario: true } },
     },
   },
@@ -56,21 +56,18 @@ export const FACTURA_PARA_IMPRESION = {
           nombre_cliente_pedido: true,
           telefono_cliente_pedido: true,
           direccion_cliente_pedido: true,
-          mesa: { select: { numero_mesa: true, zona: { select: { nombre_zona: true } } } },
+          ficha: { select: { numero_ficha: true } },
         },
       },
-      // Items de la cuenta: padres con sus hijos (componentes de combo y adiciones).
-      detallesComanda: {
-        where: { estado_dc: { not: 'CANCELADO' }, id_detalleComandaPadre_dc: null },
-        orderBy: { id_detalleComanda: 'asc' },
+    },
+  },
+  detalles: {
+    orderBy: { id_facturaDetalle: 'asc' },
+    include: {
+      detalleComanda: {
         include: {
           producto: { select: { nombre_producto: true } },
           combo: { select: { nombre_combo: true } },
-          hijos: {
-            where: { estado_dc: { not: 'CANCELADO' } },
-            orderBy: { id_detalleComanda: 'asc' },
-            include: { producto: { select: { nombre_producto: true } } },
-          },
         },
       },
     },
@@ -78,7 +75,7 @@ export const FACTURA_PARA_IMPRESION = {
 } satisfies Prisma.FacturaInclude;
 
 export type FacturaParaImpresion = Prisma.FacturaGetPayload<{ include: typeof FACTURA_PARA_IMPRESION }>;
-type ItemFactura = FacturaParaImpresion['subcuenta']['detallesComanda'][number];
+type ItemFactura = FacturaParaImpresion['detalles'][number];
 
 // Datos del negocio para el encabezado (subconjunto de ConfiguracionNegocio).
 export interface DatosNegocioTicket {
@@ -132,12 +129,13 @@ export class TicketBuilderService {
 
     t.centrar().tamanoDoble(true).negrita(true);
     t.texto(destino === 'BARRA' ? '* BARRA *' : '* COCINA *');
-    if (pedido.mesa) {
-      t.texto(`MESA ${pedido.mesa.numero_mesa}`);
+    if (pedido.ficha) {
+      t.texto(`FICHA ${pedido.ficha.numero_ficha}`);
       t.tamanoDoble(false).negrita(false);
-      t.texto(pedido.mesa.zona.nombre_zona);
+    } else if (pedido.tipo_pedido === 'LOCAL') {
+      t.texto('SIN FICHA');
+      t.tamanoDoble(false).negrita(false);
     } else {
-      // Domicilio: no hay mesa; se identifica por el cliente.
       t.texto('DOMICILIO');
       t.tamanoDoble(false).negrita(false);
       if (pedido.nombre_cliente_pedido) t.texto(pedido.nombre_cliente_pedido);
@@ -199,8 +197,8 @@ export class TicketBuilderService {
     t.izquierda().separador();
     t.negrita(true).texto(`FACTURA DE VENTA No. ${factura.id_factura}`).negrita(false);
     t.texto(this.formatearFecha(factura.fecha_emision_factura));
-    if (pedido.mesa) {
-      t.texto(`Mesa ${pedido.mesa.numero_mesa}${pedido.mesa.zona ? ` - ${pedido.mesa.zona.nombre_zona}` : ''}`);
+    if (pedido.tipo_pedido === 'LOCAL') {
+      t.texto(pedido.ficha ? `Ficha ${pedido.ficha.numero_ficha}` : 'Sin ficha');
     } else {
       t.texto('DOMICILIO');
       if (pedido.nombre_cliente_pedido) t.texto(`Cliente: ${pedido.nombre_cliente_pedido}`);
@@ -210,7 +208,7 @@ export class TicketBuilderService {
     if (cajero) t.texto(`Cajero: ${cajero}`);
 
     t.separador();
-    for (const item of factura.subcuenta.detallesComanda) {
+    for (const item of factura.detalles) {
       this.lineaItemFactura(t, item);
     }
     t.separador();
@@ -247,23 +245,11 @@ export class TicketBuilderService {
   }
 
   private lineaItemFactura(t: EscPosBuilder, item: ItemFactura) {
-    const nombre = item.producto?.nombre_producto ?? item.combo?.nombre_combo ?? 'Item';
-    const totalLinea = item.precio_unitario_dc.times(item.cantidad_producto_dc);
-    this.lineaDoble(t, `${item.cantidad_producto_dc} x ${nombre}`, this.monto(totalLinea));
-    for (const hijo of item.hijos) {
-      const nombreHijo = hijo.producto?.nombre_producto ?? 'Producto';
-      if (hijo.precio_unitario_dc.isZero()) {
-        // Componente de combo: sin precio propio.
-        t.textoEnvuelto(`  - ${hijo.cantidad_producto_dc} x ${nombreHijo}`, 4);
-      } else {
-        // Adicion con cargo.
-        this.lineaDoble(
-          t,
-          `  + ${hijo.cantidad_producto_dc} x ${nombreHijo}`,
-          this.monto(hijo.precio_unitario_dc.times(hijo.cantidad_producto_dc)),
-        );
-      }
-    }
+    const detalle = item.detalleComanda;
+    const nombre = detalle.producto?.nombre_producto ?? detalle.combo?.nombre_combo ?? 'Item';
+    const cantidad = new Prisma.Decimal(detalle.cantidad_producto_dc).times(item.proporcion_facturada_fd);
+    const cantidadTexto = cantidad.isInteger() ? cantidad.toFixed(0) : cantidad.toFixed(2);
+    this.lineaDoble(t, `${cantidadTexto} x ${nombre}`, this.monto(item.subtotal_facturado_fd));
   }
 
   // Linea de dos columnas: etiqueta a la izquierda, valor pegado a la derecha.

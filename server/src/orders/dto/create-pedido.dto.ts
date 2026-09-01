@@ -1,9 +1,8 @@
-import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
 import { TipoPedido } from '../../generated/prisma/client';
 
-// Un pedido es de MESA (por defecto) o DOMICILIO.
-//   - MESA:      idMesa obligatorio; sin datos de cliente.
-//   - DOMICILIO: no ocupa mesa; nombre/telefono/direccion del cliente obligatorios.
+// Un pedido es LOCAL (por defecto) o DOMICILIO. El pedido LOCAL nace sin
+// ficha: el cajero se la asigna al cobrar o al autorizar el envio sin pago.
 // mesero_pedido NO va aqui: sale del usuario autenticado (JWT), nunca del body,
 // para que no se pueda abrir un pedido "a nombre de" otro mesero.
 export class CreatePedidoDto {
@@ -11,12 +10,7 @@ export class CreatePedidoDto {
   @IsEnum(TipoPedido)
   tipo?: TipoPedido;
 
-  // Requerido salvo en domicilio (donde no hay mesa).
-  @ValidateIf((o: CreatePedidoDto) => o.tipo !== TipoPedido.DOMICILIO)
-  @IsInt()
-  idMesa?: number;
-
-  // Datos de entrega: requeridos solo para DOMICILIO, ignorados en pedidos de mesa.
+  // Datos de entrega: requeridos solo para DOMICILIO, ignorados en pedidos locales.
   @ValidateIf((o: CreatePedidoDto) => o.tipo === TipoPedido.DOMICILIO)
   @IsString()
   @IsNotEmpty()

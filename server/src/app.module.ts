@@ -10,9 +10,22 @@ import { PayrollModule } from './payroll/payroll.module';
 import { PrintingModule } from './printing/printing.module';
 import { ReportsModule } from './reports/reports.module';
 import { HealthController } from './health.controller';
+import { FichasModule } from './fichas/fichas.module';
 
 @Module({
-  imports: [PrismaModule, OrdersModule, AuthModule, RecipesModule, CatalogModule, SalonModule, BillingModule, PayrollModule, PrintingModule, ReportsModule],
+  imports: [
+    PrismaModule,
+    OrdersModule,
+    AuthModule,
+    RecipesModule,
+    CatalogModule,
+    SalonModule,
+    FichasModule,
+    BillingModule,
+    PayrollModule,
+    PrintingModule,
+    ReportsModule,
+  ],
   controllers: [HealthController],
 })
 export class AppModule {}

@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsNumber, IsEnum, Min } from 'class-validator';
+import { IsNotEmpty, IsString, IsNumber, IsEnum, Min, IsOptional } from 'class-validator';
 
 export enum MeasureUnits {
   gr = 'g',
@@ -22,4 +22,14 @@ export class CreateIngredientDto {
   @IsNumber()
   @Min(0)
   price!: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  lowThreshold?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  highThreshold?: number | null;
 }

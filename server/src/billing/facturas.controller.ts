@@ -17,6 +17,7 @@ export class FacturasController {
       createFacturaDto.idSubcuenta,
       createFacturaDto.porcentajePropina,
       createFacturaDto.montoServicio,
+      createFacturaDto.idsDetalle,
     );
   }
 
@@ -30,7 +31,7 @@ export class FacturasController {
     return this.facturasService.findAll(estado, desde, hasta, pedido);
   }
 
-  // Reporte de cuentas cobradas (factura PAGADA) con su detalle: mesa, montos,
+  // Reporte de cuentas cobradas (factura PAGADA) con su detalle: ficha, montos,
   // metodos de pago y productos consumidos. Ruta estatica antes de ':id'.
   @Get('pagadas')
   findPagadas(@Query('desde') desde?: string, @Query('hasta') hasta?: string) {

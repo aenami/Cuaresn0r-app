@@ -10,6 +10,9 @@ export const ITEM_INCLUDE = {
   // personalizaciones de ingredientes propias.
   hijos: { include: { producto: true, ingredientesPersonalizados: { include: { ingrediente: true } } } },
   subcuentasReparto: true,
+  facturasDetalle: {
+    include: { factura: { select: { id_factura: true, estado_factura: true } } },
+  },
 } as const;
 
 export const COMANDA_INCLUDE = {
@@ -19,8 +22,19 @@ export const COMANDA_INCLUDE = {
 } as const;
 
 export const PEDIDO_INCLUDE = {
-  mesa: { include: { zona: true } },
+  ficha: true,
   mesero: { select: { id_usuario: true, email_usuario: true } },
-  subcuentas: true,
+  subcuentas: {
+    include: {
+      comentarios: {
+        include: {
+          usuario: { select: { id_usuario: true, email_usuario: true } },
+          usuarioResuelve: { select: { id_usuario: true, email_usuario: true } },
+        },
+        orderBy: { fecha_comentarioCuenta: 'desc' as const },
+      },
+      facturas: { include: { pagos: true, detalles: true } },
+    },
+  },
   comandas: { include: COMANDA_INCLUDE },
 } as const;

@@ -76,7 +76,7 @@ export class TablesService {
   }
 
   // "Eliminar" una mesa = sacarla de servicio (soft), nunca borrado fisico:
-  // preserva la trazabilidad de Pedido.mesa_pedido historico.
+  // conserva la distribucion fisica del salon. Los pedidos usan fichas.
   async deactivate(id: number) {
     const mesa = await this.findOne(id);
     if (mesa.estado_mesa === 'OCUPADA') {

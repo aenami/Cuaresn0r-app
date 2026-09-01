@@ -37,6 +37,9 @@ function setup(facturaOverrides: Partial<FacturaMock> = {}, turno: unknown = { i
     facturaUpdate: jest.fn().mockResolvedValue({}),
     subFindUnique: jest.fn().mockResolvedValue({ id_pedido_subcuenta: 7 }),
     subFindMany: jest.fn().mockResolvedValue([]), // sin subcuentas con items -> no marca el pedido
+    pedidoFind: jest.fn().mockResolvedValue({ id_pedido: 7, estado_pedido: 'EN_PREPARACION', fecha_cierre_pedido: null }),
+    pedidoUpdate: jest.fn().mockResolvedValue({}),
+    dcFindMany: jest.fn().mockResolvedValue([]),
     queryRaw: jest.fn().mockResolvedValue([{ id_factura: 1 }]),
   };
   const tx = {
@@ -44,6 +47,8 @@ function setup(facturaOverrides: Partial<FacturaMock> = {}, turno: unknown = { i
     factura: { findUniqueOrThrow: spies.facturaFind, update: spies.facturaUpdate },
     pago: { create: spies.pagoCreate },
     subcuenta: { findUniqueOrThrow: spies.subFindUnique, findMany: spies.subFindMany },
+    pedido: { findUniqueOrThrow: spies.pedidoFind, update: spies.pedidoUpdate },
+    detalleComanda: { findMany: spies.dcFindMany },
     $queryRaw: spies.queryRaw,
   };
   const prisma = { $transaction: (cb: (t: typeof tx) => unknown) => cb(tx) } as unknown as PrismaService;

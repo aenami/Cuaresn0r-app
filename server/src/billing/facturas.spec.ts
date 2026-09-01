@@ -22,7 +22,13 @@ function setup(config: { servicio: number; impuestos: number } = { servicio: 10,
     detalleComanda: {
       findFirst: jest.fn().mockResolvedValue(null), // nada sin asignar
       findMany: jest.fn().mockResolvedValue([
-        { precio_unitario_dc: new Prisma.Decimal(10000), cantidad_producto_dc: 1, estado_dc: 'ENTREGADO' },
+        {
+          id_detalleComanda: 1,
+          precio_unitario_dc: new Prisma.Decimal(10000),
+          cantidad_producto_dc: 1,
+          estado_dc: 'ENTREGADO',
+          facturasDetalle: [],
+        },
       ]),
     },
     subcuentaDetalleComanda: { findMany: jest.fn().mockResolvedValue([]) },
@@ -129,7 +135,7 @@ function setupAnular(opts: {
     turnoPropio = { id_turno: 3 },
     turnosAbiertos,
     esperado = new Prisma.Decimal(1000000),
-    estadoPedido = 'PAGADO',
+    estadoPedido = 'CERRADO',
   } = opts;
 
   const spies = {
@@ -142,8 +148,16 @@ function setupAnular(opts: {
     turnoUpdate: jest.fn().mockResolvedValue({}),
     movimientoCreate: jest.fn().mockResolvedValue({}),
     subFind: jest.fn().mockResolvedValue({ id_pedido_subcuenta: 5 }),
-    pedidoFind: jest.fn().mockResolvedValue({ id_pedido: 5, estado_pedido: estadoPedido }),
+    pedidoFind: jest.fn().mockResolvedValue({ id_pedido: 5, estado_pedido: estadoPedido, fecha_cierre_pedido: new Date() }),
     pedidoUpdate: jest.fn().mockResolvedValue({}),
+    dcFindMany: jest.fn().mockResolvedValue([
+      {
+        estado_dc: 'ENTREGADO',
+        precio_unitario_dc: new Prisma.Decimal(10000),
+        cantidad_producto_dc: 1,
+        facturasDetalle: [],
+      },
+    ]),
   };
   const tx = {
     $queryRaw: spies.queryRaw,
@@ -157,6 +171,7 @@ function setupAnular(opts: {
     movimientoCaja: { create: spies.movimientoCreate },
     subcuenta: { findUniqueOrThrow: spies.subFind },
     pedido: { findUniqueOrThrow: spies.pedidoFind, update: spies.pedidoUpdate },
+    detalleComanda: { findMany: spies.dcFindMany },
   };
   const prisma = { $transaction: (cb: (t: typeof tx) => unknown) => cb(tx) } as unknown as PrismaService;
   return { svc: new FacturasService(prisma, {} as unknown as BillingConfigService), spies };
@@ -180,7 +195,7 @@ describe('FacturasService.anular (guardas)', () => {
 });
 
 describe('FacturasService.anular (efecto sobre caja y pedido)', () => {
-  it('sin pagos: marca ANULADA con motivo, no toca caja y devuelve el pedido a ENTREGADO', async () => {
+  it('sin pagos: marca ANULADA con motivo, no toca caja y deja el pedido como ENTREGADO', async () => {
     const { svc, spies } = setupAnular({ pagos: [] });
     const res = await svc.anular(1, 'error de digitacion', 5);
 
@@ -223,9 +238,9 @@ describe('FacturasService.anular (efecto sobre caja y pedido)', () => {
     expect(res.devolucion.devolverPorFuera.toString()).toBe('30000');
   });
 
-  it('no reabre un pedido que no estaba PAGADO', async () => {
+  it('recalcula el estado aunque el pedido ya estuviera entregado', async () => {
     const { svc, spies } = setupAnular({ estadoPedido: 'ENTREGADO' });
     await svc.anular(1, 'motivo', 5);
-    expect(spies.pedidoUpdate).not.toHaveBeenCalled();
+    expect(spies.pedidoUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: { estado_pedido: 'ENTREGADO' } }));
   });
 });

@@ -7,10 +7,9 @@ import { ImpresionService } from '../printing/impresion.service';
 import { CreateComandaDto, ComandaItemDto } from './dto/create-comanda.dto';
 import { Prisma } from '../generated/prisma/client';
 
-// ComandasService.create arma una comanda con sus items, snapshotea precio y
-// receta, y descuenta inventario dentro de la transaccion; la impresion es
-// fire-and-forget fuera de ella. Se prueban las guardas del pedido, la
-// validacion de items y el enganche con el inventario. Prisma simulado.
+// ComandasService.create guarda una ronda como BORRADOR y no descuenta nada
+// hasta que CAJERO/ADMIN la envia. Asi se puede tomar el pedido en mesa y
+// cobrarlo despues, sin comprometer inventario ni imprimir prematuramente.
 
 const comandaDto = (items: Partial<ComandaItemDto>[]): CreateComandaDto => ({ items }) as unknown as CreateComandaDto;
 
@@ -20,7 +19,7 @@ function setup(opts: {
   receta?: { id_receta: number } | null;
 } = {}) {
   const {
-    pedido = { id_pedido: 10, estado_pedido: 'EN_PREPARACION' },
+    pedido = { id_pedido: 10, estado_pedido: 'ABIERTO', fecha_cierre_pedido: null },
     producto = { id_producto: 5, nombre_producto: 'Pizza', habilitado_producto: true, precio_producto: new Prisma.Decimal(20000) },
     receta = { id_receta: 77 },
   } = opts;
@@ -29,8 +28,10 @@ function setup(opts: {
     subFindFirst: jest.fn().mockResolvedValue({ id_subcuenta: 1, id_pedido_subcuenta: 10 }),
     comandaCreate: jest.fn().mockResolvedValue({ id_comanda: 100 }),
     comandaFind: jest.fn().mockResolvedValue({ id_comanda: 100, detalles: [] }),
-    comandaFindUnique: jest.fn().mockResolvedValue({ id_comanda: 100, id_pedido_comanda: 10 }),
+    comandaFindUnique: jest.fn().mockResolvedValue({ id_comanda: 100, id_pedido_comanda: 10, estado_comanda: 'ENVIADA' }),
     comandaUpdateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    comandaUpdate: jest.fn().mockResolvedValue({}),
+    queryRaw: jest.fn().mockResolvedValue([{ id_comanda: 100 }]),
     facturaFindFirst: jest.fn().mockResolvedValue(null),
     productoFindUnique: jest.fn().mockResolvedValue(producto),
     recetaFindFirst: jest.fn().mockResolvedValue(receta),
@@ -46,11 +47,13 @@ function setup(opts: {
       create: spies.comandaCreate,
       findUniqueOrThrow: spies.comandaFind,
       findUnique: spies.comandaFindUnique,
+      update: spies.comandaUpdate,
     },
     detalleComanda: { create: spies.dcCreate, updateMany: spies.comandaUpdateMany },
     factura: { findFirst: spies.facturaFindFirst },
     producto: { findUnique: spies.productoFindUnique },
     receta: { findFirst: spies.recetaFindFirst },
+    $queryRaw: spies.queryRaw,
   };
   const prisma = { $transaction: (cb: (t: typeof tx) => unknown) => cb(tx) } as unknown as PrismaService;
   const pedidos = { recalcularEstadoPedido: spies.recalcular } as unknown as PedidosService;
@@ -65,8 +68,8 @@ describe('ComandasService.create (guardas del pedido)', () => {
     await expect(svc.create(10, comandaDto([{ idProducto: 5, cantidad: 1 }]))).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('409 si el pedido ya esta PAGADO', async () => {
-    const { svc } = setup({ pedido: { id_pedido: 10, estado_pedido: 'PAGADO' } });
+  it('409 si el pedido ya esta CERRADO', async () => {
+    const { svc } = setup({ pedido: { id_pedido: 10, estado_pedido: 'CERRADO', fecha_cierre_pedido: new Date() } });
     await expect(svc.create(10, comandaDto([{ idProducto: 5, cantidad: 1 }]))).rejects.toBeInstanceOf(ConflictException);
   });
 });
@@ -93,8 +96,8 @@ describe('ComandasService.create (validacion de items)', () => {
   });
 });
 
-describe('ComandasService.create (snapshot y descuento de inventario)', () => {
-  it('snapshotea precio y receta activa, descuenta inventario y dispara la impresion', async () => {
+describe('ComandasService.create (borrador)', () => {
+  it('snapshotea precio y receta activa, pero no descuenta ni imprime hasta enviarla', async () => {
     const { svc, spies } = setup();
     await svc.create(10, comandaDto([{ idProducto: 5, cantidad: 3 }]));
 
@@ -104,12 +107,9 @@ describe('ComandasService.create (snapshot y descuento de inventario)', () => {
     expect(data.id_receta_usada_dc).toBe(77); // snapshot de la receta activa
     expect(data.cantidad_producto_dc).toBe(3);
 
-    expect(spies.descontar).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ idReceta: 77, cantidadProducto: 3, idDetalleComanda: 500 }),
-    );
-    expect(spies.recalcular).toHaveBeenCalledWith(expect.anything(), 10);
-    expect(spies.imprimir).toHaveBeenCalledWith(100); // fire-and-forget fuera de la transaccion
+    expect(spies.descontar).not.toHaveBeenCalled();
+    expect(spies.recalcular).not.toHaveBeenCalled();
+    expect(spies.imprimir).not.toHaveBeenCalled();
   });
 
   it('un producto sin receta activa no intenta descontar inventario', async () => {
@@ -122,6 +122,43 @@ describe('ComandasService.create (snapshot y descuento de inventario)', () => {
   it('422 si el producto esta deshabilitado', async () => {
     const { svc } = setup({ producto: { id_producto: 5, nombre_producto: 'Pizza', habilitado_producto: false, precio_producto: new Prisma.Decimal(20000) } });
     await expect(svc.create(10, comandaDto([{ idProducto: 5, cantidad: 1 }]))).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+});
+
+describe('ComandasService.enviar', () => {
+  it('autoriza una ronda sin pagar para CAJERO, descuenta inventario e imprime despues de confirmar', async () => {
+    const { svc, spies } = setup();
+    spies.comandaFind
+      .mockResolvedValueOnce({
+        id_comanda: 100,
+        id_pedido_comanda: 10,
+        estado_comanda: 'BORRADOR',
+        pedido: { estado_pedido: 'ABIERTO', tipo_pedido: 'LOCAL', id_ficha_pedido: null },
+        detalles: [
+          {
+            id_detalleComanda: 500,
+            estado_dc: 'PENDIENTE',
+            precio_unitario_dc: new Prisma.Decimal(20000),
+            cantidad_producto_dc: 1,
+            id_receta_usada_dc: 77,
+            ingredientesPersonalizados: [],
+            facturasDetalle: [],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ id_comanda: 100, estado_comanda: 'ENVIADA' });
+
+    await svc.enviar(10, 100, 5, 'CAJERO');
+
+    expect(spies.descontar).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ idReceta: 77, cantidadProducto: 1, idDetalleComanda: 500 }),
+    );
+    expect(spies.comandaUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ estado_comanda: 'ENVIADA', autorizada_sin_pago: true }) }),
+    );
+    expect(spies.recalcular).toHaveBeenCalledWith(expect.anything(), 10);
+    expect(spies.imprimir).toHaveBeenCalledWith(100);
   });
 });
 

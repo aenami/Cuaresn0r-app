@@ -29,12 +29,12 @@ function setup(opts: { item?: Record<string, unknown> | null; subcuentaPedido?: 
     ...txSpies,
     dcFindUnique: jest.fn().mockResolvedValue(item),
     subFindUnique: jest.fn().mockResolvedValue({ id_subcuenta: 1, id_pedido_subcuenta: subcuentaPedido }),
-    facturaFindFirst: jest.fn().mockResolvedValue(facturada ? { id_factura: 1 } : null),
+    facturaDetalleFindFirst: jest.fn().mockResolvedValue(facturada ? { id_facturaDetalle: 1 } : null),
   };
   const prisma = {
     detalleComanda: { findUnique: spies.dcFindUnique },
     subcuenta: { findUnique: spies.subFindUnique },
-    factura: { findFirst: spies.facturaFindFirst },
+    facturaDetalle: { findFirst: spies.facturaDetalleFindFirst },
     $transaction: (cb: (t: typeof tx) => unknown) => cb(tx),
   } as unknown as PrismaService;
   return { svc: new SubcuentasService(prisma), spies };

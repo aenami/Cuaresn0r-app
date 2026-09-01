@@ -4,6 +4,8 @@ import { Prisma, EstadoTurno, Turno } from '../generated/prisma/client';
 import { AbrirTurnoDto } from './dto/abrir-turno.dto';
 import { CerrarTurnoDto } from './dto/cerrar-turno.dto';
 
+const BASE_CAJA_COP = new Prisma.Decimal(300_000);
+
 @Injectable()
 export class TurnosService {
   constructor(private readonly prisma: PrismaService) {}
@@ -29,14 +31,15 @@ export class TurnosService {
       });
       if (turnoCaja) throw new ConflictException('Esta caja ya tiene un turno abierto');
 
+      // Todo turno recibe y debe dejar exactamente la base fija del local.
       // monto_cierre_esperado arranca igual a la base: es el cache que cada
       // Pago en EFECTIVO y cada MovimientoCaja iran actualizando en vivo.
       return tx.turno.create({
         data: {
           id_caja_turno: dto.idCaja,
           id_usuario_turno: idUsuario,
-          monto_apertura_turno: dto.montoApertura,
-          monto_cierre_esperado: dto.montoApertura,
+          monto_apertura_turno: BASE_CAJA_COP,
+          monto_cierre_esperado: BASE_CAJA_COP,
         },
         include: { caja: true },
       });
@@ -142,6 +145,17 @@ export class TurnosService {
       _count: { id_pago: true },
     });
 
+    const nominaPorMetodo = await this.prisma.pagoNomina.groupBy({
+      by: ['metodo_pagoNomina'],
+      where: { id_turno_pagoNomina: idTurno },
+      _sum: { monto_pagoNomina: true },
+    });
+    const cuentasPorMetodo = await this.prisma.pagoCuentaPorPagar.groupBy({
+      by: ['metodo_pagoCuentaPorPagar'],
+      where: { id_turno_pagoCuentaPorPagar: idTurno },
+      _sum: { monto_pagoCuentaPorPagar: true },
+    });
+
     // Pagos individuales para el registro de movimientos (ledger): cada venta
     // con su hora, metodo y el pedido al que pertenece (via factura->subcuenta).
     const pagos = await this.prisma.pago.findMany({
@@ -156,8 +170,34 @@ export class TurnosService {
       orderBy: { fecha_pago: 'asc' },
     });
 
+    const totalVentas = (metodo: string) =>
+      porMetodo.find((fila) => fila.metodo_pago === metodo)?._sum.monto_total_pago ?? new Prisma.Decimal(0);
+    const totalNomina = (metodo: string) =>
+      nominaPorMetodo.find((fila) => fila.metodo_pagoNomina === metodo)?._sum.monto_pagoNomina ?? new Prisma.Decimal(0);
+    const totalCuentas = (metodo: string) =>
+      cuentasPorMetodo.find((fila) => fila.metodo_pagoCuentaPorPagar === metodo)?._sum.monto_pagoCuentaPorPagar ??
+      new Prisma.Decimal(0);
+
     return {
       ...turno,
+      baseCaja: BASE_CAJA_COP,
+      resumenCuadre: {
+        ventas: {
+          efectivo: totalVentas('EFECTIVO'),
+          transferencia: totalVentas('TRANSFERENCIA'),
+          tarjeta: totalVentas('TARJETA'),
+        },
+        egresos: {
+          nominaEfectivo: totalNomina('EFECTIVO'),
+          nominaTransferencia: totalNomina('TRANSFERENCIA'),
+          cuentasEfectivo: totalCuentas('EFECTIVO'),
+          cuentasTransferencia: totalCuentas('TRANSFERENCIA'),
+        },
+        netoTransferencias: totalVentas('TRANSFERENCIA')
+          .minus(totalNomina('TRANSFERENCIA'))
+          .minus(totalCuentas('TRANSFERENCIA')),
+        efectivoEsperadoSinBase: (turno.monto_cierre_esperado ?? turno.monto_apertura_turno).minus(BASE_CAJA_COP),
+      },
       pagosPorMetodo: porMetodo.map((m) => ({
         metodo: m.metodo_pago,
         cantidad: m._count.id_pago,

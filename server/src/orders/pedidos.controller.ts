@@ -1,9 +1,10 @@
 import { Controller, Get, Post, Body, Param, Patch, ParseIntPipe, Query, Req } from '@nestjs/common';
 import { PedidosService } from './pedidos.service';
 import { CreatePedidoDto } from './dto/create-pedido.dto';
-import { TransferirMesaDto } from './dto/transferir-mesa.dto';
+import { AsignarFichaDto } from './dto/asignar-ficha.dto';
 import { AuthenticatedRequest } from '../auth/types/authenticated-request';
 import { EstadoPedido, TipoPedido } from '../generated/prisma/client';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('/orders')
 export class PedidosController {
@@ -17,10 +18,10 @@ export class PedidosController {
   @Get()
   findAll(
     @Query('estado') estado?: EstadoPedido,
-    @Query('mesa') mesa?: string,
+    @Query('ficha') ficha?: string,
     @Query('tipo') tipo?: TipoPedido,
   ) {
-    return this.pedidosService.findAll(estado, mesa !== undefined ? Number(mesa) : undefined, tipo);
+    return this.pedidosService.findAll(estado, ficha !== undefined ? Number(ficha) : undefined, tipo);
   }
 
   @Get(':id')
@@ -33,10 +34,9 @@ export class PedidosController {
     return this.pedidosService.cancel(id);
   }
 
-  // Reubicacion fisica: mueve el pedido (y sus cuentas/comandas/facturas) a otra
-  // mesa libre, liberando la mesa de origen.
-  @Patch(':id/transferir')
-  transferir(@Param('id', ParseIntPipe) id: number, @Body() dto: TransferirMesaDto) {
-    return this.pedidosService.transferir(id, dto.idMesaDestino);
+  @Patch(':id/ficha')
+  @Roles('ADMIN', 'CAJERO')
+  asignarFicha(@Param('id', ParseIntPipe) id: number, @Body() dto: AsignarFichaDto) {
+    return this.pedidosService.asignarFicha(id, dto.idFicha);
   }
 }

@@ -19,7 +19,8 @@ export class ImpresorasService {
         data: {
           nombre_impresora: dto.nombre,
           destino_impresora: dto.destino,
-          host_impresora: dto.host,
+          dispositivo_impresora: dto.dispositivo,
+          ...(dto.host !== undefined && { host_impresora: dto.host }),
           ...(dto.puerto !== undefined && { puerto_impresora: dto.puerto }),
           ...(dto.anchoPapel !== undefined && { ancho_papel_impresora: dto.anchoPapel }),
         },
@@ -54,6 +55,7 @@ export class ImpresorasService {
         data: {
           ...(dto.nombre !== undefined && { nombre_impresora: dto.nombre }),
           ...(dto.destino !== undefined && { destino_impresora: dto.destino }),
+          ...(dto.dispositivo !== undefined && { dispositivo_impresora: dto.dispositivo }),
           ...(dto.host !== undefined && { host_impresora: dto.host }),
           ...(dto.puerto !== undefined && { puerto_impresora: dto.puerto }),
           ...(dto.anchoPapel !== undefined && { ancho_papel_impresora: dto.anchoPapel }),

@@ -10,11 +10,18 @@ export class CreateImpresoraDto {
   @IsEnum(DestinoImpresion)
   destino!: DestinoImpresion;
 
-  // IP o hostname en la LAN del restaurante (protocolo RAW 9100).
+  // Nombre exacto de la cola instalada en Windows. Ambas impresoras actuales
+  // se configuran como EPSON TM-m30II y el agente envia ESC/POS en modo RAW.
   @IsNotEmpty()
   @IsString()
+  @MaxLength(100)
+  dispositivo!: string;
+
+  // Reservado para una posible impresora por red en el futuro.
+  @IsOptional()
+  @IsString()
   @MaxLength(45)
-  host!: string;
+  host?: string;
 
   @IsOptional()
   @IsInt()

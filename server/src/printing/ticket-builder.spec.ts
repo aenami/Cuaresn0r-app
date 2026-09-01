@@ -14,9 +14,10 @@ const negocio: DatosNegocioTicket = {
 };
 
 // Fabrica una factura con la forma que consume el builder (se castea porque solo
-// se usan los campos aqui presentes).
-function factura(over: Partial<{ mesa: unknown; cliente: Record<string, string>; servicio: number; impuestos: number; excedente: number; destinoExcedente: string }> = {}): FacturaParaImpresion {
-  const { mesa = { numero_mesa: 5, zona: { nombre_zona: 'Salon' } }, cliente, servicio = 4300, impuestos = 0, excedente = 0, destinoExcedente = 'CASA' } = over;
+// se usan los campos aqui presentes). El detalle ya no se infiere de toda la
+// subcuenta: FacturaDetalle congela exactamente que productos se cobraron.
+function factura(over: Partial<{ ficha: string | null; cliente: Record<string, string>; servicio: number; impuestos: number; excedente: number; destinoExcedente: string }> = {}): FacturaParaImpresion {
+  const { ficha = '05', cliente, servicio = 4300, impuestos = 0, excedente = 0, destinoExcedente = 'CASA' } = over;
   return {
     id_factura: 42,
     fecha_emision_factura: new Date('2026-07-17T13:30:00'),
@@ -34,24 +35,45 @@ function factura(over: Partial<{ mesa: unknown; cliente: Record<string, string>;
     ],
     subcuenta: {
       pedido: {
-        mesa: cliente ? null : mesa,
+        tipo_pedido: cliente ? 'DOMICILIO' : 'LOCAL',
+        ficha: ficha ? { numero_ficha: ficha } : null,
         nombre_cliente_pedido: cliente?.nombre ?? null,
         telefono_cliente_pedido: cliente?.telefono ?? null,
         direccion_cliente_pedido: cliente?.direccion ?? null,
       },
-      detallesComanda: [
-        {
+    },
+    detalles: [
+      {
+        proporcion_facturada_fd: new Prisma.Decimal(1),
+        subtotal_facturado_fd: new Prisma.Decimal(40000),
+        detalleComanda: {
           producto: { nombre_producto: 'Pizza' },
           combo: null,
           precio_unitario_dc: new Prisma.Decimal(20000),
           cantidad_producto_dc: 2,
-          hijos: [
-            { producto: { nombre_producto: 'Queso extra' }, precio_unitario_dc: new Prisma.Decimal(3000), cantidad_producto_dc: 1 },
-            { producto: { nombre_producto: 'Gaseosa' }, precio_unitario_dc: new Prisma.Decimal(0), cantidad_producto_dc: 1 },
-          ],
         },
-      ],
-    },
+      },
+      {
+        proporcion_facturada_fd: new Prisma.Decimal(1),
+        subtotal_facturado_fd: new Prisma.Decimal(3000),
+        detalleComanda: {
+          producto: { nombre_producto: 'Queso extra' },
+          combo: null,
+          precio_unitario_dc: new Prisma.Decimal(3000),
+          cantidad_producto_dc: 1,
+        },
+      },
+      {
+        proporcion_facturada_fd: new Prisma.Decimal(1),
+        subtotal_facturado_fd: new Prisma.Decimal(0),
+        detalleComanda: {
+          producto: { nombre_producto: 'Gaseosa' },
+          combo: null,
+          precio_unitario_dc: new Prisma.Decimal(0),
+          cantidad_producto_dc: 1,
+        },
+      },
+    ],
   } as unknown as FacturaParaImpresion;
 }
 
@@ -71,11 +93,11 @@ describe('TicketBuilderService.armarTicketFactura', () => {
     expect(out).toContain('Cajero: Pedro');
   });
 
-  it('lista los items con sus adiciones y componentes de combo', () => {
+  it('lista exactamente los items que quedaron congelados en la factura', () => {
     const out = imprimir(factura());
     expect(out).toContain('2 x Pizza');
-    expect(out).toContain('+ 1 x Queso extra'); // adicion con cargo
-    expect(out).toContain('- 1 x Gaseosa'); // componente sin precio propio
+    expect(out).toContain('1 x Queso extra');
+    expect(out).toContain('1 x Gaseosa');
   });
 
   it('muestra la propina solo cuando no es cero y omite los impuestos en cero', () => {
@@ -93,9 +115,9 @@ describe('TicketBuilderService.armarTicketFactura', () => {
     expect(out).toContain('Impuestos');
   });
 
-  it('en la mesa imprime numero y zona; sin cliente no muestra DOMICILIO', () => {
+  it('en un pedido local imprime la ficha; sin cliente no muestra DOMICILIO', () => {
     const out = imprimir(factura());
-    expect(out).toContain('Mesa 5 - Salon');
+    expect(out).toContain('Ficha 05');
     expect(out).not.toContain('DOMICILIO');
   });
 
@@ -105,7 +127,7 @@ describe('TicketBuilderService.armarTicketFactura', () => {
     expect(out).toContain('Cliente: Ana');
     expect(out).toContain('Tel: 3001234567');
     expect(out).toContain('Dir: Calle 10 #5-20');
-    expect(out).not.toContain('Mesa 5');
+    expect(out).not.toContain('Ficha 05');
   });
 
   it('sin datos del negocio usa un encabezado generico', () => {

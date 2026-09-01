@@ -13,6 +13,10 @@ import { FacturasController } from './facturas.controller';
 import { FacturasService } from './facturas.service';
 import { PagosController } from './pagos.controller';
 import { PagosService } from './pagos.service';
+import { ProveedoresController } from './proveedores.controller';
+import { ProveedoresService } from './proveedores.service';
+import { CuentasPorPagarController } from './cuentas-por-pagar.controller';
+import { CuentasPorPagarService } from './cuentas-por-pagar.service';
 
 // Prefijos de ruta disjuntos (/billing/config|cajas|turnos|movimientos|
 // facturas), asi que el orden de registro no genera colisiones
@@ -26,6 +30,8 @@ import { PagosService } from './pagos.service';
     MovimientosCajaController,
     FacturasController,
     PagosController,
+    ProveedoresController,
+    CuentasPorPagarController,
   ],
   providers: [
     BillingConfigService,
@@ -35,6 +41,8 @@ import { PagosService } from './pagos.service';
     MovimientosCajaService,
     FacturasService,
     PagosService,
+    ProveedoresService,
+    CuentasPorPagarService,
   ],
 })
 export class BillingModule {}

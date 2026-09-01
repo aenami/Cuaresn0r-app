@@ -12,7 +12,7 @@ import { Prisma } from '../generated/prisma/client';
 
 // ---- abrir ----
 
-const abrirDto = (idCaja = 1, montoApertura = 100000) => ({ idCaja, montoApertura }) as unknown as AbrirTurnoDto;
+const abrirDto = (idCaja = 1) => ({ idCaja }) as unknown as AbrirTurnoDto;
 
 function setupAbrir(opts: { caja?: unknown; turnoUsuario?: unknown; turnoCaja?: unknown } = {}) {
   const { caja = { id_caja: 1 }, turnoUsuario = null, turnoCaja = null } = opts;
@@ -51,12 +51,12 @@ describe('TurnosService.abrir (guardas)', () => {
 });
 
 describe('TurnosService.abrir (creacion)', () => {
-  it('el esperado inicial arranca igual a la base de apertura', async () => {
+  it('siempre recibe la base fija de 300.000 COP', async () => {
     const { svc, spies } = setupAbrir();
-    await svc.abrir(5, abrirDto(1, 100000));
+    await svc.abrir(5, abrirDto(1));
     const data = spies.turnoCreate.mock.calls[0][0].data;
-    expect(data.monto_apertura_turno).toBe(100000);
-    expect(data.monto_cierre_esperado).toBe(100000);
+    expect(data.monto_apertura_turno.toString()).toBe('300000');
+    expect(data.monto_cierre_esperado.toString()).toBe('300000');
     expect(data.id_usuario_turno).toBe(5);
   });
 });

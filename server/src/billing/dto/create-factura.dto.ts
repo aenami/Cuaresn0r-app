@@ -1,8 +1,16 @@
-import { IsInt, IsNumber, IsOptional, Max, Min } from 'class-validator';
+import { ArrayMinSize, IsArray, IsInt, IsNumber, IsOptional, Max, Min } from 'class-validator';
 
 export class CreateFacturaDto {
   @IsInt()
   idSubcuenta!: number;
+
+  // Si se omite, factura todo lo pendiente de la subcuenta. Permite cobrar
+  // solo productos concretos de una ronda y dejar los demas pendientes.
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsInt({ each: true })
+  idsDetalle?: number[];
 
   // Propina (servicio) como % del subtotal, elegida al cobrar. Si se omite,
   // se usa el porcentaje_servicio de la config activa (comportamiento previo).

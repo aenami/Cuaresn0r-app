@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, EstadoFactura } from '../generated/prisma/client';
+import { recalcularEstadoPedido } from '../orders/estado-pedido';
 import { CreatePagoDto } from './dto/create-pago.dto';
 
 @Injectable()
@@ -99,7 +100,10 @@ export class PagosService {
       if (acumulado.equals(factura.monto_total_factura)) {
         estadoFactura = 'PAGADA';
         await tx.factura.update({ where: { id_factura: idFactura }, data: { estado_factura: 'PAGADA' } });
-        await this.verificarPedidoPagado(tx, factura.id_subcuenta_factura);
+        const subcuenta = await tx.subcuenta.findUniqueOrThrow({
+          where: { id_subcuenta: factura.id_subcuenta_factura },
+        });
+        await recalcularEstadoPedido(tx, subcuenta.id_pedido_subcuenta);
       }
 
       return {
@@ -116,37 +120,4 @@ export class PagosService {
     return this.prisma.pago.findMany({ where: { id_factura_pago: idFactura }, orderBy: { id_pago: 'asc' } });
   }
 
-  // Pedido -> PAGADO cuando TODAS sus subcuentas con items tienen factura
-  // PAGADA (seccion 1); las subcuentas vacias (ej. la principal si todo se
-  // movio a otras) no exigen factura. Al pagarse todo, la mesa se libera.
-  private async verificarPedidoPagado(tx: Prisma.TransactionClient, idSubcuenta: number) {
-    const subcuentaPagada = await tx.subcuenta.findUniqueOrThrow({ where: { id_subcuenta: idSubcuenta } });
-    const idPedido = subcuentaPagada.id_pedido_subcuenta;
-
-    const subcuentas = await tx.subcuenta.findMany({
-      where: { id_pedido_subcuenta: idPedido },
-      include: {
-        facturas: { where: { estado_factura: 'PAGADA' }, select: { id_factura: true } },
-        detallesComanda: { where: { estado_dc: { not: 'CANCELADO' } }, select: { id_detalleComanda: true }, take: 1 },
-        repartoDetalles: {
-          where: { detalleComanda: { estado_dc: { not: 'CANCELADO' } } },
-          select: { id_subcuentaDetalleComanda: true },
-          take: 1,
-        },
-      },
-    });
-
-    const conItems = subcuentas.filter((s) => s.detallesComanda.length > 0 || s.repartoDetalles.length > 0);
-    const todasPagadas = conItems.length > 0 && conItems.every((s) => s.facturas.length > 0);
-    if (!todasPagadas) return;
-
-    const pedido = await tx.pedido.findUniqueOrThrow({ where: { id_pedido: idPedido } });
-    if (pedido.estado_pedido === 'PAGADO' || pedido.estado_pedido === 'CANCELADO') return;
-
-    await tx.pedido.update({ where: { id_pedido: idPedido }, data: { estado_pedido: 'PAGADO' } });
-    // Un domicilio no ocupa mesa; solo se libera si el pedido estaba en una.
-    if (pedido.mesa_pedido !== null) {
-      await tx.mesa.update({ where: { id_mesa: pedido.mesa_pedido }, data: { estado_mesa: 'LIBRE' } });
-    }
-  }
 }

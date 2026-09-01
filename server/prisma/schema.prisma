@@ -32,20 +32,27 @@ enum EstadoMesa {
 }
 
 enum EstadoPedido {
+  ABIERTO
   EN_PREPARACION
   ENTREGADO
-  PAGADO
+  CERRADO
   CANCELADO
 }
 
-// Un pedido nace en una mesa (MESA) o entra como domicilio (DOMICILIO). El
-// domicilio no ocupa una mesa fisica del salon (ver Pedido.mesa_pedido).
+// LOCAL identifica consumo en el restaurante mediante ficha fisica. DOMICILIO
+// conserva los datos de entrega y nunca utiliza ficha.
 enum TipoPedido {
-  MESA
+  LOCAL
   DOMICILIO
 }
 
+enum EstadoComanda {
+  BORRADOR
+  ENVIADA
+}
+
 enum EstadoDetalleComanda {
+  PENDIENTE
   PREPARANDO
   ENTREGADO
   CANCELADO
@@ -112,8 +119,16 @@ enum DestinoImpresion {
 
 enum EstadoImpresion {
   PENDIENTE
+  EN_PROCESO
+  REINTENTO
   IMPRESA
   FALLIDA
+}
+
+enum TipoTrabajoImpresion {
+  COMANDA
+  FACTURA
+  PRUEBA
 }
 
 enum EstadoEmpleado {
@@ -145,6 +160,18 @@ enum MetodoPagoNomina {
   TRANSFERENCIA
 }
 
+enum EstadoCuentaPorPagar {
+  PENDIENTE
+  PARCIAL
+  PAGADA
+  ANULADA
+}
+
+enum MetodoPagoCuentaPorPagar {
+  EFECTIVO
+  TRANSFERENCIA
+}
+
 // =========================================================================
 // 1. Roles y usuarios
 // =========================================================================
@@ -171,6 +198,11 @@ model Usuario {
   turnos                 Turno[]
   movimientosInventario  MovimientoInventario[]
   pagosNominaRegistrados PagoNomina[]
+  comandasEnviadas       Comanda[]              @relation("ComandaEnviadaPor")
+  comentariosCuenta      ComentarioCuenta[]     @relation("ComentarioCuentaAutor")
+  comentariosResueltos   ComentarioCuenta[]     @relation("ComentarioCuentaResueltoPor")
+  pagosCuentasPorPagar   PagoCuentaPorPagar[]
+  recepcionesMercancia   CuentaPorPagar[]       @relation("CuentaRecibidaPor")
 
   @@index([id_empleado_usuario])
   @@index([id_rol])
@@ -190,14 +222,12 @@ model Zona {
 
 model Mesa {
   id_mesa        Int        @id @default(autoincrement())
-  numero_mesa Int
+  numero_mesa    Int
   capacidad_mesa Int?
   id_zona_mesa   Int
   estado_mesa    EstadoMesa @default(LIBRE)
 
   zona Zona @relation(fields: [id_zona_mesa], references: [id_zona])
-
-  pedidos Pedido[]
 
   @@index([id_zona_mesa])
   @@index([estado_mesa])
@@ -208,42 +238,49 @@ model Mesa {
 // =========================================================================
 
 model Pedido {
-  id_pedido     Int          @id @default(autoincrement())
-  fecha_pedido  DateTime     @default(now()) @db.Timestamp(6)
-  estado_pedido EstadoPedido @default(EN_PREPARACION)
-  tipo_pedido   TipoPedido   @default(MESA)
-  // Un domicilio no ocupa mesa: mesa_pedido queda null cuando tipo = DOMICILIO.
-  mesa_pedido   Int?
-  mesero_pedido Int
+  id_pedido           Int          @id @default(autoincrement())
+  fecha_pedido        DateTime     @default(now()) @db.Timestamp(6)
+  estado_pedido       EstadoPedido @default(ABIERTO)
+  tipo_pedido         TipoPedido   @default(LOCAL)
+  mesero_pedido       Int
+  id_ficha_pedido     Int?
+  fecha_cierre_pedido DateTime?    @db.Timestamp(6)
 
-  // Datos de entrega: solo se llenan para DOMICILIO (null en pedidos de mesa).
+  // Datos de entrega: solo se llenan para DOMICILIO.
   nombre_cliente_pedido    String? @db.VarChar(80)
   telefono_cliente_pedido  String? @db.VarChar(30)
   direccion_cliente_pedido String? @db.VarChar(150)
 
-  mesa   Mesa?   @relation(fields: [mesa_pedido], references: [id_mesa])
   mesero Usuario @relation(fields: [mesero_pedido], references: [id_usuario])
+  ficha  Ficha?  @relation(fields: [id_ficha_pedido], references: [id_ficha])
 
   comandas   Comanda[]
   subcuentas Subcuenta[]
 
-  @@index([mesa_pedido])
+  @@index([id_ficha_pedido])
   @@index([mesero_pedido])
   @@index([estado_pedido])
   @@index([tipo_pedido])
 }
 
 model Comanda {
-  id_comanda        Int      @id @default(autoincrement())
-  id_pedido_comanda Int
-  creacion_comanda  DateTime @default(now()) @db.Timestamp(6)
+  id_comanda               Int           @id @default(autoincrement())
+  id_pedido_comanda        Int
+  creacion_comanda         DateTime      @default(now()) @db.Timestamp(6)
+  estado_comanda           EstadoComanda @default(BORRADOR)
+  fecha_envio_comanda      DateTime?     @db.Timestamp(6)
+  id_usuario_envia_comanda Int?
+  autorizada_sin_pago      Boolean       @default(false)
 
-  pedido Pedido @relation(fields: [id_pedido_comanda], references: [id_pedido])
+  pedido       Pedido   @relation(fields: [id_pedido_comanda], references: [id_pedido])
+  usuarioEnvia Usuario? @relation("ComandaEnviadaPor", fields: [id_usuario_envia_comanda], references: [id_usuario])
 
   detalles    DetalleComanda[]
   impresiones ImpresionComanda[]
 
   @@index([id_pedido_comanda])
+  @@index([estado_comanda])
+  @@index([id_usuario_envia_comanda])
 }
 
 model DetalleComanda {
@@ -254,7 +291,7 @@ model DetalleComanda {
   id_combo_dc               Int?
   id_receta_usada_dc        Int?
   id_subcuenta_dc           Int?
-  estado_dc                 EstadoDetalleComanda @default(PREPARANDO)
+  estado_dc                 EstadoDetalleComanda @default(PENDIENTE)
   cantidad_producto_dc      Int
   precio_unitario_dc        Decimal              @db.Decimal(20, 4)
   indicaciones_dc           String?              @db.VarChar(150)
@@ -270,6 +307,7 @@ model DetalleComanda {
   ingredientesPersonalizados DetalleComandaIngrediente[]
   movimientosInventario      MovimientoInventario[]
   subcuentasReparto          SubcuentaDetalleComanda[]
+  facturasDetalle            FacturaDetalle[]
 
   @@index([id_comanda_dc])
   @@index([id_detalleComandaPadre_dc])
@@ -351,27 +389,47 @@ model Factura {
 
   subcuenta Subcuenta @relation(fields: [id_subcuenta_factura], references: [id_subcuenta])
 
-  pagos Pago[]
+  pagos             Pago[]
+  detalles          FacturaDetalle[]
+  trabajosImpresion TrabajoImpresion[]
 
   @@index([id_subcuenta_factura])
   @@index([fecha_emision_factura])
 }
 
+// Congela exactamente que productos/proporciones cubre una factura. Permite
+// agregar nuevas rondas al pedido y emitir varias facturas para una subcuenta
+// sin alterar lo que ya fue pagado.
+model FacturaDetalle {
+  id_facturaDetalle       Int     @id @default(autoincrement())
+  id_factura_fd           Int
+  id_detalleComanda_fd    Int
+  proporcion_facturada_fd Decimal @default(1) @db.Decimal(5, 4)
+  subtotal_facturado_fd   Decimal @db.Decimal(20, 4)
+
+  factura        Factura        @relation(fields: [id_factura_fd], references: [id_factura])
+  detalleComanda DetalleComanda @relation(fields: [id_detalleComanda_fd], references: [id_detalleComanda])
+
+  @@unique([id_factura_fd, id_detalleComanda_fd])
+  @@index([id_factura_fd])
+  @@index([id_detalleComanda_fd])
+}
+
 model Pago {
-  id_pago              Int        @id @default(autoincrement())
-  id_factura_pago      Int
-  id_turno_pago        Int
-  subtotal_pago        Decimal    @db.Decimal(20, 4)
-  monto_servicio_pago  Decimal    @db.Decimal(20, 4)
-  monto_impuestos_pago Decimal    @db.Decimal(20, 4)
-  monto_total_pago     Decimal    @db.Decimal(20, 4)
+  id_pago                Int               @id @default(autoincrement())
+  id_factura_pago        Int
+  id_turno_pago          Int
+  subtotal_pago          Decimal           @db.Decimal(20, 4)
+  monto_servicio_pago    Decimal           @db.Decimal(20, 4)
+  monto_impuestos_pago   Decimal           @db.Decimal(20, 4)
+  monto_total_pago       Decimal           @db.Decimal(20, 4)
   // Excedente voluntario que el cliente deja al negocio (0 = sin excedente). NO
   // hace parte de la factura: monto_total_pago sigue siendo lo aplicado a la
   // cuenta (subtotal + servicio + impuestos). Solo se registra en efectivo.
   monto_excedente_pago   Decimal           @default(0) @db.Decimal(20, 4)
   destino_excedente_pago DestinoExcedente?
-  metodo_pago          MetodoPago
-  fecha_pago           DateTime   @default(now()) @db.Timestamp(6)
+  metodo_pago            MetodoPago
+  fecha_pago             DateTime          @default(now()) @db.Timestamp(6)
 
   factura Factura @relation(fields: [id_factura_pago], references: [id_factura])
   turno   Turno   @relation(fields: [id_turno_pago], references: [id_turno])
@@ -407,25 +465,29 @@ model Turno {
   caja    Caja    @relation(fields: [id_caja_turno], references: [id_caja])
   usuario Usuario @relation(fields: [id_usuario_turno], references: [id_usuario])
 
-  pagos           Pago[]
-  movimientosCaja MovimientoCaja[]
-  pagosNomina     PagoNomina[]
+  pagos                Pago[]
+  movimientosCaja      MovimientoCaja[]
+  pagosNomina          PagoNomina[]
+  pagosCuentasPorPagar PagoCuentaPorPagar[]
 
   @@index([id_caja_turno])
   @@index([id_usuario_turno])
 }
 
 model MovimientoCaja {
-  id_mc       Int                @id @default(autoincrement())
-  id_turno_mc Int
-  tipo_mc     TipoMovimientoCaja
-  monto_mc    Decimal            @db.Decimal(20, 4)
-  concepto_mc String             @db.VarChar(150)
-  fecha_mc    DateTime           @default(now()) @db.Timestamp(6)
+  id_mc                Int                @id @default(autoincrement())
+  id_turno_mc          Int
+  tipo_mc              TipoMovimientoCaja
+  monto_mc             Decimal            @db.Decimal(20, 4)
+  concepto_mc          String             @db.VarChar(150)
+  fecha_mc             DateTime           @default(now()) @db.Timestamp(6)
+  id_cuentaPorPagar_mc Int?
 
-  turno Turno @relation(fields: [id_turno_mc], references: [id_turno])
+  turno          Turno           @relation(fields: [id_turno_mc], references: [id_turno])
+  cuentaPorPagar CuentaPorPagar? @relation(fields: [id_cuentaPorPagar_mc], references: [id_cuentaPorPagar])
 
   @@index([id_turno_mc])
+  @@index([id_cuentaPorPagar_mc])
 }
 
 // =========================================================================
@@ -448,13 +510,13 @@ model Categoria {
 }
 
 model Producto {
-  id_producto         Int     @id @default(autoincrement())
-  nombre_producto     String  @db.VarChar(25)
-  precio_producto     Decimal @db.Decimal(20, 4)
+  id_producto          Int     @id @default(autoincrement())
+  nombre_producto      String  @db.VarChar(25)
+  precio_producto      Decimal @db.Decimal(20, 4)
   descripcion_producto String? @db.VarChar(300)
-  categoria_producto  Int?
-  habilitado_producto Boolean @default(true)
-  imagen_producto     String? @db.VarChar(300)
+  categoria_producto   Int?
+  habilitado_producto  Boolean @default(true)
+  imagen_producto      String? @db.VarChar(300)
 
   categoria Categoria? @relation(fields: [categoria_producto], references: [id_categoria])
 
@@ -494,15 +556,18 @@ model DetalleReceta {
 }
 
 model Ingrediente {
-  id_ingrediente       Int               @id @default(autoincrement())
-  nombre_ingrediente   String            @db.VarChar(25)
-  stock_ingrediente    Decimal           @default(0) @db.Decimal(20, 4)
-  unidades_ingrediente UnidadIngrediente
-  precio_ingrediente   Decimal           @db.Decimal(20, 4)
+  id_ingrediente          Int               @id @default(autoincrement())
+  nombre_ingrediente      String            @db.VarChar(25)
+  stock_ingrediente       Decimal           @default(0) @db.Decimal(20, 4)
+  unidades_ingrediente    UnidadIngrediente
+  precio_ingrediente      Decimal           @db.Decimal(20, 4)
+  umbral_bajo_ingrediente Decimal?          @db.Decimal(20, 4)
+  umbral_alto_ingrediente Decimal?          @db.Decimal(20, 4)
 
   detallesReceta             DetalleReceta[]
   detallesComandaIngrediente DetalleComandaIngrediente[]
   movimientos                MovimientoInventario[]
+  detallesCuentaPorPagar     DetalleCuentaPorPagar[]
 }
 
 model DetalleComandaIngrediente {
@@ -519,26 +584,29 @@ model DetalleComandaIngrediente {
 }
 
 model MovimientoInventario {
-  id_movimiento                Int                      @id @default(autoincrement())
-  id_ingrediente_movimiento    Int
-  id_usuario_movimiento        Int?
-  id_detalleComanda_movimiento Int?
-  id_movimiento_revertido      Int?
-  tipo_movimiento              TipoMovimientoInventario
-  cantidad_movimiento          Decimal                  @db.Decimal(20, 4)
-  fecha_movimiento             DateTime                 @default(now()) @db.Timestamp(6)
-  motivo_movimiento            String?                  @db.VarChar(150)
+  id_movimiento                       Int                      @id @default(autoincrement())
+  id_ingrediente_movimiento           Int
+  id_usuario_movimiento               Int?
+  id_detalleComanda_movimiento        Int?
+  id_movimiento_revertido             Int?
+  id_detalleCuentaPorPagar_movimiento Int?
+  tipo_movimiento                     TipoMovimientoInventario
+  cantidad_movimiento                 Decimal                  @db.Decimal(20, 4)
+  fecha_movimiento                    DateTime                 @default(now()) @db.Timestamp(6)
+  motivo_movimiento                   String?                  @db.VarChar(150)
 
-  ingrediente         Ingrediente            @relation(fields: [id_ingrediente_movimiento], references: [id_ingrediente])
-  usuario             Usuario?               @relation(fields: [id_usuario_movimiento], references: [id_usuario])
-  detalleComanda      DetalleComanda?        @relation(fields: [id_detalleComanda_movimiento], references: [id_detalleComanda])
-  movimientoRevertido MovimientoInventario?  @relation("ReversoMovimientoInventario", fields: [id_movimiento_revertido], references: [id_movimiento])
-  reversos            MovimientoInventario[] @relation("ReversoMovimientoInventario")
+  ingrediente           Ingrediente            @relation(fields: [id_ingrediente_movimiento], references: [id_ingrediente])
+  usuario               Usuario?               @relation(fields: [id_usuario_movimiento], references: [id_usuario])
+  detalleComanda        DetalleComanda?        @relation(fields: [id_detalleComanda_movimiento], references: [id_detalleComanda])
+  movimientoRevertido   MovimientoInventario?  @relation("ReversoMovimientoInventario", fields: [id_movimiento_revertido], references: [id_movimiento])
+  reversos              MovimientoInventario[] @relation("ReversoMovimientoInventario")
+  detalleCuentaPorPagar DetalleCuentaPorPagar? @relation(fields: [id_detalleCuentaPorPagar_movimiento], references: [id_detalleCuentaPorPagar])
 
   @@index([id_ingrediente_movimiento])
   @@index([id_usuario_movimiento])
   @@index([id_detalleComanda_movimiento])
   @@index([id_movimiento_revertido])
+  @@index([id_detalleCuentaPorPagar_movimiento])
 }
 
 // =========================================================================
@@ -556,8 +624,111 @@ model Subcuenta {
   detallesComanda DetalleComanda[]
   facturas        Factura[]
   repartoDetalles SubcuentaDetalleComanda[]
+  comentarios     ComentarioCuenta[]
 
   @@index([id_pedido_subcuenta])
+}
+
+model ComentarioCuenta {
+  id_comentarioCuenta            Int       @id @default(autoincrement())
+  id_subcuenta_comentarioCuenta  Int
+  id_usuario_comentarioCuenta    Int
+  texto_comentarioCuenta         String    @db.VarChar(300)
+  fecha_comentarioCuenta         DateTime  @default(now()) @db.Timestamp(6)
+  comentario_resuelto            Boolean   @default(false)
+  id_usuario_resuelve_comentario Int?
+  fecha_resolucion_comentario    DateTime? @db.Timestamp(6)
+
+  subcuenta       Subcuenta @relation(fields: [id_subcuenta_comentarioCuenta], references: [id_subcuenta])
+  usuario         Usuario   @relation("ComentarioCuentaAutor", fields: [id_usuario_comentarioCuenta], references: [id_usuario])
+  usuarioResuelve Usuario?  @relation("ComentarioCuentaResueltoPor", fields: [id_usuario_resuelve_comentario], references: [id_usuario])
+
+  @@index([id_subcuenta_comentarioCuenta])
+  @@index([id_usuario_comentarioCuenta])
+  @@index([comentario_resuelto])
+}
+
+// Las fichas sustituyen las mesas. Una misma ficha puede aparecer en muchos
+// pedidos historicos, pero solo puede estar ligada a un pedido no cerrado a la
+// vez; esa regla se valida con bloqueo de fila en la aplicacion.
+model Ficha {
+  id_ficha     Int     @id @default(autoincrement())
+  numero_ficha String  @unique @db.VarChar(10)
+  ficha_activa Boolean @default(true)
+
+  pedidos Pedido[]
+}
+
+// =========================================================================
+// 14. Proveedores y cuentas por pagar
+// =========================================================================
+
+model Proveedor {
+  id_proveedor       Int     @id @default(autoincrement())
+  nombre_proveedor   String  @unique @db.VarChar(80)
+  contacto_proveedor String? @db.VarChar(80)
+  telefono_proveedor String? @db.VarChar(30)
+  nit_proveedor      String? @db.VarChar(30)
+  proveedor_activo   Boolean @default(true)
+
+  cuentasPorPagar CuentaPorPagar[]
+}
+
+model CuentaPorPagar {
+  id_cuentaPorPagar                Int                  @id @default(autoincrement())
+  id_proveedor_cuentaPorPagar      Int
+  concepto_cuentaPorPagar          String               @db.VarChar(150)
+  documento_cuentaPorPagar         String?              @db.VarChar(50)
+  fecha_emision_cuentaPorPagar     DateTime             @default(now()) @db.Date
+  fecha_vencimiento_cuentaPorPagar DateTime?            @db.Date
+  monto_total_cuentaPorPagar       Decimal              @db.Decimal(20, 4)
+  estado_cuentaPorPagar            EstadoCuentaPorPagar @default(PENDIENTE)
+  observacion_cuentaPorPagar       String?              @db.VarChar(300)
+  fecha_recepcion_mercancia        DateTime?            @db.Timestamp(6)
+  id_usuario_recibe_mercancia      Int?
+
+  proveedor       Proveedor               @relation(fields: [id_proveedor_cuentaPorPagar], references: [id_proveedor])
+  usuarioRecibe   Usuario?                @relation("CuentaRecibidaPor", fields: [id_usuario_recibe_mercancia], references: [id_usuario])
+  detalles        DetalleCuentaPorPagar[]
+  pagos           PagoCuentaPorPagar[]
+  movimientosCaja MovimientoCaja[]
+
+  @@index([id_proveedor_cuentaPorPagar])
+  @@index([estado_cuentaPorPagar])
+  @@index([fecha_vencimiento_cuentaPorPagar])
+}
+
+model DetalleCuentaPorPagar {
+  id_detalleCuentaPorPagar      Int     @id @default(autoincrement())
+  id_cuentaPorPagar_detalle     Int
+  id_ingrediente_detalleCuenta  Int
+  cantidad_detalleCuenta        Decimal @db.Decimal(20, 4)
+  precio_unitario_detalleCuenta Decimal @db.Decimal(20, 4)
+
+  cuentaPorPagar CuentaPorPagar         @relation(fields: [id_cuentaPorPagar_detalle], references: [id_cuentaPorPagar])
+  ingrediente    Ingrediente            @relation(fields: [id_ingrediente_detalleCuenta], references: [id_ingrediente])
+  movimientos    MovimientoInventario[]
+
+  @@unique([id_cuentaPorPagar_detalle, id_ingrediente_detalleCuenta])
+  @@index([id_ingrediente_detalleCuenta])
+}
+
+model PagoCuentaPorPagar {
+  id_pagoCuentaPorPagar         Int                      @id @default(autoincrement())
+  id_cuentaPorPagar_pago        Int
+  id_turno_pagoCuentaPorPagar   Int?
+  id_usuario_pagoCuentaPorPagar Int
+  metodo_pagoCuentaPorPagar     MetodoPagoCuentaPorPagar
+  monto_pagoCuentaPorPagar      Decimal                  @db.Decimal(20, 4)
+  fecha_pagoCuentaPorPagar      DateTime                 @default(now()) @db.Timestamp(6)
+
+  cuentaPorPagar CuentaPorPagar @relation(fields: [id_cuentaPorPagar_pago], references: [id_cuentaPorPagar])
+  turno          Turno?         @relation(fields: [id_turno_pagoCuentaPorPagar], references: [id_turno])
+  usuario        Usuario        @relation(fields: [id_usuario_pagoCuentaPorPagar], references: [id_usuario])
+
+  @@index([id_cuentaPorPagar_pago])
+  @@index([id_turno_pagoCuentaPorPagar])
+  @@index([id_usuario_pagoCuentaPorPagar])
 }
 
 model SubcuentaDetalleComanda {
@@ -779,16 +950,23 @@ model PagoNominaDetalle {
 // =========================================================================
 
 model Impresora {
-  id_impresora     Int              @id @default(autoincrement())
-  nombre_impresora String           @db.VarChar(30)
+  id_impresora          Int              @id @default(autoincrement())
+  nombre_impresora      String           @db.VarChar(30)
   // Que tipo de comandas imprime (una activa por destino: indice parcial en
   // la migracion).
-  destino_impresora DestinoImpresion
-  host_impresora   String           @db.VarChar(45)
-  puerto_impresora Int              @default(9100)
+  destino_impresora     DestinoImpresion
+  // Nombre exacto de la cola instalada en Windows (por ejemplo,
+  // "EPSON TM-m30II Receipt"). El agente local usa WritePrinter en modo RAW.
+  dispositivo_impresora String?          @db.VarChar(100)
+  modelo_impresora      String           @default("EPSON TM-m30II") @db.VarChar(50)
+  // Campos de red conservados para instalaciones futuras; USB no los usa.
+  host_impresora        String?          @db.VarChar(45)
+  puerto_impresora      Int              @default(9100)
   // 80mm = 48 columnas, 58mm = 32 columnas.
-  ancho_papel_impresora Int         @default(80)
-  impresora_activa Boolean          @default(true)
+  ancho_papel_impresora Int              @default(80)
+  impresora_activa      Boolean          @default(true)
+
+  trabajos TrabajoImpresion[]
 }
 
 // Un trabajo de impresion por (comanda, destino). El reintento/reimpresion
@@ -803,8 +981,40 @@ model ImpresionComanda {
   fecha_creacion       DateTime         @default(now()) @db.Timestamp(6)
   fecha_actualizacion  DateTime         @default(now()) @db.Timestamp(6)
 
-  comanda Comanda @relation(fields: [id_comanda_impresion], references: [id_comanda])
+  comanda  Comanda            @relation(fields: [id_comanda_impresion], references: [id_comanda])
+  trabajos TrabajoImpresion[]
 
   @@unique([id_comanda_impresion, destino_impresion])
   @@index([estado_impresion])
+}
+
+// Cola canonica del servidor. El agente de Windows reclama trabajos, envia
+// los bytes ESC/POS por USB y confirma el resultado. Un corte de red, falta de
+// papel o reinicio conserva el trabajo para reintento.
+model TrabajoImpresion {
+  id_trabajoImpresion         Int                  @id @default(autoincrement())
+  clave_idempotencia_trabajo  String               @unique @db.VarChar(100)
+  tipo_trabajo                TipoTrabajoImpresion
+  destino_trabajo             DestinoImpresion
+  id_impresora_trabajo        Int
+  id_impresionComanda_trabajo Int?
+  id_factura_trabajo          Int?
+  contenido_escpos_trabajo    Bytes
+  estado_trabajo              EstadoImpresion      @default(PENDIENTE)
+  intentos_trabajo            Int                  @default(0)
+  proximo_intento_trabajo     DateTime             @default(now()) @db.Timestamp(6)
+  token_bloqueo_trabajo       String?              @db.VarChar(50)
+  bloqueado_hasta_trabajo     DateTime?            @db.Timestamp(6)
+  ultimo_error_trabajo        String?              @db.VarChar(300)
+  fecha_creacion_trabajo      DateTime             @default(now()) @db.Timestamp(6)
+  fecha_actualizacion_trabajo DateTime             @default(now()) @db.Timestamp(6)
+
+  impresora        Impresora         @relation(fields: [id_impresora_trabajo], references: [id_impresora])
+  impresionComanda ImpresionComanda? @relation(fields: [id_impresionComanda_trabajo], references: [id_impresionComanda])
+  factura          Factura?          @relation(fields: [id_factura_trabajo], references: [id_factura])
+
+  @@index([estado_trabajo, proximo_intento_trabajo])
+  @@index([id_impresora_trabajo])
+  @@index([id_impresionComanda_trabajo])
+  @@index([id_factura_trabajo])
 }

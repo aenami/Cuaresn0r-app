@@ -27,9 +27,7 @@ const FACTURA_SELECT = {
               empleado: { select: { nombre_empleado: true, apellido_empleado: true } },
             },
           },
-          mesa: {
-            select: { zona: { select: { id_zona: true, nombre_zona: true, identificador_zona: true } } },
-          },
+          ficha: { select: { id_ficha: true, numero_ficha: true } },
         },
       },
     },
@@ -50,7 +48,12 @@ const DETALLE_SELECT = {
 } satisfies Prisma.DetalleComandaSelect;
 
 type FacturaFila = Prisma.FacturaGetPayload<{ select: typeof FACTURA_SELECT }>;
-type DetalleFila = Prisma.DetalleComandaGetPayload<{ select: typeof DETALLE_SELECT }>;
+const DETALLE_FACTURADO_SELECT = {
+  proporcion_facturada_fd: true,
+  subtotal_facturado_fd: true,
+  detalleComanda: { select: DETALLE_SELECT },
+} satisfies Prisma.FacturaDetalleSelect;
+type DetalleFacturadoFila = Prisma.FacturaDetalleGetPayload<{ select: typeof DETALLE_FACTURADO_SELECT }>;
 
 // Prisma.Decimal | null -> number a 2 decimales.
 function num(d: Prisma.Decimal | null | undefined): number {
@@ -101,7 +104,7 @@ export class ReportsService {
       this.facturasDelRango(rango),
       this.metodosPago(rango),
       this.detallesVendidos(rango),
-      this.ocupacionMesas(),
+      this.ocupacionFichas(),
     ]);
 
     return {
@@ -131,8 +134,8 @@ export class ReportsService {
       topProductos: this.agruparTopProductos(detalles),
       porCategoria: this.agruparPorCategoria(detalles),
       porMesero: this.agruparPorMesero(facturas),
-      porZona: this.agruparPorZona(facturas),
-      ocupacionMesas: ocupacion,
+      porFicha: this.agruparPorFicha(facturas),
+      ocupacionFichas: ocupacion,
     };
   }
 
@@ -146,10 +149,7 @@ export class ReportsService {
         _sum: { monto_total_factura: true, monto_servicio_factura: true },
         _count: { _all: true },
       }),
-      this.prisma.detalleComanda.aggregate({
-        where: this.detalleVendidoWhere(rango, true),
-        _sum: { cantidad_producto_dc: true },
-      }),
+      this.detallesVendidos(rango, true),
       // Domicilios: pedidos DOMICILIO distintos con al menos una factura pagada
       // en el rango (no cuenta por factura, para no inflar si se dividio la cuenta).
       this.prisma.pedido.count({
@@ -160,22 +160,11 @@ export class ReportsService {
       netas: num(agg._sum.monto_total_factura),
       propina: num(agg._sum.monto_servicio_factura),
       cuentas: agg._count._all,
-      items: aggItems._sum.cantidad_producto_dc ?? 0,
+      items: aggItems.reduce(
+        (total, detalle) => total + detalle.detalleComanda.cantidad_producto_dc * num(detalle.proporcion_facturada_fd),
+        0,
+      ),
       domicilios,
-    };
-  }
-
-  // Detalles vendidos en el rango: los asignados directo a una subcuenta pagada
-  // + los repartidos (compartidos). `soloPadres` excluye hijos de combo/adiciones.
-  private detalleVendidoWhere(rango: Rango, soloPadres: boolean): Prisma.DetalleComandaWhereInput {
-    const facturaFiltro = { estado_factura: 'PAGADA' as const, fecha_emision_factura: rango };
-    return {
-      estado_dc: { not: 'CANCELADO' },
-      ...(soloPadres && { id_detalleComandaPadre_dc: null }),
-      OR: [
-        { subcuenta: { facturas: { some: facturaFiltro } } },
-        { subcuentasReparto: { some: { subcuenta: { facturas: { some: facturaFiltro } } } } },
-      ],
     };
   }
 
@@ -200,18 +189,31 @@ export class ReportsService {
       .sort((a, b) => b.monto - a.monto);
   }
 
-  private detallesVendidos(rango: Rango): Promise<DetalleFila[]> {
-    return this.prisma.detalleComanda.findMany({
-      where: this.detalleVendidoWhere(rango, false),
-      select: DETALLE_SELECT,
+  // Se consulta FacturaDetalle, no toda la subcuenta: una factura solo reporta
+  // sus productos/proporciones exactos, incluso si luego se agregaron rondas.
+  private detallesVendidos(rango: Rango, soloPadres = false): Promise<DetalleFacturadoFila[]> {
+    return this.prisma.facturaDetalle.findMany({
+      where: {
+        factura: { estado_factura: 'PAGADA', fecha_emision_factura: rango },
+        detalleComanda: {
+          estado_dc: { not: 'CANCELADO' },
+          ...(soloPadres && { id_detalleComandaPadre_dc: null }),
+        },
+      },
+      select: DETALLE_FACTURADO_SELECT,
     });
   }
 
-  private async ocupacionMesas() {
-    const grupos = await this.prisma.mesa.groupBy({ by: ['estado_mesa'], _count: { _all: true } });
-    const base = { LIBRE: 0, OCUPADA: 0, RESERVADA: 0, DESACTIVADA: 0 };
-    for (const g of grupos) base[g.estado_mesa] = g._count._all;
-    return base;
+  private async ocupacionFichas() {
+    const [grupos, ocupadas] = await Promise.all([
+      this.prisma.ficha.groupBy({ by: ['ficha_activa'], _count: { _all: true } }),
+      this.prisma.pedido.count({
+        where: { id_ficha_pedido: { not: null }, estado_pedido: { notIn: ['CERRADO', 'CANCELADO'] } },
+      }),
+    ]);
+    const activas = grupos.find((grupo) => grupo.ficha_activa)?._count._all ?? 0;
+    const desactivadas = grupos.find((grupo) => !grupo.ficha_activa)?._count._all ?? 0;
+    return { DISPONIBLES: Math.max(0, activas - ocupadas), OCUPADAS: ocupadas, DESACTIVADAS: desactivadas };
   }
 
   // ---- agrupaciones en memoria ----
@@ -255,15 +257,16 @@ export class ReportsService {
     return horas.map((x) => ({ ...x, total: round2(x.total) }));
   }
 
-  private agruparTopProductos(detalles: DetalleFila[]) {
+  private agruparTopProductos(detalles: DetalleFacturadoFila[]) {
     const acum = new Map<string, { nombre: string; unidades: number; ingresos: number }>();
-    for (const d of detalles) {
+    for (const facturado of detalles) {
+      const d = facturado.detalleComanda;
       const clave = d.producto ? `p${d.producto.id_producto}` : d.combo ? `c${d.combo.id_combo}` : null;
       if (!clave) continue;
       const nombre = d.producto?.nombre_producto ?? d.combo?.nombre_combo ?? 'Item';
       const e = acum.get(clave) ?? { nombre, unidades: 0, ingresos: 0 };
-      e.unidades += d.cantidad_producto_dc;
-      e.ingresos += d.cantidad_producto_dc * num(d.precio_unitario_dc);
+      e.unidades += d.cantidad_producto_dc * num(facturado.proporcion_facturada_fd);
+      e.ingresos += num(facturado.subtotal_facturado_fd);
       acum.set(clave, e);
     }
     return [...acum.values()]
@@ -272,9 +275,10 @@ export class ReportsService {
       .slice(0, 10);
   }
 
-  private agruparPorCategoria(detalles: DetalleFila[]) {
+  private agruparPorCategoria(detalles: DetalleFacturadoFila[]) {
     const acum = new Map<string, { categoria: string; unidades: number; ingresos: number }>();
-    for (const d of detalles) {
+    for (const facturado of detalles) {
+      const d = facturado.detalleComanda;
       const cat = d.producto?.categoria?.nombre_categoria ?? (d.combo ? 'Combos' : 'Sin categoria');
       const clave = d.producto?.categoria
         ? `cat${d.producto.categoria.id_categoria}`
@@ -282,8 +286,8 @@ export class ReportsService {
           ? 'combos'
           : 'sin';
       const e = acum.get(clave) ?? { categoria: cat, unidades: 0, ingresos: 0 };
-      e.unidades += d.cantidad_producto_dc;
-      e.ingresos += d.cantidad_producto_dc * num(d.precio_unitario_dc);
+      e.unidades += d.cantidad_producto_dc * num(facturado.proporcion_facturada_fd);
+      e.ingresos += num(facturado.subtotal_facturado_fd);
       acum.set(clave, e);
     }
     return [...acum.values()]
@@ -311,13 +315,13 @@ export class ReportsService {
       .sort((a, b) => b.ventas - a.ventas);
   }
 
-  private agruparPorZona(facturas: FacturaFila[]) {
-    const acum = new Map<number | string, { zona: string; ventas: number; cuentas: number }>();
+  private agruparPorFicha(facturas: FacturaFila[]) {
+    const acum = new Map<number | string, { ficha: string; ventas: number; cuentas: number }>();
     for (const f of facturas) {
-      const zona = f.subcuenta.pedido.mesa?.zona;
-      const clave = zona?.id_zona ?? 'sin';
-      const nombre = zona ? zona.nombre_zona : 'Sin zona';
-      const e = acum.get(clave) ?? { zona: nombre, ventas: 0, cuentas: 0 };
+      const ficha = f.subcuenta.pedido.ficha;
+      const clave = ficha?.id_ficha ?? 'domicilio-sin-ficha';
+      const nombre = ficha ? `Ficha ${ficha.numero_ficha}` : 'Domicilio / sin ficha';
+      const e = acum.get(clave) ?? { ficha: nombre, ventas: 0, cuentas: 0 };
       e.ventas += num(f.monto_total_factura);
       e.cuentas += 1;
       acum.set(clave, e);
