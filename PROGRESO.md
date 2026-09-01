@@ -1,0 +1,147 @@
+# Progreso del proyecto
+
+Este archivo registra el estado funcional y las decisiones tomadas al adaptar el
+template POS al restaurante objetivo. Debe actualizarse junto con cada cambio de
+alcance o feature terminada.
+
+## Contexto actual
+
+- El repositorio parte de un template POS para restaurante.
+- La reestructuracion hacia el restaurante especifico esta implementada en el
+  codigo y pendiente de despliegue/configuracion operativa.
+- La migracion versionada es
+  `server/prisma/migrations/20260901090000_restructuracion_restaurante`.
+
+## Convenciones de trabajo
+
+- Cada avance terminado debe quedar registrado en commits funcionales y
+  descriptivos antes de iniciar el siguiente bloque de trabajo.
+- Los commits usan exclusivamente la identidad Git configurada por el
+  propietario del repositorio y no incluyen firmas ni coautorias adicionales.
+
+## Completado
+
+### 2026-09-01 — Configuración local de PostgreSQL
+
+- Se añadió `server/.env` para el desarrollo local con la conexión de PostgreSQL
+  por defecto (`postgresql://postgres:postgres@localhost:5432/pos`). Si la
+  instalación local usa otras credenciales, debe ajustarse solo ese valor.
+- `PrismaService` ahora valida `DATABASE_URL` al iniciar y devuelve una
+  instrucción concreta si falta, en lugar de propagar el error interno
+  `SASL: client password must be a string`.
+- La migración `20260901090000_restructuracion_restaurante` quedó aplicada en
+  la base local `POS`. Se conservó la tabla `Proveedor` heredada y sus dos
+  registros; la migración ahora reutiliza esa tabla y es atómica.
+- Antes de migrar se creó un respaldo local en `server/backups/`, directorio
+  excluido de Git por contener datos de la base.
+- Verificación posterior: Prisma reporta las 16 migraciones al día; schema
+  válido; consultas ORM a usuarios, proveedores, fichas, cuentas por pagar y
+  trabajos de impresión correctas; backend compilado; inicio completo de Nest
+  y login local aprobados (HTTP 200/201); 15 suites/122 pruebas aprobadas.
+
+### 2026-08-31 — Preparacion para la reestructuracion
+
+- Se reviso la arquitectura y el dominio completo del template.
+- Se descarto definitivamente el rol `COCINERO`; no se implementara.
+- Se completo la proteccion del ultimo administrador activo en los tres puntos
+  que pueden retirarle acceso:
+  - cambiar su rol a uno no administrativo;
+  - eliminar su usuario;
+  - desactivar su empleado.
+- La proteccion serializa esas operaciones en PostgreSQL para cubrir tambien
+  solicitudes concurrentes.
+- Se agregaron/actualizaron pruebas unitarias de usuarios y empleados.
+- Validacion: 14 suites y 118 pruebas del backend aprobadas; TypeScript y
+  formato de los archivos modificados aprobados.
+
+### 2026-09-01 — Reestructuracion operativa del restaurante
+
+- Pedidos locales:
+  - Las fichas sustituyen las mesas para identificar pedidos locales.
+  - Un pedido LOCAL inicia sin ficha; se puede guardar como comanda BORRADOR
+    mientras se toma el pedido.
+  - CAJERO o ADMIN pueden enviar una comanda sin pagar. La accion queda
+    auditada y la ficha es opcional en esa excepcion.
+  - El flujo normal exige pago y ficha antes de enviar a preparacion.
+  - Al entregar todos los productos, el pedido queda permanentemente cerrado
+    para nuevas adiciones. La ficha queda reutilizable solo cuando tambien se
+    encuentra completamente pagado; el siguiente consumo es otro pedido.
+  - ADMIN puede crear, renumerar, activar y desactivar fichas. No se puede
+    desactivar una ficha ocupada.
+- Facturacion y cuentas:
+  - Se preservan subcuentas, repartos proporcionales y pagos mixtos.
+  - `FacturaDetalle` congela los productos y proporciones de cada factura;
+    los productos pagados no se pueden modificar ni cancelar. Las correcciones
+    son anulacion y nueva factura.
+  - Se agregaron comentarios/resoluciones por subcuenta para recordatorios,
+    por ejemplo un cambio pendiente para un cliente.
+- Inventario y proveedores:
+  - Ingredientes admiten umbral bajo y alto opcionales, con estados
+    informativos agotado/bajo/ideal/alto/sin umbrales.
+  - Se implementaron proveedores y cuentas por pagar con vencimiento, saldo,
+    pagos parciales y pago por efectivo o transferencia.
+  - La entrada de inventario de una compra ocurre exclusivamente al confirmar
+    la recepcion fisica de la mercancia.
+- Cuadre de caja:
+  - Todo turno abre con base fija de 300.000 COP.
+  - El efectivo esperado solo incluye efectivo fisico; las transferencias se
+    reportan separadamente (ventas, egresos de nomina/proveedores y neto).
+- Impresion:
+  - La arquitectura es servidor -> cola persistente -> agente local Windows
+    -> USB/ESC-POS. El agente es para la caja, incluye instalacion al inicio de
+    Windows y reintentos por desconexion/falta de papel.
+  - Se soporta Epson TM-m30II para factura, cocina/barra compartida y una
+    futura tercera impresora por destino.
+- Interfaz:
+  - El tablero antes llamado Mesas ahora opera como “Pedidos y fichas”.
+  - Se agregaron pantallas de fichas, cuentas por pagar, comentarios de cuenta,
+    umbrales de ingredientes y conciliacion de transferencias en caja.
+  - Los reportes y las vistas de facturas cobradas usan la ficha y el detalle
+    exacto congelado en la factura; no vuelven a inferir productos desde una
+    mesa o desde rondas agregadas posteriormente.
+- Validacion de codigo: schema Prisma valido y cliente generado; compilacion
+  de servidor y cliente aprobada; 15 suites/122 pruebas unitarias aprobadas.
+
+## Pendiente inmediato
+
+- La base local ya está migrada. En futuros ambientes de despliegue todavía se
+  debe ejecutar `prisma migrate deploy` y configurar las fichas iniciales del
+  restaurante.
+- Instalar la cola de Windows en el computador de caja, registrar los nombres
+  exactos de las dos impresoras USB y configurar `PRINT_AGENT_KEY` tanto en el
+  servidor como en el agente local.
+- Realizar una prueba operativa de punta a punta con una impresora real:
+  factura, comanda compartida cocina/barra, falta de papel y reintento.
+- Definir si se activara una tercera impresora independiente para barra.
+
+## Reestructuracion solicitada (decisiones en definicion)
+
+### Pedidos, pago anticipado y fichas
+
+- Todas las decisiones de esta seccion se implementaron el 2026-09-01. Las
+  excepciones y reglas exactas se resumen arriba en “Reestructuracion
+  operativa del restaurante”.
+
+### Estados de inventario
+
+- Implementado: umbrales bajo/alto opcionales y estados solo informativos.
+
+### Impresion termica local
+
+- Implementado; quedan las tareas de instalacion y prueba fisica descritas en
+  “Pendiente inmediato”.
+
+### Cuadre de caja
+
+- Implementado el cuadre por turno con efectivo, transferencias y cuentas por
+  pagar. El consolidado multi-turno/dia queda para una iteracion de reportes.
+
+## Pendientes heredados que siguen vigentes
+
+- Autoservicio del empleado (`/payroll/me/*`).
+- Devoluciones parciales de factura mediante nota credito.
+- Auditoria formal de devoluciones (`DevolucionPago`).
+
+## Decisiones descartadas
+
+- Rol y pantalla exclusiva de cocina (`COCINERO`).

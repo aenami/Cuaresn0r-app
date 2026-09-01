@@ -15,6 +15,7 @@ server/dist
 # ARCHIVOS SUBIDOS (imagenes de productos)
 # =========================
 server/uploads/
+server/backups/
 
 # =========================
 # ENV FILES
