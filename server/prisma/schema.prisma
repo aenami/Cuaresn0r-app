@@ -347,9 +347,8 @@ model Combo {
   precio_combo Decimal @db.Decimal(15, 4)
   combo_activo Boolean @default(true)
 
-  detallesCombo         DetalleCombo[]
-  detallesComanda       DetalleComanda[]
-  planProduccionDiarias PlanProduccionDiaria[]
+  detallesCombo   DetalleCombo[]
+  detallesComanda DetalleComanda[]
 }
 
 model DetalleCombo {
@@ -614,8 +613,6 @@ model PlanProduccionDiaria {
   ingrediente     Ingrediente? @relation(fields: [id_ingrediente_planProduccion], references: [id_ingrediente], onDelete: Restrict)
   usuarioCrea     Usuario      @relation("PlanProduccionCreador", fields: [id_usuario_crea_planProduccion], references: [id_usuario])
   usuarioResuelve Usuario?     @relation("PlanProduccionResueltoPor", fields: [id_usuario_resuelve_planProduccion], references: [id_usuario])
-  combo           Combo?       @relation(fields: [comboId_combo], references: [id_combo])
-  comboId_combo   Int?
 
   @@unique([fecha_planProduccion, id_producto_planProduccion])
   @@unique([fecha_planProduccion, id_ingrediente_planProduccion])

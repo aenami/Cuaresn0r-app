@@ -154,6 +154,17 @@ alcance o feature terminada.
   local `POS`, previo respaldo en `server/backups/`. Prisma reporta 18
   migraciones al dia; 17 suites/139 pruebas, compilaciones y lint aprobados.
 
+### 2026-09-01 — Correccion de creacion de metas de produccion
+
+- Se retiro del esquema Prisma una relacion accidental entre
+  `PlanProduccionDiaria` y `Combo`. La funcionalidad solo admite productos e
+  ingredientes y la migracion aplicada nunca creo `comboId_combo`, por lo que
+  el cliente generado intentaba consultar una columna inexistente (`P2022`).
+- No fue necesaria una migracion adicional: la estructura existente en
+  PostgreSQL era la correcta. Se regenero Prisma Client y se comprobo una
+  creacion real dentro de una transaccion revertida, sin conservar datos de
+  prueba. Las 17 suites/139 pruebas y la compilacion del servidor aprobaron.
+
 ## Pendiente inmediato
 
 - La base local ya está migrada. En futuros ambientes de despliegue todavía se
