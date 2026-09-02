@@ -112,6 +112,17 @@ enum TipoMovimientoInventario {
   REVERSO
 }
 
+enum TipoObjetivoProduccion {
+  PRODUCTO
+  INGREDIENTE
+}
+
+enum EstadoMetaProduccion {
+  PENDIENTE
+  PRODUCIDO
+  NO_PRODUCIDO
+}
+
 // Donde se prepara un producto y a que impresora va su comanda.
 // GENERAL aplica SOLO a impresoras: una unica termica que recibe los tickets
 // de cocina Y barra (el mesero reparte los papelitos). Las categorias y los
@@ -199,15 +210,17 @@ model Usuario {
   empleado Empleado @relation(fields: [id_empleado_usuario], references: [id_empleado])
   rol      Rol      @relation(fields: [id_rol], references: [id_rol])
 
-  pedidosComoMesero      Pedido[]
-  turnos                 Turno[]
-  movimientosInventario  MovimientoInventario[]
-  pagosNominaRegistrados PagoNomina[]
-  comandasEnviadas       Comanda[]              @relation("ComandaEnviadaPor")
-  comentariosCuenta      ComentarioCuenta[]     @relation("ComentarioCuentaAutor")
-  comentariosResueltos   ComentarioCuenta[]     @relation("ComentarioCuentaResueltoPor")
-  pagosCuentasPorPagar   PagoCuentaPorPagar[]
-  recepcionesMercancia   CuentaPorPagar[]       @relation("CuentaRecibidaPor")
+  pedidosComoMesero        Pedido[]
+  turnos                   Turno[]
+  movimientosInventario    MovimientoInventario[]
+  pagosNominaRegistrados   PagoNomina[]
+  comandasEnviadas         Comanda[]              @relation("ComandaEnviadaPor")
+  comentariosCuenta        ComentarioCuenta[]     @relation("ComentarioCuentaAutor")
+  comentariosResueltos     ComentarioCuenta[]     @relation("ComentarioCuentaResueltoPor")
+  pagosCuentasPorPagar     PagoCuentaPorPagar[]
+  recepcionesMercancia     CuentaPorPagar[]       @relation("CuentaRecibidaPor")
+  metasProduccionCreadas   PlanProduccionDiaria[] @relation("PlanProduccionCreador")
+  metasProduccionResueltas PlanProduccionDiaria[] @relation("PlanProduccionResueltoPor")
 
   @@index([id_empleado_usuario])
   @@index([id_rol])
@@ -334,8 +347,9 @@ model Combo {
   precio_combo Decimal @db.Decimal(15, 4)
   combo_activo Boolean @default(true)
 
-  detallesCombo   DetalleCombo[]
-  detallesComanda DetalleComanda[]
+  detallesCombo         DetalleCombo[]
+  detallesComanda       DetalleComanda[]
+  planProduccionDiarias PlanProduccionDiaria[]
 }
 
 model DetalleCombo {
@@ -530,6 +544,7 @@ model Producto {
   recetas         Receta[]
   detallesCombo   DetalleCombo[]
   detallesComanda DetalleComanda[]
+  metasProduccion PlanProduccionDiaria[]
 
   @@index([categoria_producto])
 }
@@ -575,6 +590,38 @@ model Ingrediente {
   detallesComandaIngrediente DetalleComandaIngrediente[]
   movimientos                MovimientoInventario[]
   detallesCuentaPorPagar     DetalleCuentaPorPagar[]
+  metasProduccion            PlanProduccionDiaria[]
+}
+
+// Meta operativa completa para un dia. No registra cantidad parcial ni mueve
+// stock: PRODUCIDO significa que se termino toda la cantidad objetivo.
+model PlanProduccionDiaria {
+  id_planProduccion                  Int                    @id @default(autoincrement())
+  fecha_planProduccion               DateTime               @db.Date
+  tipo_objetivo_planProduccion       TipoObjetivoProduccion
+  id_producto_planProduccion         Int?
+  id_ingrediente_planProduccion      Int?
+  nombre_objetivo_planProduccion     String                 @db.VarChar(25)
+  unidad_objetivo_planProduccion     UnidadIngrediente
+  cantidad_objetivo_planProduccion   Decimal                @db.Decimal(20, 4)
+  estado_planProduccion              EstadoMetaProduccion   @default(PENDIENTE)
+  id_usuario_crea_planProduccion     Int
+  id_usuario_resuelve_planProduccion Int?
+  fecha_creacion_planProduccion      DateTime               @default(now()) @db.Timestamp(6)
+  fecha_resolucion_planProduccion    DateTime?              @db.Timestamp(6)
+
+  producto        Producto?    @relation(fields: [id_producto_planProduccion], references: [id_producto], onDelete: Restrict)
+  ingrediente     Ingrediente? @relation(fields: [id_ingrediente_planProduccion], references: [id_ingrediente], onDelete: Restrict)
+  usuarioCrea     Usuario      @relation("PlanProduccionCreador", fields: [id_usuario_crea_planProduccion], references: [id_usuario])
+  usuarioResuelve Usuario?     @relation("PlanProduccionResueltoPor", fields: [id_usuario_resuelve_planProduccion], references: [id_usuario])
+  combo           Combo?       @relation(fields: [comboId_combo], references: [id_combo])
+  comboId_combo   Int?
+
+  @@unique([fecha_planProduccion, id_producto_planProduccion])
+  @@unique([fecha_planProduccion, id_ingrediente_planProduccion])
+  @@index([fecha_planProduccion, estado_planProduccion])
+  @@index([id_usuario_crea_planProduccion])
+  @@index([id_usuario_resuelve_planProduccion])
 }
 
 model DetalleComandaIngrediente {

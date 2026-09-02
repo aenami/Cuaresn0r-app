@@ -88,7 +88,9 @@ export class IngredientsService {
       await this.prisma.ingrediente.delete({ where: { id_ingrediente: id } });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
-        throw new ConflictException('Este ingrediente esta en uso (recetas o movimientos de inventario) y no se puede eliminar');
+        throw new ConflictException(
+          'Este ingrediente esta en uso (recetas, movimientos o planes de produccion) y no se puede eliminar',
+        );
       }
       throw error;
     }
