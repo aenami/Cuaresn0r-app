@@ -9,8 +9,9 @@ alcance o feature terminada.
 - El repositorio parte de un template POS para restaurante.
 - La reestructuracion hacia el restaurante especifico esta implementada en el
   codigo y pendiente de despliegue/configuracion operativa.
-- La migracion versionada es
-  `server/prisma/migrations/20260901090000_restructuracion_restaurante`.
+- Las migraciones de la adaptación operativa son
+  `server/prisma/migrations/20260901090000_restructuracion_restaurante` y
+  `server/prisma/migrations/20260901102500_trazabilidad_y_modalidad_cuenta`.
 
 ## Convenciones de trabajo
 
@@ -20,6 +21,37 @@ alcance o feature terminada.
   propietario del repositorio y no incluyen firmas ni coautorias adicionales.
 
 ## Completado
+
+### 2026-09-01 — Trazabilidad financiera y pedidos por cliente
+
+- Cuentas por pagar:
+  - Se separaron la fecha de emisión del documento, la fecha real de registro,
+    la última actualización y la fecha en que se terminó de pagar.
+  - El detalle muestra un historial cronológico con recepción de mercancía,
+    cada pago parcial, método, usuario, turno y caja, además del pago total.
+  - El formulario permite registrar una fecha de emisión histórica sin perder
+    la fecha en que el dato ingresó al sistema.
+- Comandas autorizadas antes del pago:
+  - La autorización original se conserva como auditoría.
+  - Al saldar todos los productos de la ronda se registra automáticamente la
+    fecha de regularización y desaparecen tanto el aviso de pago pendiente como
+    la acción de cobrar un pedido completamente pagado.
+  - Si posteriormente se anula la factura, la ronda vuelve a quedar marcada
+    como pendiente de regularización.
+- Pedidos por cuenta:
+  - Un pedido local puede abrirse como cuenta única o `POR_CUENTA`.
+  - En modo por cuenta se crean los clientes desde el inicio y el trabajador
+    elige la cuenta activa antes de agregar productos; cada producto queda
+    asociado a ese cliente desde su creación.
+  - Se validan nombres vacíos, repetidos y el máximo de 20 cuentas iniciales.
+- Cuentas cobradas:
+  - El día del reporte y el turno se atribuyen al pago final que saldó la
+    factura, incluso cuando los pagos parciales ocurrieron en turnos distintos.
+  - La pantalla incorpora un interruptor para separar las ventas por turno,
+    mostrando caja, cajero, apertura, cierre, número de cuentas y total.
+- La migración fue respaldada y aplicada en la base local `POS`; las 17
+  migraciones están al día y las cuentas existentes quedaron con sus fechas de
+  trazabilidad completas.
 
 ### 2026-09-01 — Configuración local de PostgreSQL
 
@@ -100,7 +132,7 @@ alcance o feature terminada.
     exacto congelado en la factura; no vuelven a inferir productos desde una
     mesa o desde rondas agregadas posteriormente.
 - Validacion de codigo: schema Prisma valido y cliente generado; compilacion
-  de servidor y cliente aprobada; 15 suites/122 pruebas unitarias aprobadas.
+  de servidor y cliente aprobada; 16 suites/130 pruebas unitarias aprobadas.
 
 ## Pendiente inmediato
 
@@ -134,7 +166,8 @@ alcance o feature terminada.
 ### Cuadre de caja
 
 - Implementado el cuadre por turno con efectivo, transferencias y cuentas por
-  pagar. El consolidado multi-turno/dia queda para una iteracion de reportes.
+  pagar. Las cuentas cobradas ya pueden visualizarse separadas por turno; un
+  consolidado contable multi-turno más amplio queda para una iteración futura.
 
 ## Pendientes heredados que siguen vigentes
 
