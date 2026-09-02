@@ -134,6 +134,26 @@ alcance o feature terminada.
 - Validacion de codigo: schema Prisma valido y cliente generado; compilacion
   de servidor y cliente aprobada; 16 suites/130 pruebas unitarias aprobadas.
 
+### 2026-09-01 — Plan diario de produccion
+
+- Inventario abre ahora en una hoja de preparacion diaria navegable por fecha.
+- ADMIN puede agregar una unica meta por producto o ingrediente para cada dia;
+  los productos exigen unidades enteras y los ingredientes conservan su unidad
+  y admiten hasta cuatro decimales.
+- Las metas solo se resuelven completas como `PRODUCIDO` o `NO_PRODUCIDO`.
+  Cualquier trabajador autenticado puede confirmar una meta pendiente una sola
+  vez; solo ADMIN puede corregir o reabrir una decision ya registrada.
+- La produccion es informativa y no genera movimientos de inventario
+  automaticamente. La base de datos tambien impide cantidades no positivas,
+  productos fraccionados, objetivos ambiguos y duplicados por fecha.
+- Se conserva quien creo y quien resolvio cada meta, junto con la hora de
+  resolucion y una copia del nombre/unidad del objetivo para el historial.
+- Los estados de stock ya tienen color semantico: agotado rojo, bajo ambar,
+  ideal verde, alto azul y sin umbrales neutro.
+- Se aplico la migracion `20260901130000_plan_produccion_diaria` en la base
+  local `POS`, previo respaldo en `server/backups/`. Prisma reporta 18
+  migraciones al dia; 17 suites/139 pruebas, compilaciones y lint aprobados.
+
 ## Pendiente inmediato
 
 - La base local ya está migrada. En futuros ambientes de despliegue todavía se
