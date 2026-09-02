@@ -8,10 +8,17 @@ export const ITEM_INCLUDE = {
   ingredientesPersonalizados: { include: { ingrediente: true } },
   // Los hijos (componentes de combo, adiciones) tambien pueden traer
   // personalizaciones de ingredientes propias.
-  hijos: { include: { producto: true, ingredientesPersonalizados: { include: { ingrediente: true } } } },
+  hijos: {
+    include: {
+      producto: true,
+      ingredientesPersonalizados: { include: { ingrediente: true } },
+    },
+  },
   subcuentasReparto: true,
   facturasDetalle: {
-    include: { factura: { select: { id_factura: true, estado_factura: true } } },
+    include: {
+      factura: { select: { id_factura: true, estado_factura: true } },
+    },
   },
 } as const;
 
@@ -29,7 +36,9 @@ export const PEDIDO_INCLUDE = {
       comentarios: {
         include: {
           usuario: { select: { id_usuario: true, email_usuario: true } },
-          usuarioResuelve: { select: { id_usuario: true, email_usuario: true } },
+          usuarioResuelve: {
+            select: { id_usuario: true, email_usuario: true },
+          },
         },
         orderBy: { fecha_comentarioCuenta: 'desc' as const },
       },

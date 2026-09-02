@@ -46,6 +46,11 @@ enum TipoPedido {
   DOMICILIO
 }
 
+enum ModalidadCuentaPedido {
+  UNICA
+  POR_CUENTA
+}
+
 enum EstadoComanda {
   BORRADOR
   ENVIADA
@@ -238,13 +243,14 @@ model Mesa {
 // =========================================================================
 
 model Pedido {
-  id_pedido           Int          @id @default(autoincrement())
-  fecha_pedido        DateTime     @default(now()) @db.Timestamp(6)
-  estado_pedido       EstadoPedido @default(ABIERTO)
-  tipo_pedido         TipoPedido   @default(LOCAL)
-  mesero_pedido       Int
-  id_ficha_pedido     Int?
-  fecha_cierre_pedido DateTime?    @db.Timestamp(6)
+  id_pedido               Int                   @id @default(autoincrement())
+  fecha_pedido            DateTime              @default(now()) @db.Timestamp(6)
+  estado_pedido           EstadoPedido          @default(ABIERTO)
+  tipo_pedido             TipoPedido            @default(LOCAL)
+  modalidad_cuenta_pedido ModalidadCuentaPedido @default(UNICA)
+  mesero_pedido           Int
+  id_ficha_pedido         Int?
+  fecha_cierre_pedido     DateTime?             @db.Timestamp(6)
 
   // Datos de entrega: solo se llenan para DOMICILIO.
   nombre_cliente_pedido    String? @db.VarChar(80)
@@ -264,13 +270,14 @@ model Pedido {
 }
 
 model Comanda {
-  id_comanda               Int           @id @default(autoincrement())
-  id_pedido_comanda        Int
-  creacion_comanda         DateTime      @default(now()) @db.Timestamp(6)
-  estado_comanda           EstadoComanda @default(BORRADOR)
-  fecha_envio_comanda      DateTime?     @db.Timestamp(6)
-  id_usuario_envia_comanda Int?
-  autorizada_sin_pago      Boolean       @default(false)
+  id_comanda                        Int           @id @default(autoincrement())
+  id_pedido_comanda                 Int
+  creacion_comanda                  DateTime      @default(now()) @db.Timestamp(6)
+  estado_comanda                    EstadoComanda @default(BORRADOR)
+  fecha_envio_comanda               DateTime?     @db.Timestamp(6)
+  id_usuario_envia_comanda          Int?
+  autorizada_sin_pago               Boolean       @default(false)
+  fecha_regularizacion_pago_comanda DateTime?     @db.Timestamp(6)
 
   pedido       Pedido   @relation(fields: [id_pedido_comanda], references: [id_pedido])
   usuarioEnvia Usuario? @relation("ComandaEnviadaPor", fields: [id_usuario_envia_comanda], references: [id_usuario])
@@ -675,17 +682,20 @@ model Proveedor {
 }
 
 model CuentaPorPagar {
-  id_cuentaPorPagar                Int                  @id @default(autoincrement())
-  id_proveedor_cuentaPorPagar      Int
-  concepto_cuentaPorPagar          String               @db.VarChar(150)
-  documento_cuentaPorPagar         String?              @db.VarChar(50)
-  fecha_emision_cuentaPorPagar     DateTime             @default(now()) @db.Date
-  fecha_vencimiento_cuentaPorPagar DateTime?            @db.Date
-  monto_total_cuentaPorPagar       Decimal              @db.Decimal(20, 4)
-  estado_cuentaPorPagar            EstadoCuentaPorPagar @default(PENDIENTE)
-  observacion_cuentaPorPagar       String?              @db.VarChar(300)
-  fecha_recepcion_mercancia        DateTime?            @db.Timestamp(6)
-  id_usuario_recibe_mercancia      Int?
+  id_cuentaPorPagar                  Int                  @id @default(autoincrement())
+  id_proveedor_cuentaPorPagar        Int
+  concepto_cuentaPorPagar            String               @db.VarChar(150)
+  documento_cuentaPorPagar           String?              @db.VarChar(50)
+  fecha_emision_cuentaPorPagar       DateTime             @default(now()) @db.Date
+  fecha_vencimiento_cuentaPorPagar   DateTime?            @db.Date
+  monto_total_cuentaPorPagar         Decimal              @db.Decimal(20, 4)
+  estado_cuentaPorPagar              EstadoCuentaPorPagar @default(PENDIENTE)
+  observacion_cuentaPorPagar         String?              @db.VarChar(300)
+  fecha_recepcion_mercancia          DateTime?            @db.Timestamp(6)
+  fecha_registro_cuentaPorPagar      DateTime             @default(now()) @db.Timestamp(6)
+  fecha_actualizacion_cuentaPorPagar DateTime             @default(now()) @updatedAt @db.Timestamp(6)
+  fecha_pago_total_cuentaPorPagar    DateTime?            @db.Timestamp(6)
+  id_usuario_recibe_mercancia        Int?
 
   proveedor       Proveedor               @relation(fields: [id_proveedor_cuentaPorPagar], references: [id_proveedor])
   usuarioRecibe   Usuario?                @relation("CuentaRecibidaPor", fields: [id_usuario_recibe_mercancia], references: [id_usuario])
@@ -696,6 +706,8 @@ model CuentaPorPagar {
   @@index([id_proveedor_cuentaPorPagar])
   @@index([estado_cuentaPorPagar])
   @@index([fecha_vencimiento_cuentaPorPagar])
+  @@index([fecha_registro_cuentaPorPagar])
+  @@index([fecha_pago_total_cuentaPorPagar])
 }
 
 model DetalleCuentaPorPagar {
