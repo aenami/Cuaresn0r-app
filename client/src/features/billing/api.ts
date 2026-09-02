@@ -77,7 +77,7 @@ export function facturasDePedidoQuery(idPedido: number) {
 }
 
 // Cuentas cobradas (facturas PAGADA) en un rango [desde, hasta] (ISO). El
-// backend filtra por fecha_emision. La clave incluye el rango para cachear por dia.
+// backend filtra por la fecha del pago final. La clave incluye el rango para cachear por dia.
 export function cuentasPagadasQuery(desde: string, hasta: string) {
   return queryOptions({
     queryKey: ['billing', 'cuentas-pagadas', desde, hasta],
@@ -124,8 +124,7 @@ function useInvalidarCobro() {
 export function useAbrirTurno() {
   const invalidar = useInvalidarBilling()
   return useMutation({
-    mutationFn: (datos: { idCaja: number }) =>
-      api.post<Turno>('/billing/turnos', datos),
+    mutationFn: (datos: { idCaja: number }) => api.post<Turno>('/billing/turnos', datos),
     onSuccess: invalidar,
   })
 }
@@ -186,8 +185,7 @@ export function useGuardarNegocio() {
 // fallo (sin impresora, sin red), el motivo — no lanza salvo error de red/HTTP.
 export function useImprimirFactura() {
   return useMutation({
-    mutationFn: (idFactura: number) =>
-      api.post<{ ok: boolean; motivo?: string }>(`/printing/facturas/${idFactura}`),
+    mutationFn: (idFactura: number) => api.post<{ ok: boolean; motivo?: string }>(`/printing/facturas/${idFactura}`),
   })
 }
 
@@ -200,8 +198,12 @@ export function useImprimirFactura() {
 export function useEmitirFactura() {
   const invalidar = useInvalidarCobro()
   return useMutation({
-    mutationFn: (datos: { idSubcuenta: number; idsDetalle?: number[]; porcentajePropina?: number; montoServicio?: number }) =>
-      api.post<Factura>('/billing/facturas', datos),
+    mutationFn: (datos: {
+      idSubcuenta: number
+      idsDetalle?: number[]
+      porcentajePropina?: number
+      montoServicio?: number
+    }) => api.post<Factura>('/billing/facturas', datos),
     onSuccess: invalidar,
   })
 }
@@ -224,7 +226,9 @@ export function useAnularFactura(idFactura: number) {
   const invalidar = useInvalidarCobro()
   return useMutation({
     mutationFn: (motivo: string) =>
-      api.patch<RespuestaAnulacion>(`/billing/facturas/${idFactura}/anular`, { motivo }),
+      api.patch<RespuestaAnulacion>(`/billing/facturas/${idFactura}/anular`, {
+        motivo,
+      }),
     onSuccess: invalidar,
   })
 }

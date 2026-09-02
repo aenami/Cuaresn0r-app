@@ -47,8 +47,12 @@ export interface ComandaItemPayload {
   idCombo?: number
   cantidad: number
   indicaciones?: string
+  idSubcuenta?: number
   personalizaciones?: PersonalizacionPayload[]
-  componentes?: { idProducto: number; personalizaciones: PersonalizacionPayload[] }[]
+  componentes?: {
+    idProducto: number
+    personalizaciones: PersonalizacionPayload[]
+  }[]
   adiciones?: AdicionPayload[]
 }
 
@@ -68,7 +72,12 @@ function useInvalidarPedidos() {
 export function useAbrirPedido() {
   const invalidar = useInvalidarPedidos()
   return useMutation({
-    mutationFn: () => api.post<Pedido>('/orders', { tipo: 'LOCAL' }),
+    mutationFn: (
+      datos: {
+        modalidadCuenta?: 'UNICA' | 'POR_CUENTA'
+        nombresCuentas?: string[]
+      } = {},
+    ) => api.post<Pedido>('/orders', { tipo: 'LOCAL', ...datos }),
     onSuccess: invalidar,
   })
 }
@@ -83,8 +92,7 @@ export interface NuevoDomicilio {
 export function useAbrirDomicilio() {
   const invalidar = useInvalidarPedidos()
   return useMutation({
-    mutationFn: (datos: NuevoDomicilio) =>
-      api.post<Pedido>('/orders', { tipo: 'DOMICILIO', ...datos }),
+    mutationFn: (datos: NuevoDomicilio) => api.post<Pedido>('/orders', { tipo: 'DOMICILIO', ...datos }),
     onSuccess: invalidar,
   })
 }
@@ -92,8 +100,7 @@ export function useAbrirDomicilio() {
 export function useEnviarComanda(idPedido: number) {
   const invalidar = useInvalidarPedidos()
   return useMutation({
-    mutationFn: (items: ComandaItemPayload[]) =>
-      api.post<Comanda>(`/orders/${idPedido}/comandas`, { items }),
+    mutationFn: (items: ComandaItemPayload[]) => api.post<Comanda>(`/orders/${idPedido}/comandas`, { items }),
     onSuccess: invalidar,
   })
 }
@@ -141,8 +148,7 @@ export function useActualizarFicha() {
 export function useEntregarComanda(idPedido: number) {
   const invalidar = useInvalidarPedidos()
   return useMutation({
-    mutationFn: (idComanda: number) =>
-      api.patch<Comanda>(`/orders/${idPedido}/comandas/${idComanda}/entregar`),
+    mutationFn: (idComanda: number) => api.patch<Comanda>(`/orders/${idPedido}/comandas/${idComanda}/entregar`),
     onSuccess: invalidar,
   })
 }
@@ -177,8 +183,7 @@ export function useCancelarPedido(idPedido: number) {
 export function useCrearSubcuenta(idPedido: number) {
   const invalidar = useInvalidarPedidos()
   return useMutation({
-    mutationFn: (nombre?: string) =>
-      api.post<Subcuenta>(`/orders/${idPedido}/subcuentas`, nombre ? { nombre } : {}),
+    mutationFn: (nombre?: string) => api.post<Subcuenta>(`/orders/${idPedido}/subcuentas`, nombre ? { nombre } : {}),
     onSuccess: invalidar,
   })
 }
@@ -196,9 +201,7 @@ export function useResolverComentarioCuenta(idPedido: number, idSubcuenta: numbe
   const invalidar = useInvalidarPedidos()
   return useMutation({
     mutationFn: (idComentario: number) =>
-      api.patch<ComentarioCuenta>(
-        `/orders/${idPedido}/subcuentas/${idSubcuenta}/comentarios/${idComentario}/resolver`,
-      ),
+      api.patch<ComentarioCuenta>(`/orders/${idPedido}/subcuentas/${idSubcuenta}/comentarios/${idComentario}/resolver`),
     onSuccess: invalidar,
   })
 }

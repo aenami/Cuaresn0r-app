@@ -39,6 +39,8 @@ export interface ItemCarrito {
   precioUnitario: number
   cantidad: number
   indicaciones?: string
+  // Cuenta elegida al tomar el pedido en modalidad POR_CUENTA.
+  idSubcuenta?: number
   // Solo productos directos:
   personalizaciones: PersonalizacionCarrito[]
   // Solo combos:
@@ -59,7 +61,10 @@ export const useCarritoStore = create<CarritoState>()(
       carritos: {},
       agregar: (idPedido, item) =>
         set((s) => ({
-          carritos: { ...s.carritos, [idPedido]: [...(s.carritos[idPedido] ?? []), item] },
+          carritos: {
+            ...s.carritos,
+            [idPedido]: [...(s.carritos[idPedido] ?? []), item],
+          },
         })),
       quitar: (idPedido, uid) =>
         set((s) => ({
@@ -90,6 +95,7 @@ export function itemAPayload(item: ItemCarrito): ComandaItemPayload {
     ...(item.tipo === 'producto' ? { idProducto: item.id } : { idCombo: item.id }),
     cantidad: item.cantidad,
     ...(item.indicaciones ? { indicaciones: item.indicaciones } : {}),
+    ...(item.idSubcuenta ? { idSubcuenta: item.idSubcuenta } : {}),
   }
 
   // Solo "sin": el delta siempre resta (negativo) la cantidad de receta.
@@ -114,7 +120,10 @@ export function itemAPayload(item: ItemCarrito): ComandaItemPayload {
   }
 
   if (item.adiciones.length > 0) {
-    payload.adiciones = item.adiciones.map((a) => ({ idProducto: a.idProducto, cantidad: a.cantidad }))
+    payload.adiciones = item.adiciones.map((a) => ({
+      idProducto: a.idProducto,
+      cantidad: a.cantidad,
+    }))
   }
 
   return payload

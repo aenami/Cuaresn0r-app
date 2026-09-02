@@ -79,12 +79,7 @@ export interface Receta {
 }
 
 export type TipoMovimientoInventario =
-  | 'ENTRADA'
-  | 'SALIDA_RECETA'
-  | 'MERMA'
-  | 'AJUSTE_POSITIVO'
-  | 'AJUSTE_NEGATIVO'
-  | 'REVERSO'
+  'ENTRADA' | 'SALIDA_RECETA' | 'MERMA' | 'AJUSTE_POSITIVO' | 'AJUSTE_NEGATIVO' | 'REVERSO'
 
 export interface MovimientoInventario {
   id_movimiento: number
@@ -119,6 +114,7 @@ export interface Mesa {
 export type EstadoPedido = 'ABIERTO' | 'EN_PREPARACION' | 'ENTREGADO' | 'CERRADO' | 'CANCELADO'
 export type EstadoDetalleComanda = 'PENDIENTE' | 'PREPARANDO' | 'ENTREGADO' | 'CANCELADO'
 export type TipoPedido = 'LOCAL' | 'DOMICILIO'
+export type ModalidadCuentaPedido = 'UNICA' | 'POR_CUENTA'
 
 export interface Ficha {
   id_ficha: number
@@ -199,6 +195,7 @@ export interface Comanda {
   estado_comanda: 'BORRADOR' | 'ENVIADA'
   fecha_envio_comanda: string | null
   autorizada_sin_pago: boolean
+  fecha_regularizacion_pago_comanda: string | null
   detalles?: DetalleComanda[]
   impresiones?: ImpresionComanda[]
 }
@@ -226,6 +223,7 @@ export interface Pedido {
   fecha_pedido: string
   estado_pedido: EstadoPedido
   tipo_pedido: TipoPedido
+  modalidad_cuenta_pedido: ModalidadCuentaPedido
   id_ficha_pedido: number | null
   fecha_cierre_pedido: string | null
   mesero_pedido: number
@@ -302,7 +300,11 @@ export interface Factura {
   motivo_anulacion_factura: string | null
   pagos?: Pago[]
   subcuenta?: Subcuenta & {
-    pedido?: { id_pedido: number; estado_pedido: EstadoPedido; id_ficha_pedido: number | null }
+    pedido?: {
+      id_pedido: number
+      estado_pedido: EstadoPedido
+      id_ficha_pedido: number | null
+    }
   }
   detalles?: FacturaDetalle[]
 }
@@ -396,6 +398,13 @@ export interface PagoCuentaPorPagar {
   metodo_pagoCuentaPorPagar: 'EFECTIVO' | 'TRANSFERENCIA'
   monto_pagoCuentaPorPagar: string
   fecha_pagoCuentaPorPagar: string
+  usuario?: { id_usuario: number; email_usuario: string }
+  turno?: {
+    id_turno: number
+    fecha_apertura_turno: string
+    fecha_cierre_turno: string | null
+    caja: { id_caja: number; nombre_caja: string }
+  } | null
 }
 
 export interface CuentaPorPagar {
@@ -408,9 +417,13 @@ export interface CuentaPorPagar {
   estado_cuentaPorPagar: 'PENDIENTE' | 'PARCIAL' | 'PAGADA' | 'ANULADA'
   observacion_cuentaPorPagar: string | null
   fecha_recepcion_mercancia: string | null
+  fecha_registro_cuentaPorPagar: string
+  fecha_actualizacion_cuentaPorPagar: string
+  fecha_pago_total_cuentaPorPagar: string | null
   proveedor: Proveedor
   detalles: DetalleCuentaPorPagar[]
   pagos: PagoCuentaPorPagar[]
+  usuarioRecibe?: { id_usuario: number; email_usuario: string } | null
 }
 
 // ---- reporte de cuentas cobradas (GET /billing/facturas/pagadas) ----
@@ -430,6 +443,7 @@ export interface PagoCuenta {
   metodo: MetodoPago
   monto: string
   fecha: string
+  id_turno: number
   // Excedente voluntario ("quedese con el vuelto"): 0 = sin excedente.
   excedente: string
   destino: DestinoExcedente | null
@@ -439,19 +453,31 @@ export interface PagoCuenta {
 export interface CuentaPagada {
   id_factura: number
   fecha: string
+  fecha_emision: string
   subtotal: string
   servicio: string
   impuestos: string
   total: string
   nombre_cuenta: string | null
   cajero: string | null
+  turno: {
+    id: number
+    apertura: string
+    cierre: string | null
+    caja: string
+    cajero: string | null
+  }
   pedido: {
     id_pedido: number
     tipo: TipoPedido
     ficha_numero: string | null
     mesero: string | null
     // Solo en domicilios.
-    cliente: { nombre: string | null; telefono: string | null; direccion: string | null } | null
+    cliente: {
+      nombre: string | null
+      telefono: string | null
+      direccion: string | null
+    } | null
   }
   pagos: PagoCuenta[]
   items: ItemCuentaPagada[]
@@ -501,7 +527,11 @@ export interface Jornada {
   id_empleado_jornada: number
   fecha_jornada: string
   estado_jornada: EstadoJornada
-  empleado?: { id_empleado: number; nombre_empleado: string; apellido_empleado: string }
+  empleado?: {
+    id_empleado: number
+    nombre_empleado: string
+    apellido_empleado: string
+  }
   marcaciones?: Marcacion[]
   devengos?: DevengoNomina[]
 }
@@ -712,12 +742,26 @@ export interface ReporteResumen {
       ticketPromedio: Delta
     }
   }
-  porDia: { fecha: string; total: number; cuentas: number; domicilios: number }[]
+  porDia: {
+    fecha: string
+    total: number
+    cuentas: number
+    domicilios: number
+  }[]
   porHora: { hora: number; total: number; cuentas: number }[]
   metodosPago: { metodo: MetodoPago; monto: number; cuenta: number }[]
   topProductos: { nombre: string; unidades: number; ingresos: number }[]
   porCategoria: { categoria: string; unidades: number; ingresos: number }[]
-  porMesero: { mesero: string; ventas: number; pedidos: number; ticketPromedio: number }[]
+  porMesero: {
+    mesero: string
+    ventas: number
+    pedidos: number
+    ticketPromedio: number
+  }[]
   porFicha: { ficha: string; ventas: number; cuentas: number }[]
-  ocupacionFichas: { DISPONIBLES: number; OCUPADAS: number; DESACTIVADAS: number }
+  ocupacionFichas: {
+    DISPONIBLES: number
+    OCUPADAS: number
+    DESACTIVADAS: number
+  }
 }

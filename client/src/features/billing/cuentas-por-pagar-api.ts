@@ -37,10 +37,15 @@ export function useCrearCuentaPorPagar() {
       idProveedor: number
       concepto: string
       documento?: string
+      fechaEmision?: string
       fechaVencimiento?: string
       montoTotal: number
       observacion?: string
-      detalles?: { idIngrediente: number; cantidad: number; precioUnitario: number }[]
+      detalles?: {
+        idIngrediente: number
+        cantidad: number
+        precioUnitario: number
+      }[]
     }) => api.post<CuentaPorPagar>('/billing/cuentas-por-pagar', datos),
     onSuccess: invalidar,
   })

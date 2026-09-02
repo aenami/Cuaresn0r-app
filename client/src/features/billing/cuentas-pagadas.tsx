@@ -1,7 +1,17 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeftRight, Banknote, ChevronDown, Coins, CreditCard, Receipt, ReceiptText, TrendingUp } from 'lucide-react'
+import {
+  ArrowLeftRight,
+  Banknote,
+  ChevronDown,
+  Coins,
+  CreditCard,
+  Layers3,
+  Receipt,
+  ReceiptText,
+  TrendingUp,
+} from 'lucide-react'
 import type { CuentaPagada, MetodoPago } from '@/types/api'
 import { formatearPrecio } from '@/lib/formato'
 import { cuentasPagadasQuery } from '@/features/billing/api'
@@ -33,6 +43,7 @@ export function CuentasPagadas() {
   const rango = useMemo(() => rangoDia(dia), [dia])
   const { data: cuentas, isPending } = useQuery(cuentasPagadasQuery(rango.desde, rango.hasta))
   const [facturaPreview, setFacturaPreview] = useState<CuentaPagada | null>(null)
+  const [separarPorTurno, setSepararPorTurno] = useState(false)
 
   const fechaLarga = fechaDia(dia).toLocaleDateString('es-CO', {
     weekday: 'long',
@@ -42,6 +53,17 @@ export function CuentasPagadas() {
 
   const totalCobrado = (cuentas ?? []).reduce((acc, c) => acc + Number(c.total), 0)
   const propina = (cuentas ?? []).reduce((acc, c) => acc + Number(c.servicio), 0)
+  const gruposPorTurno = useMemo(() => {
+    const grupos = new Map<number, { turno: CuentaPagada['turno']; cuentas: CuentaPagada[] }>()
+    for (const cuenta of cuentas ?? []) {
+      const grupo = grupos.get(cuenta.turno.id)
+      if (grupo) grupo.cuentas.push(cuenta)
+      else grupos.set(cuenta.turno.id, { turno: cuenta.turno, cuentas: [cuenta] })
+    }
+    return [...grupos.values()].sort(
+      (a, b) => new Date(b.turno.apertura).getTime() - new Date(a.turno.apertura).getTime(),
+    )
+  }, [cuentas])
 
   return (
     <div className="space-y-8">
@@ -52,7 +74,18 @@ export function CuentasPagadas() {
           </h1>
           <p className="micro-label mt-2 first-letter:uppercase">Ventas del dia · {fechaLarga}</p>
         </div>
-        <SelectorDia dia={dia} onCambiar={setDia} />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={separarPorTurno ? 'default' : 'outline'}
+            aria-pressed={separarPorTurno}
+            onClick={() => setSepararPorTurno((actual) => !actual)}
+          >
+            <Layers3 className="size-4" /> Separar por turno
+          </Button>
+          <SelectorDia dia={dia} onCambiar={setDia} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -90,24 +123,53 @@ export function CuentasPagadas() {
           <Receipt className="size-8 text-muted-foreground" />
           <p className="mt-3 text-sm text-muted-foreground">No se cobraron cuentas este dia.</p>
         </div>
-      ) : (
-        <ul className="space-y-3">
-          {(cuentas ?? []).map((cuenta) => (
-            <li key={cuenta.id_factura}>
-              <TarjetaCuentaPagada cuenta={cuenta} onFactura={setFacturaPreview} />
-            </li>
+      ) : separarPorTurno ? (
+        <div className="space-y-7">
+          {gruposPorTurno.map((grupo) => (
+            <section key={grupo.turno.id}>
+              <div className="mb-3 flex flex-wrap items-end justify-between gap-3 border-b border-border pb-3">
+                <div>
+                  <p className="micro-label text-primary">
+                    Turno #{grupo.turno.id} · {grupo.turno.caja}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {grupo.turno.cajero ?? 'Cajero no disponible'} · apertura {horaCorta(grupo.turno.apertura)}
+                    {grupo.turno.cierre ? ` · cierre ${horaCorta(grupo.turno.cierre)}` : ' · turno abierto'}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="font-heading text-xl font-semibold tabular-nums text-primary">
+                    {formatearPrecio(grupo.cuentas.reduce((total, cuenta) => total + Number(cuenta.total), 0))}
+                  </p>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {grupo.cuentas.length} {grupo.cuentas.length === 1 ? 'cuenta' : 'cuentas'}
+                  </p>
+                </div>
+              </div>
+              <ListaCuentas cuentas={grupo.cuentas} onFactura={setFacturaPreview} />
+            </section>
           ))}
-        </ul>
+        </div>
+      ) : (
+        <ListaCuentas cuentas={cuentas ?? []} onFactura={setFacturaPreview} />
       )}
 
       {facturaPreview ? (
-        <FacturaPreviewDialog
-          cuenta={facturaPreview}
-          abierto
-          onCerrar={() => setFacturaPreview(null)}
-        />
+        <FacturaPreviewDialog cuenta={facturaPreview} abierto onCerrar={() => setFacturaPreview(null)} />
       ) : null}
     </div>
+  )
+}
+
+function ListaCuentas({ cuentas, onFactura }: { cuentas: CuentaPagada[]; onFactura: (cuenta: CuentaPagada) => void }) {
+  return (
+    <ul className="space-y-3">
+      {cuentas.map((cuenta) => (
+        <li key={cuenta.id_factura}>
+          <TarjetaCuentaPagada cuenta={cuenta} onFactura={onFactura} />
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -218,7 +280,10 @@ function TarjetaCuentaPagada({ cuenta, onFactura }: { cuenta: CuentaPagada; onFa
             {formatearPrecio(cuenta.total)}
           </span>
           <ChevronDown
-            className={cn('size-4 text-muted-foreground transition-transform duration-200 ease-out-quart', abierto && 'rotate-180')}
+            className={cn(
+              'size-4 text-muted-foreground transition-transform duration-200 ease-out-quart',
+              abierto && 'rotate-180',
+            )}
           />
         </div>
       </button>
@@ -232,11 +297,12 @@ function TarjetaCuentaPagada({ cuenta, onFactura }: { cuenta: CuentaPagada; onFa
               <li key={item.id}>
                 <div className="flex items-start justify-between gap-3">
                   <span className="text-sm">
-                    <span className="tabular-nums text-muted-foreground">{cantidadFacturada(item.cantidad, item.proporcion)}×</span> {item.nombre}
+                    <span className="tabular-nums text-muted-foreground">
+                      {cantidadFacturada(item.cantidad, item.proporcion)}×
+                    </span>{' '}
+                    {item.nombre}
                   </span>
-                  <span className="shrink-0 text-sm tabular-nums">
-                    {formatearPrecio(item.subtotal)}
-                  </span>
+                  <span className="shrink-0 text-sm tabular-nums">{formatearPrecio(item.subtotal)}</span>
                 </div>
               </li>
             ))}
