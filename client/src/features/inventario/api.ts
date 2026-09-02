@@ -1,6 +1,14 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import type { Ingrediente, MovimientoInventario, Receta, UnidadIngrediente } from '@/types/api'
+import type {
+  EstadoMetaProduccion,
+  Ingrediente,
+  MovimientoInventario,
+  PlanProduccionDiaria,
+  Receta,
+  TipoObjetivoProduccion,
+  UnidadIngrediente,
+} from '@/types/api'
 
 export const ingredientesQuery = queryOptions({
   queryKey: ['inventario', 'ingredientes'],
@@ -29,6 +37,13 @@ export interface IngredientePayload {
   highThreshold?: number | null
 }
 
+export function planProduccionQuery(fecha: string) {
+  return queryOptions({
+    queryKey: ['inventario', 'produccion', fecha],
+    queryFn: () => api.get<PlanProduccionDiaria[]>(`/recipes/production-plans?date=${fecha}`),
+  })
+}
+
 export interface MovimientoPayload {
   tipo: 'ENTRADA' | 'MERMA' | 'AJUSTE_POSITIVO' | 'AJUSTE_NEGATIVO'
   cantidad: number
@@ -39,6 +54,13 @@ export interface RecetaPayload {
   id_product_recipe: number
   name: string
   ingredients: { id_ingredient: number; quantity_ingredient: number }[]
+}
+
+export interface MetaProduccionPayload {
+  fecha: string
+  tipo: TipoObjetivoProduccion
+  idObjetivo: number
+  cantidad: number
 }
 
 function useInvalidarInventario() {
@@ -68,6 +90,32 @@ export function useRegistrarMovimiento() {
   return useMutation({
     mutationFn: ({ idIngrediente, ...payload }: MovimientoPayload & { idIngrediente: number }) =>
       api.post<MovimientoInventario>(`/recipes/ingredients/${idIngrediente}/movements`, payload),
+    onSuccess: invalidar,
+  })
+}
+
+export function useCrearMetaProduccion() {
+  const invalidar = useInvalidarInventario()
+  return useMutation({
+    mutationFn: (payload: MetaProduccionPayload) =>
+      api.post<PlanProduccionDiaria>('/recipes/production-plans', payload),
+    onSuccess: invalidar,
+  })
+}
+
+export function useCambiarEstadoMetaProduccion() {
+  const invalidar = useInvalidarInventario()
+  return useMutation({
+    mutationFn: ({ id, estado }: { id: number; estado: EstadoMetaProduccion }) =>
+      api.patch<PlanProduccionDiaria>(`/recipes/production-plans/${id}/status`, { estado }),
+    onSuccess: invalidar,
+  })
+}
+
+export function useEliminarMetaProduccion() {
+  const invalidar = useInvalidarInventario()
+  return useMutation({
+    mutationFn: (id: number) => api.delete(`/recipes/production-plans/${id}`),
     onSuccess: invalidar,
   })
 }

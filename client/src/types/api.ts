@@ -90,6 +90,38 @@ export interface MovimientoInventario {
   motivo_movimiento?: string | null
 }
 
+export type TipoObjetivoProduccion = 'PRODUCTO' | 'INGREDIENTE'
+export type EstadoMetaProduccion = 'PENDIENTE' | 'PRODUCIDO' | 'NO_PRODUCIDO'
+
+interface UsuarioMetaProduccion {
+  id_usuario: number
+  email_usuario: string
+  empleado: {
+    nombre_empleado: string
+    apellido_empleado: string
+  } | null
+}
+
+export interface PlanProduccionDiaria {
+  id_planProduccion: number
+  fecha_planProduccion: string
+  tipo_objetivo_planProduccion: TipoObjetivoProduccion
+  id_producto_planProduccion: number | null
+  id_ingrediente_planProduccion: number | null
+  nombre_objetivo_planProduccion: string
+  unidad_objetivo_planProduccion: UnidadIngrediente
+  cantidad_objetivo_planProduccion: string
+  estado_planProduccion: EstadoMetaProduccion
+  id_usuario_crea_planProduccion: number
+  id_usuario_resuelve_planProduccion: number | null
+  fecha_creacion_planProduccion: string
+  fecha_resolucion_planProduccion: string | null
+  producto?: Pick<Producto, 'id_producto' | 'nombre_producto' | 'habilitado_producto'> | null
+  ingrediente?: Pick<Ingrediente, 'id_ingrediente' | 'nombre_ingrediente' | 'unidades_ingrediente'> | null
+  usuarioCrea: UsuarioMetaProduccion
+  usuarioResuelve?: UsuarioMetaProduccion | null
+}
+
 // ---- salon ----
 
 export type EstadoMesa = 'LIBRE' | 'RESERVADA' | 'OCUPADA' | 'DESACTIVADA'

@@ -224,12 +224,18 @@ function BadgeEstadoStock({ estado }: { estado: Ingrediente['estado_stock'] }) {
     ALTO: 'Alto',
     SIN_UMBRALES: 'Sin umbrales',
   }
-  const alerta = estado === 'AGOTADO' || estado === 'BAJO'
+  const colores: Record<Ingrediente['estado_stock'], string> = {
+    AGOTADO: 'bg-red-500/15 text-red-300 ring-red-500/25',
+    BAJO: 'bg-amber-400/15 text-amber-300 ring-amber-400/25',
+    IDEAL: 'bg-emerald-400/15 text-emerald-300 ring-emerald-400/25',
+    ALTO: 'bg-sky-400/15 text-sky-300 ring-sky-400/25',
+    SIN_UMBRALES: 'bg-zinc-400/10 text-zinc-300 ring-zinc-400/20',
+  }
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider',
-        alerta ? 'bg-destructive/15 text-destructive' : 'bg-surface-high text-muted-foreground',
+        'inline-flex items-center rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider ring-1 ring-inset',
+        colores[estado],
       )}
     >
       {etiquetas[estado]}
