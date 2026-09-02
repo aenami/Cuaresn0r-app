@@ -139,6 +139,10 @@ alcance o feature terminada.
 - La base local ya está migrada. En futuros ambientes de despliegue todavía se
   debe ejecutar `prisma migrate deploy` y configurar las fichas iniciales del
   restaurante.
+- Se agregó `GUIA_IMPRESION_COMANDAS.md` con la instalación completa del
+  controlador Epson, la clave compartida, el agente automático de Windows,
+  las pruebas de punta a punta y el diagnóstico de reintentos. La revisión del
+  computador de caja confirmó que esos pasos físicos todavía están pendientes.
 - Instalar la cola de Windows en el computador de caja, registrar los nombres
   exactos de las dos impresoras USB y configurar `PRINT_AGENT_KEY` tanto en el
   servidor como en el agente local.
