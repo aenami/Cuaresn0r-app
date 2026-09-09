@@ -470,17 +470,20 @@ model Caja {
 }
 
 model Turno {
-  id_turno                Int         @id @default(autoincrement())
-  id_caja_turno           Int
-  id_usuario_turno        Int
-  fecha_apertura_turno    DateTime    @default(now()) @db.Timestamp(6)
-  fecha_cierre_turno      DateTime?   @db.Timestamp(6)
-  monto_apertura_turno    Decimal     @db.Decimal(20, 4)
-  monto_cierre_esperado   Decimal?    @db.Decimal(20, 4)
-  monto_cierre_real_turno Decimal?    @db.Decimal(20, 4)
+  id_turno                         Int         @id @default(autoincrement())
+  id_caja_turno                    Int
+  id_usuario_turno                 Int
+  fecha_apertura_turno             DateTime    @default(now()) @db.Timestamp(6)
+  fecha_cierre_turno               DateTime?   @db.Timestamp(6)
+  monto_apertura_turno             Decimal     @db.Decimal(20, 4)
+  monto_cierre_esperado            Decimal?    @db.Decimal(20, 4)
+  monto_cierre_real_turno          Decimal?    @db.Decimal(20, 4)
   // Desglose por denominacion del conteo de cierre (arqueo): { "100000": 2, ... }.
-  conteo_cierre_turno     Json?       @db.JsonB
-  estado_turno            EstadoTurno @default(ABIERTO)
+  conteo_cierre_turno              Json?       @db.JsonB
+  // Fotografia informativa de las cuentas pendientes al confirmar el cuadre.
+  // Permite consultar el historico sin que cambie cuando se paguen despues.
+  facturas_pendientes_cierre_turno Json?       @db.JsonB
+  estado_turno                     EstadoTurno @default(ABIERTO)
 
   caja    Caja    @relation(fields: [id_caja_turno], references: [id_caja])
   usuario Usuario @relation(fields: [id_usuario_turno], references: [id_usuario])

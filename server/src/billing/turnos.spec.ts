@@ -1,4 +1,8 @@
-import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { TurnosService } from './turnos.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AbrirTurnoDto } from './dto/abrir-turno.dto';
@@ -14,39 +18,56 @@ import { Prisma } from '../generated/prisma/client';
 
 const abrirDto = (idCaja = 1) => ({ idCaja }) as unknown as AbrirTurnoDto;
 
-function setupAbrir(opts: { caja?: unknown; turnoUsuario?: unknown; turnoCaja?: unknown } = {}) {
+function setupAbrir(
+  opts: { caja?: unknown; turnoUsuario?: unknown; turnoCaja?: unknown } = {},
+) {
   const { caja = { id_caja: 1 }, turnoUsuario = null, turnoCaja = null } = opts;
   const spies = {
     queryRaw: jest.fn().mockResolvedValue(caja ? [caja] : []),
     // Los dos findFirst comparten metodo; se distinguen por el filtro.
-    turnoFindFirst: jest.fn((args: { where: { id_usuario_turno?: number; id_caja_turno?: number } }) => {
-      if (args.where.id_usuario_turno !== undefined) return Promise.resolve(turnoUsuario);
-      return Promise.resolve(turnoCaja);
-    }),
-    turnoCreate: jest.fn((args: { data: Record<string, unknown> }) => Promise.resolve({ id_turno: 9, ...args.data })),
+    turnoFindFirst: jest.fn(
+      (args: {
+        where: { id_usuario_turno?: number; id_caja_turno?: number };
+      }) => {
+        if (args.where.id_usuario_turno !== undefined)
+          return Promise.resolve(turnoUsuario);
+        return Promise.resolve(turnoCaja);
+      },
+    ),
+    turnoCreate: jest.fn((args: { data: Record<string, unknown> }) =>
+      Promise.resolve({ id_turno: 9, ...args.data }),
+    ),
   };
   const tx = {
     $queryRaw: spies.queryRaw,
     turno: { findFirst: spies.turnoFindFirst, create: spies.turnoCreate },
   };
-  const prisma = { $transaction: (cb: (t: typeof tx) => unknown) => cb(tx) } as unknown as PrismaService;
+  const prisma = {
+    $transaction: (cb: (t: typeof tx) => unknown) => cb(tx),
+  } as unknown as PrismaService;
   return { svc: new TurnosService(prisma), spies };
 }
 
 describe('TurnosService.abrir (guardas)', () => {
   it('404 si la caja no existe', async () => {
     const { svc } = setupAbrir({ caja: null });
-    await expect(svc.abrir(1, abrirDto())).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc.abrir(1, abrirDto())).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it('409 si el usuario ya tiene un turno abierto', async () => {
     const { svc } = setupAbrir({ turnoUsuario: { id_turno: 1 } });
-    await expect(svc.abrir(1, abrirDto())).rejects.toThrow(/ya tienes un turno abierto/i);
+    await expect(svc.abrir(1, abrirDto())).rejects.toThrow(
+      /ya tienes un turno abierto/i,
+    );
   });
 
   it('409 si la caja ya tiene un turno abierto', async () => {
     const { svc } = setupAbrir({ turnoCaja: { id_turno: 2 } });
-    await expect(svc.abrir(1, abrirDto())).rejects.toThrow(/caja ya tiene un turno/i);
+    await expect(svc.abrir(1, abrirDto())).rejects.toThrow(
+      /caja ya tiene un turno/i,
+    );
   });
 });
 
@@ -63,66 +84,109 @@ describe('TurnosService.abrir (creacion)', () => {
 
 // ---- cerrar ----
 
-const cerrarDto = (montoCierreReal = 165000) => ({ montoCierreReal }) as unknown as CerrarTurnoDto;
+const cerrarDto = (montoCierreReal = 165000) =>
+  ({ montoCierreReal }) as unknown as CerrarTurnoDto;
 
-function setupCerrar(opts: {
-  turno?: Record<string, unknown> | null;
-  encontrado?: boolean;
-  efectivo?: Prisma.Decimal | null;
-  excedente?: Prisma.Decimal | null;
-  ingresos?: Prisma.Decimal | null;
-  egresos?: Prisma.Decimal | null;
-} = {}) {
+function setupCerrar(
+  opts: {
+    turno?: Record<string, unknown> | null;
+    encontrado?: boolean;
+    efectivo?: Prisma.Decimal | null;
+    excedente?: Prisma.Decimal | null;
+    ingresos?: Prisma.Decimal | null;
+    egresos?: Prisma.Decimal | null;
+    facturasPendientes?: Array<Record<string, unknown>>;
+  } = {},
+) {
   const {
-    turno = { id_turno: 3, estado_turno: 'ABIERTO', id_usuario_turno: 1, monto_apertura_turno: new Prisma.Decimal(100000) },
+    turno = {
+      id_turno: 3,
+      estado_turno: 'ABIERTO',
+      id_usuario_turno: 1,
+      monto_apertura_turno: new Prisma.Decimal(100000),
+    },
     encontrado = true,
     efectivo = new Prisma.Decimal(50000),
     excedente = new Prisma.Decimal(0),
     ingresos = new Prisma.Decimal(20000),
     egresos = new Prisma.Decimal(5000),
+    facturasPendientes = [],
   } = opts;
   const spies = {
     queryRaw: jest.fn().mockResolvedValue(encontrado ? [{ id_turno: 3 }] : []),
     turnoFind: jest.fn().mockResolvedValue(turno),
-    turnoUpdate: jest.fn((args: { data: Record<string, unknown> }) => Promise.resolve({ id_turno: 3, ...args.data })),
-    pagoAggregate: jest.fn().mockResolvedValue({ _sum: { monto_total_pago: efectivo, monto_excedente_pago: excedente } }),
-    movimientoAggregate: jest.fn((args: { where: { tipo_mc: string } }) =>
-      Promise.resolve({ _sum: { monto_mc: args.where.tipo_mc === 'INGRESO' ? ingresos : egresos } }),
+    turnoUpdate: jest.fn((args: { data: Record<string, unknown> }) =>
+      Promise.resolve({ id_turno: 3, ...args.data }),
     ),
+    pagoAggregate: jest.fn().mockResolvedValue({
+      _sum: { monto_total_pago: efectivo, monto_excedente_pago: excedente },
+    }),
+    movimientoAggregate: jest.fn((args: { where: { tipo_mc: string } }) =>
+      Promise.resolve({
+        _sum: {
+          monto_mc: args.where.tipo_mc === 'INGRESO' ? ingresos : egresos,
+        },
+      }),
+    ),
+    cuentasFindMany: jest.fn().mockResolvedValue(facturasPendientes),
   };
   const tx = {
     $queryRaw: spies.queryRaw,
     turno: { findUniqueOrThrow: spies.turnoFind, update: spies.turnoUpdate },
     pago: { aggregate: spies.pagoAggregate },
     movimientoCaja: { aggregate: spies.movimientoAggregate },
+    cuentaPorPagar: { findMany: spies.cuentasFindMany },
   };
-  const prisma = { $transaction: (cb: (t: typeof tx) => unknown) => cb(tx) } as unknown as PrismaService;
+  const prisma = {
+    $transaction: (cb: (t: typeof tx) => unknown) => cb(tx),
+  } as unknown as PrismaService;
   return { svc: new TurnosService(prisma), spies };
 }
 
 describe('TurnosService.cerrar (guardas)', () => {
   it('404 si el turno no existe', async () => {
     const { svc } = setupCerrar({ encontrado: false });
-    await expect(svc.cerrar(3, 1, 'CAJERO', cerrarDto())).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      svc.cerrar(3, 1, 'CAJERO', cerrarDto()),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('409 si el turno ya esta cerrado', async () => {
     const { svc } = setupCerrar({
-      turno: { id_turno: 3, estado_turno: 'CERRADO', id_usuario_turno: 1, monto_apertura_turno: new Prisma.Decimal(0) },
+      turno: {
+        id_turno: 3,
+        estado_turno: 'CERRADO',
+        id_usuario_turno: 1,
+        monto_apertura_turno: new Prisma.Decimal(0),
+      },
     });
-    await expect(svc.cerrar(3, 1, 'CAJERO', cerrarDto())).rejects.toBeInstanceOf(ConflictException);
+    await expect(
+      svc.cerrar(3, 1, 'CAJERO', cerrarDto()),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('403 si lo intenta cerrar otro cajero (no dueno, no ADMIN)', async () => {
     const { svc } = setupCerrar({
-      turno: { id_turno: 3, estado_turno: 'ABIERTO', id_usuario_turno: 99, monto_apertura_turno: new Prisma.Decimal(0) },
+      turno: {
+        id_turno: 3,
+        estado_turno: 'ABIERTO',
+        id_usuario_turno: 99,
+        monto_apertura_turno: new Prisma.Decimal(0),
+      },
     });
-    await expect(svc.cerrar(3, 1, 'CAJERO', cerrarDto())).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      svc.cerrar(3, 1, 'CAJERO', cerrarDto()),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('un ADMIN puede cerrar el turno de otro cajero', async () => {
     const { svc, spies } = setupCerrar({
-      turno: { id_turno: 3, estado_turno: 'ABIERTO', id_usuario_turno: 99, monto_apertura_turno: new Prisma.Decimal(0) },
+      turno: {
+        id_turno: 3,
+        estado_turno: 'ABIERTO',
+        id_usuario_turno: 99,
+        monto_apertura_turno: new Prisma.Decimal(0),
+      },
     });
     await svc.cerrar(3, 1, 'ADMIN', cerrarDto());
     expect(spies.turnoUpdate).toHaveBeenCalledTimes(1);
@@ -133,16 +197,29 @@ describe('TurnosService.cerrar (cuadre)', () => {
   it('congela el esperado recalculado: apertura + efectivo + ingresos - egresos', async () => {
     const { svc, spies } = setupCerrar(); // 100000 + 50000 + 20000 - 5000
     await svc.cerrar(3, 1, 'CAJERO', cerrarDto(165000));
-    const data = spies.turnoUpdate.mock.calls[0][0].data as Record<string, Prisma.Decimal | unknown>;
-    expect((data.monto_cierre_esperado as Prisma.Decimal).toString()).toBe('165000');
+    const data = spies.turnoUpdate.mock.calls[0][0].data as Record<
+      string,
+      Prisma.Decimal | unknown
+    >;
+    expect((data.monto_cierre_esperado as Prisma.Decimal).toString()).toBe(
+      '165000',
+    );
     expect(data.estado_turno).toBe('CERRADO');
     expect(data.monto_cierre_real_turno).toBe(165000);
   });
 
   it('trata como 0 los agregados vacios (turno sin pagos ni movimientos)', async () => {
-    const { svc, spies } = setupCerrar({ efectivo: null, excedente: null, ingresos: null, egresos: null });
+    const { svc, spies } = setupCerrar({
+      efectivo: null,
+      excedente: null,
+      ingresos: null,
+      egresos: null,
+    });
     await svc.cerrar(3, 1, 'CAJERO', cerrarDto(100000));
-    const data = spies.turnoUpdate.mock.calls[0][0].data as Record<string, Prisma.Decimal>;
+    const data = spies.turnoUpdate.mock.calls[0][0].data as Record<
+      string,
+      Prisma.Decimal
+    >;
     expect(data.monto_cierre_esperado.toString()).toBe('100000'); // solo la base
   });
 
@@ -150,7 +227,43 @@ describe('TurnosService.cerrar (cuadre)', () => {
     // 100000 base + 50000 efectivo + 3000 excedente + 20000 ingresos - 5000 egresos
     const { svc, spies } = setupCerrar({ excedente: new Prisma.Decimal(3000) });
     await svc.cerrar(3, 1, 'CAJERO', cerrarDto(168000));
-    const data = spies.turnoUpdate.mock.calls[0][0].data as Record<string, Prisma.Decimal>;
+    const data = spies.turnoUpdate.mock.calls[0][0].data as Record<
+      string,
+      Prisma.Decimal
+    >;
     expect(data.monto_cierre_esperado.toString()).toBe('168000');
+  });
+
+  it('congela las facturas pendientes como informacion historica del cuadre', async () => {
+    const { svc, spies } = setupCerrar({
+      facturasPendientes: [
+        {
+          id_cuentaPorPagar: 8,
+          concepto_cuentaPorPagar: 'Compra de verduras',
+          documento_cuentaPorPagar: 'FV-22',
+          fecha_vencimiento_cuentaPorPagar: new Date(
+            '2026-09-10T00:00:00.000Z',
+          ),
+          monto_total_cuentaPorPagar: new Prisma.Decimal(120000),
+          proveedor: { nombre_proveedor: 'La Huerta' },
+          pagos: [{ monto_pagoCuentaPorPagar: new Prisma.Decimal(20000) }],
+        },
+      ],
+    });
+
+    await svc.cerrar(3, 1, 'CAJERO', cerrarDto());
+
+    const snapshot = spies.turnoUpdate.mock.calls[0][0].data
+      .facturas_pendientes_cierre_turno as {
+      total: string;
+      cuentas: Array<{ proveedor: string; saldoPendiente: string }>;
+    };
+    expect(snapshot.total).toBe('100000');
+    expect(snapshot.cuentas).toEqual([
+      expect.objectContaining({
+        proveedor: 'La Huerta',
+        saldoPendiente: '100000',
+      }),
+    ]);
   });
 });

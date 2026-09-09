@@ -1,10 +1,17 @@
-import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '../generated/prisma/client';
 import { CreatePagoNominaDto } from './dto/create-pago-nomina.dto';
 
 type DevengoConSaldo = {
-  devengo: Prisma.DevengoNominaGetPayload<{ include: { pagoNominaDetalles: true } }>;
+  devengo: Prisma.DevengoNominaGetPayload<{
+    include: { pagoNominaDetalles: true };
+  }>;
   aplicado: Prisma.Decimal;
   restante: Prisma.Decimal;
 };
@@ -13,15 +20,23 @@ type DevengoConSaldo = {
 export class PagosNominaService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async findEmpleado(client: Prisma.TransactionClient | PrismaService, idEmpleado: number) {
-    const empleado = await client.empleado.findUnique({ where: { id_empleado: idEmpleado } });
+  private async findEmpleado(
+    client: Prisma.TransactionClient | PrismaService,
+    idEmpleado: number,
+  ) {
+    const empleado = await client.empleado.findUnique({
+      where: { id_empleado: idEmpleado },
+    });
     if (!empleado) throw new NotFoundException('Empleado no encontrado');
     return empleado;
   }
 
   // Estado de pago de cada devengo, calculado SIEMPRE al vuelo contra
   // PagoNominaDetalle (seccion 14) — nunca se persiste como columna.
-  private async devengosConSaldo(client: Prisma.TransactionClient | PrismaService, idEmpleado: number): Promise<DevengoConSaldo[]> {
+  private async devengosConSaldo(
+    client: Prisma.TransactionClient | PrismaService,
+    idEmpleado: number,
+  ): Promise<DevengoConSaldo[]> {
     const devengos = await client.devengoNomina.findMany({
       where: { id_empleado_devengoNomina: idEmpleado },
       include: { pagoNominaDetalles: true },
@@ -29,8 +44,15 @@ export class PagosNominaService {
     });
     const cero = new Prisma.Decimal(0);
     return devengos.map((devengo) => {
-      const aplicado = devengo.pagoNominaDetalles.reduce((acc, d) => acc.plus(d.monto_aplicado_pnd), cero);
-      return { devengo, aplicado, restante: devengo.monto_devengoNomina.minus(aplicado) };
+      const aplicado = devengo.pagoNominaDetalles.reduce(
+        (acc, d) => acc.plus(d.monto_aplicado_pnd),
+        cero,
+      );
+      return {
+        devengo,
+        aplicado,
+        restante: devengo.monto_devengoNomina.minus(aplicado),
+      };
     });
   }
 
@@ -39,7 +61,10 @@ export class PagosNominaService {
     const filas = await this.devengosConSaldo(this.prisma, idEmpleado);
     const cero = new Prisma.Decimal(0);
 
-    const totalDevengado = filas.reduce((acc, f) => acc.plus(f.devengo.monto_devengoNomina), cero);
+    const totalDevengado = filas.reduce(
+      (acc, f) => acc.plus(f.devengo.monto_devengoNomina),
+      cero,
+    );
     const totalPagado = filas.reduce((acc, f) => acc.plus(f.aplicado), cero);
 
     return {
@@ -57,7 +82,11 @@ export class PagosNominaService {
           ...f.devengo,
           pagado: f.aplicado,
           restante: f.restante,
-          estadoPago: f.restante.isZero() ? 'PAGADO' : f.aplicado.isZero() ? 'PENDIENTE' : 'PARCIAL',
+          estadoPago: f.restante.isZero()
+            ? 'PAGADO'
+            : f.aplicado.isZero()
+              ? 'PENDIENTE'
+              : 'PARCIAL',
         }))
         .reverse(), // mas reciente primero para lectura
     };
@@ -68,7 +97,11 @@ export class PagosNominaService {
   // pendientes se netean completas primero (una deuda del empleado se
   // descuenta en el primer pago que se le haga) y el resto va FIFO al dia
   // pendiente mas antiguo. Sin adelantos: el monto no puede superar el saldo.
-  async registrar(idEmpleado: number, idUsuario: number, dto: CreatePagoNominaDto) {
+  async registrar(
+    idEmpleado: number,
+    idUsuario: number,
+    dto: CreatePagoNominaDto,
+  ) {
     return this.prisma.$transaction(async (tx) => {
       // Lock del empleado: dos pagos concurrentes leerian los mismos
       // pendientes y los cubririan dos veces.
@@ -76,32 +109,58 @@ export class PagosNominaService {
         SELECT id_empleado FROM "Empleado" WHERE id_empleado = ${idEmpleado} FOR UPDATE
       `;
       if (!filasLock[0]) throw new NotFoundException('Empleado no encontrado');
-      const empleado = await tx.empleado.findUniqueOrThrow({ where: { id_empleado: idEmpleado } });
+      const empleado = await tx.empleado.findUniqueOrThrow({
+        where: { id_empleado: idEmpleado },
+      });
       // Ojo: NO se exige empleado ACTIVO — a un retirado se le paga su saldo.
 
       const monto = new Prisma.Decimal(dto.monto);
       const filas = await this.devengosConSaldo(tx, idEmpleado);
       const cero = new Prisma.Decimal(0);
-      const saldoPendiente = filas.reduce((acc, f) => acc.plus(f.restante), cero);
+      const saldoPendiente = filas.reduce(
+        (acc, f) => acc.plus(f.restante),
+        cero,
+      );
       if (monto.greaterThan(saldoPendiente)) {
         throw new UnprocessableEntityException(
           `El monto excede el saldo pendiente del empleado (${saldoPendiente.toFixed(2)}); los adelantos no estan permitidos`,
         );
       }
 
-      // EFECTIVO sale fisicamente de la caja: exige turno abierto del que
-      // registra, valida que alcance el efectivo y deja MovimientoCaja
-      // EGRESO + cache de cierre actualizado (secciones 7 y 9).
-      let turno = null;
-      if (dto.metodo === 'EFECTIVO') {
-        turno = await tx.turno.findFirst({ where: { id_usuario_turno: idUsuario, estado_turno: 'ABIERTO' } });
-        if (!turno) {
-          throw new ConflictException('No tienes un turno abierto; abre uno o registra el pago como TRANSFERENCIA');
-        }
-        await tx.$queryRaw`SELECT id_turno FROM "Turno" WHERE id_turno = ${turno.id_turno} FOR UPDATE`;
-        turno = await tx.turno.findUniqueOrThrow({ where: { id_turno: turno.id_turno } });
+      // Todo pago realizado durante un turno queda asociado a ese turno para
+      // que aparezca en su cuadre, incluso si fue por transferencia. EFECTIVO
+      // exige turno y ademas afecta fisicamente el saldo esperado de la caja.
+      let turno = await tx.turno.findFirst({
+        where: { id_usuario_turno: idUsuario, estado_turno: 'ABIERTO' },
+      });
+      if (!turno && dto.metodo === 'EFECTIVO') {
+        throw new ConflictException(
+          'No tienes un turno abierto; abre uno o registra el pago como TRANSFERENCIA',
+        );
+      }
 
-        const esperadoActual = turno.monto_cierre_esperado ?? turno.monto_apertura_turno;
+      if (turno) {
+        await tx.$queryRaw`SELECT id_turno FROM "Turno" WHERE id_turno = ${turno.id_turno} FOR UPDATE`;
+        turno = await tx.turno.findUniqueOrThrow({
+          where: { id_turno: turno.id_turno },
+        });
+
+        // El turno pudo cerrarse mientras se esperaba el bloqueo. Una
+        // transferencia sigue siendo valida, pero ya no pertenece al turno;
+        // un pago en efectivo no puede registrarse fuera de una caja abierta.
+        if (turno.estado_turno !== 'ABIERTO') {
+          if (dto.metodo === 'EFECTIVO') {
+            throw new ConflictException(
+              'El turno se cerro antes de registrar el pago',
+            );
+          }
+          turno = null;
+        }
+      }
+
+      if (turno && dto.metodo === 'EFECTIVO') {
+        const esperadoActual =
+          turno.monto_cierre_esperado ?? turno.monto_apertura_turno;
         if (esperadoActual.minus(monto).isNegative()) {
           throw new UnprocessableEntityException(
             `La caja no tiene efectivo suficiente (esperado actual: ${esperadoActual.toFixed(2)}); usa TRANSFERENCIA o un monto menor`,
@@ -116,7 +175,9 @@ export class PagosNominaService {
           id_usuario_registra_pagoNomina: idUsuario,
           monto_pagoNomina: monto,
           metodo_pagoNomina: dto.metodo,
-          ...(dto.observacion !== undefined && { observacion_pagoNomina: dto.observacion }),
+          ...(dto.observacion !== undefined && {
+            observacion_pagoNomina: dto.observacion,
+          }),
         },
       });
 
@@ -125,26 +186,40 @@ export class PagosNominaService {
       // Como monto <= saldo, al final restantePago queda exactamente en 0 y
       // SUM(monto_aplicado) del pago cuadra con monto_pagoNomina.
       let restantePago = monto;
-      const detalles: { id_devengoNomina_pnd: number; monto_aplicado_pnd: Prisma.Decimal }[] = [];
+      const detalles: {
+        id_devengoNomina_pnd: number;
+        monto_aplicado_pnd: Prisma.Decimal;
+      }[] = [];
       for (const fila of filas) {
         if (fila.restante.isNegative()) {
-          detalles.push({ id_devengoNomina_pnd: fila.devengo.id_devengoNomina, monto_aplicado_pnd: fila.restante });
+          detalles.push({
+            id_devengoNomina_pnd: fila.devengo.id_devengoNomina,
+            monto_aplicado_pnd: fila.restante,
+          });
           restantePago = restantePago.minus(fila.restante);
         }
       }
       for (const fila of filas) {
         if (restantePago.isZero()) break;
         if (!fila.restante.greaterThan(0)) continue;
-        const aplicar = fila.restante.lessThan(restantePago) ? fila.restante : restantePago;
-        detalles.push({ id_devengoNomina_pnd: fila.devengo.id_devengoNomina, monto_aplicado_pnd: aplicar });
+        const aplicar = fila.restante.lessThan(restantePago)
+          ? fila.restante
+          : restantePago;
+        detalles.push({
+          id_devengoNomina_pnd: fila.devengo.id_devengoNomina,
+          monto_aplicado_pnd: aplicar,
+        });
         restantePago = restantePago.minus(aplicar);
       }
 
       await tx.pagoNominaDetalle.createMany({
-        data: detalles.map((d) => ({ id_pagoNomina_pnd: pago.id_pagoNomina, ...d })),
+        data: detalles.map((d) => ({
+          id_pagoNomina_pnd: pago.id_pagoNomina,
+          ...d,
+        })),
       });
 
-      if (turno) {
+      if (turno && dto.metodo === 'EFECTIVO') {
         await tx.movimientoCaja.create({
           data: {
             id_turno_mc: turno.id_turno,
@@ -185,7 +260,10 @@ export class PagosNominaService {
         _sum: { monto_pagoNomina: true },
       }),
     ]);
-    const porEmpleado = new Map<number, { devengado: Prisma.Decimal; pagado: Prisma.Decimal }>();
+    const porEmpleado = new Map<
+      number,
+      { devengado: Prisma.Decimal; pagado: Prisma.Decimal }
+    >();
     for (const d of devengos) {
       porEmpleado.set(d.id_empleado_devengoNomina, {
         devengado: d._sum.monto_devengoNomina ?? cero,
@@ -193,14 +271,19 @@ export class PagosNominaService {
       });
     }
     for (const p of pagos) {
-      const actual = porEmpleado.get(p.id_empleado_pagoNomina) ?? { devengado: cero, pagado: cero };
+      const actual = porEmpleado.get(p.id_empleado_pagoNomina) ?? {
+        devengado: cero,
+        pagado: cero,
+      };
       actual.pagado = p._sum.monto_pagoNomina ?? cero;
       porEmpleado.set(p.id_empleado_pagoNomina, actual);
     }
-    return [...porEmpleado.entries()].map(([id_empleado, { devengado, pagado }]) => ({
-      id_empleado,
-      saldoPendiente: devengado.minus(pagado),
-    }));
+    return [...porEmpleado.entries()].map(
+      ([id_empleado, { devengado, pagado }]) => ({
+        id_empleado,
+        saldoPendiente: devengado.minus(pagado),
+      }),
+    );
   }
 
   async findByEmpleado(idEmpleado: number) {
