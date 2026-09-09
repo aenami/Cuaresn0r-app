@@ -8,6 +8,7 @@ import { turnoActualQuery } from '@/features/billing/api'
 import { cn } from '@/lib/utils'
 import { horaCorta } from '@/features/billing/caja-comun'
 import { AbrirTurnoForm, FlujoEfectivo } from '@/features/billing/flujo-efectivo'
+import { CuadreCaja } from '@/features/billing/cuadre-caja'
 import { CuentasPagadas } from '@/features/billing/cuentas-pagadas'
 import { Ajustes } from '@/features/billing/ajustes-caja'
 
@@ -17,7 +18,7 @@ export const Route = createFileRoute('/_auth/caja')({
 
 // Vistas del modulo. 'flujo' y 'cuentas' las ven cajero y admin; 'ajustes'
 // (configuracion + cajas) es solo admin.
-type Vista = 'flujo' | 'cuentas' | 'ajustes'
+type Vista = 'flujo' | 'cuadre' | 'cuentas' | 'ajustes'
 
 function PaginaCaja() {
   const esAdmin = useEsAdmin()
@@ -42,7 +43,7 @@ function PaginaCaja() {
         <p className="micro-label tracking-[0.22em]">Caja_Control</p>
         <div className="flex items-center gap-3">
           <ToggleModo vista={vista} onCambiar={setVista} esAdmin={esAdmin} />
-          {turno && vista === 'flujo' && <PillTurno turno={turno} />}
+          {turno && (vista === 'flujo' || vista === 'cuadre') && <PillTurno turno={turno} />}
         </div>
       </div>
 
@@ -50,6 +51,8 @@ function PaginaCaja() {
         <Ajustes />
       ) : vista === 'cuentas' ? (
         <CuentasPagadas />
+      ) : vista === 'cuadre' ? (
+        isPending ? <div className="h-72 animate-pulse rounded-2xl bg-surface-high" /> : <CuadreCaja turno={turno ?? null} />
       ) : isPending ? (
         <div className="h-72 animate-pulse rounded-2xl bg-surface-high" />
       ) : turno ? (
@@ -64,6 +67,7 @@ function PaginaCaja() {
 function ToggleModo({ vista, onCambiar, esAdmin }: { vista: Vista; onCambiar: (v: Vista) => void; esAdmin: boolean }) {
   const opciones: { valor: Vista; texto: string }[] = [
     { valor: 'flujo', texto: 'Flujo de caja' },
+    { valor: 'cuadre', texto: 'Cuadre' },
     { valor: 'cuentas', texto: 'Cuentas' },
     ...(esAdmin ? [{ valor: 'ajustes' as const, texto: 'Ajustes' }] : []),
   ]

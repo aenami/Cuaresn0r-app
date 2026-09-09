@@ -5,11 +5,8 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Banknote,
-  ClipboardCheck,
-  Coins,
   Download,
   Loader2,
-  Lock,
   Plus,
   TrendingUp,
   Wallet,
@@ -19,7 +16,6 @@ import { formatearPrecio } from '@/lib/formato'
 import {
   cajasQuery,
   useAbrirTurno,
-  useCerrarTurno,
   useRegistrarMovimiento,
 } from '@/features/billing/api'
 import { cn } from '@/lib/utils'
@@ -42,11 +38,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { errorApi, horaCorta } from './caja-comun'
-import { FilaResumen, KpiCard } from './caja-kpis'
-
-// Denominaciones COP: billetes y monedas en circulacion.
-const BILLETES = [100000, 50000, 20000, 10000, 5000, 2000]
-const MONEDAS = [1000, 500, 200, 100, 50]
+import { KpiCard } from './caja-kpis'
 
 type TipoLedger = 'APERTURA' | 'VENTA' | 'INGRESO' | 'RETIRO'
 
@@ -122,18 +114,7 @@ function exportarCSV(filas: FilaLedger[], idTurno: number) {
 // ---- Flujo de efectivo (dashboard del turno) ----
 
 export function FlujoEfectivo({ turno }: { turno: TurnoResumen }) {
-  const cerrar = useCerrarTurno(turno.id_turno)
-  const [conteo, setConteo] = useState<Record<number, string>>({})
-  const [dialogoCierre, setDialogoCierre] = useState(false)
-  const [dialogoArqueo, setDialogoArqueo] = useState(false)
-  const [resultado, setResultado] = useState<{ esperado: number; real: number } | null>(null)
-
   const esperado = Number(turno.monto_cierre_esperado ?? turno.monto_apertura_turno)
-  const totalContado = [...BILLETES, ...MONEDAS].reduce(
-    (acc, d) => acc + d * (parseInt(conteo[d] || '0', 10) || 0),
-    0,
-  )
-
   const ventasNetas = turno.pagosPorMetodo.reduce((acc, p) => acc + Number(p.total ?? 0), 0)
   const tarjetas = Number(turno.pagosPorMetodo.find((p) => p.metodo === 'TARJETA')?.total ?? 0)
   const egresos = turno.movimientosCaja.filter((m) => m.tipo_mc === 'EGRESO')
@@ -145,50 +126,15 @@ export function FlujoEfectivo({ turno }: { turno: TurnoResumen }) {
 
   const filas = construirLedger(turno)
 
-  function cerrarTurno() {
-    const conteoNum = Object.fromEntries(
-      [...BILLETES, ...MONEDAS]
-        .map((d) => [d, parseInt(conteo[d] || '0', 10) || 0] as const)
-        .filter(([, v]) => v > 0),
-    )
-    cerrar
-      .mutateAsync({ montoCierreReal: totalContado, conteo: conteoNum })
-      .then((t) => {
-        setDialogoCierre(false)
-        setResultado({
-          esperado: Number(t.monto_cierre_esperado ?? 0),
-          real: Number(t.monto_cierre_real_turno ?? 0),
-        })
-        setConteo({})
-      })
-      .catch((e: unknown) => toast.error(errorApi(e)))
-  }
-
-  const diferenciaResultado = resultado ? resultado.real - resultado.esperado : 0
-
   return (
     <div className="space-y-8">
-      {/* Encabezado + acciones */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-heading text-4xl font-semibold uppercase tracking-tight md:text-5xl">
-            Flujo<span className="text-primary">_</span>Efectivo
-          </h1>
-          <p className="micro-label mt-2">
-            Resumen de caja · Turno #{turno.id_turno} · {turno.caja?.nombre_caja}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" className="h-11 gap-2" onClick={() => setDialogoArqueo(true)}>
-            <ClipboardCheck className="size-4" /> Arqueo de caja
-          </Button>
-          <Button
-            className="btn-heat h-11 gap-2 font-heading text-sm font-semibold uppercase tracking-wide"
-            onClick={() => setDialogoCierre(true)}
-          >
-            <Lock className="size-4" /> Cerrar turno
-          </Button>
-        </div>
+      <div>
+        <h1 className="font-heading text-4xl font-semibold uppercase tracking-tight md:text-5xl">
+          Flujo<span className="text-primary">_</span>Efectivo
+        </h1>
+        <p className="micro-label mt-2">
+          Movimientos del turno #{turno.id_turno} · {turno.caja?.nombre_caja}
+        </p>
       </div>
 
       {/* KPIs */}
@@ -223,150 +169,8 @@ export function FlujoEfectivo({ turno }: { turno: TurnoResumen }) {
         />
       </div>
 
-      {/* Conteo de efectivo */}
-      <section className="rounded-xl border-l-2 border-primary bg-surface-high p-5 md:p-6">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="font-heading text-lg font-semibold uppercase tracking-wide">Conteo de efectivo (COP)</h2>
-          <p className="font-heading text-sm font-semibold tabular-nums text-tertiary">
-            Total: {formatearPrecio(totalContado)}
-          </p>
-        </div>
-
-        <p className="micro-label mt-5 flex items-center gap-1.5">
-          <Banknote className="size-3.5 text-primary" /> Billetes
-        </p>
-        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-          {BILLETES.map((d) => (
-            <CampoDenominacion key={d} valor={d} cantidad={conteo[d] ?? ''} onCambiar={(v) => setConteo((c) => ({ ...c, [d]: v }))} />
-          ))}
-        </div>
-
-        <p className="micro-label mt-5 flex items-center gap-1.5">
-          <Coins className="size-3.5 text-primary" /> Monedas
-        </p>
-        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-          {MONEDAS.map((d) => (
-            <CampoDenominacion key={d} valor={d} cantidad={conteo[d] ?? ''} onCambiar={(v) => setConteo((c) => ({ ...c, [d]: v }))} />
-          ))}
-        </div>
-      </section>
-
       {/* Registro de movimientos */}
       <RegistroMovimientos turno={turno} filas={filas} />
-
-      {/* Dialogo: arqueo (chequeo sin cerrar) */}
-      <Dialog open={dialogoArqueo} onOpenChange={setDialogoArqueo}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="font-heading uppercase tracking-tight">Arqueo de caja</DialogTitle>
-            <DialogDescription>Chequeo del conteo actual contra lo esperado. No cierra el turno.</DialogDescription>
-          </DialogHeader>
-          <ComparacionCuadre contado={totalContado} esperado={esperado} />
-          <DialogFooter>
-            <Button className="btn-heat" onClick={() => setDialogoArqueo(false)}>
-              Entendido
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialogo: confirmar cierre */}
-      <Dialog open={dialogoCierre} onOpenChange={setDialogoCierre}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="font-heading uppercase tracking-tight">Cerrar turno</DialogTitle>
-            <DialogDescription>
-              Se cierra con el total contado en el conteo de efectivo. Revisa antes de confirmar.
-            </DialogDescription>
-          </DialogHeader>
-          <ComparacionCuadre contado={totalContado} esperado={esperado} />
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setDialogoCierre(false)}>
-              Cancelar
-            </Button>
-            <Button
-              variant="outline"
-              className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-              disabled={cerrar.isPending}
-              onClick={cerrarTurno}
-            >
-              {cerrar.isPending ? <Loader2 className="size-4 animate-spin" /> : <Lock className="size-4" />}
-              Confirmar cierre
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialogo: resultado del cierre */}
-      <Dialog open={resultado !== null} onOpenChange={(o) => !o && setResultado(null)}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="font-heading uppercase tracking-tight">Turno cerrado</DialogTitle>
-            <DialogDescription>Resumen del cuadre de efectivo.</DialogDescription>
-          </DialogHeader>
-          {resultado && (
-            <div className="space-y-2 text-sm">
-              <FilaResumen etiqueta="Esperado" valor={resultado.esperado} />
-              <FilaResumen etiqueta="Contado" valor={resultado.real} />
-              <div className="mt-1 flex justify-between border-t border-border pt-2 font-medium">
-                <span>{diferenciaResultado === 0 ? 'Cuadra' : diferenciaResultado > 0 ? 'Sobrante' : 'Faltante'}</span>
-                <span
-                  className={cn(
-                    'tabular-nums',
-                    diferenciaResultado === 0 ? 'text-primary' : diferenciaResultado > 0 ? 'text-tertiary' : 'text-destructive',
-                  )}
-                >
-                  {formatearPrecio(Math.abs(diferenciaResultado))}
-                </span>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button className="btn-heat" onClick={() => setResultado(null)}>
-              Entendido
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  )
-}
-
-function CampoDenominacion({ valor, cantidad, onCambiar }: { valor: number; cantidad: string; onCambiar: (v: string) => void }) {
-  return (
-    <div>
-      <label className="micro-label block">{formatearPrecio(valor)}</label>
-      <Input
-        type="number"
-        min={0}
-        step={1}
-        inputMode="numeric"
-        placeholder="0"
-        value={cantidad}
-        onChange={(e) => onCambiar(e.target.value)}
-        className="mt-1 bg-surface-lowest text-center tabular-nums"
-      />
-    </div>
-  )
-}
-
-function ComparacionCuadre({ contado, esperado }: { contado: number; esperado: number }) {
-  const diferencia = contado - esperado
-  return (
-    <div className="space-y-2 text-sm">
-      <FilaResumen etiqueta="Contado" valor={contado} />
-      <FilaResumen etiqueta="Esperado" valor={esperado} />
-      <div className="mt-1 flex justify-between border-t border-border pt-2 font-medium">
-        <span>{diferencia === 0 ? 'Cuadra' : diferencia > 0 ? 'Sobrante' : 'Faltante'}</span>
-        <span
-          className={cn(
-            'tabular-nums',
-            diferencia === 0 ? 'text-primary' : diferencia > 0 ? 'text-tertiary' : 'text-destructive',
-          )}
-        >
-          {formatearPrecio(Math.abs(diferencia))}
-        </span>
-      </div>
     </div>
   )
 }

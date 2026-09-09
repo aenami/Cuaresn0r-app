@@ -369,6 +369,7 @@ export interface Turno {
   monto_cierre_real_turno: string | null
   // Desglose por denominacion del conteo de cierre: { "100000": 2, ... }.
   conteo_cierre_turno?: Record<string, number> | null
+  facturas_pendientes_cierre_turno?: FacturasPendientesCuadre | null
   estado_turno: EstadoTurno
   caja?: Caja
   usuario?: { id_usuario: number; email_usuario: string }
@@ -389,15 +390,52 @@ export interface PagoLedger {
   id_pedido: number
 }
 
+export interface PagoNominaCuadre {
+  id: number
+  empleado: string
+  concepto: string
+  metodo: 'EFECTIVO' | 'TRANSFERENCIA'
+  monto: string
+  fecha: string
+}
+
+export interface PagoProveedorCuadre {
+  id: number
+  proveedor: string
+  concepto: string
+  documento: string | null
+  metodo: 'EFECTIVO' | 'TRANSFERENCIA'
+  monto: string
+  fecha: string
+}
+
+export interface FacturaPendienteCuadre {
+  idCuenta: number
+  proveedor: string
+  concepto: string
+  documento: string | null
+  fechaVencimiento: string | null
+  montoTotal: string
+  saldoPendiente: string
+}
+
+export interface FacturasPendientesCuadre {
+  total: string
+  cuentas: FacturaPendienteCuadre[]
+  historicoDisponible: boolean
+}
+
 // GET /billing/turnos/:id y /actual: turno + movimientos + totales por metodo
 // + pagos individuales (para el cuadre, la conciliacion del datafono y el ledger).
 export interface TurnoResumen extends Turno {
   movimientosCaja: MovimientoCaja[]
   pagosPorMetodo: PagoPorMetodo[]
   pagos: PagoLedger[]
+  detallePagosNomina: PagoNominaCuadre[]
+  detallePagosProveedores: PagoProveedorCuadre[]
   baseCaja: string
   resumenCuadre: {
-    ventas: { efectivo: string; transferencia: string; tarjeta: string }
+    ventas: { efectivo: string; transferencia: string; tarjeta: string; total: string }
     egresos: {
       nominaEfectivo: string
       nominaTransferencia: string
@@ -406,6 +444,14 @@ export interface TurnoResumen extends Turno {
     }
     netoTransferencias: string
     efectivoEsperadoSinBase: string
+    efectivo: {
+      esperadoConBase: string
+      esperadoSinBase: string
+      realConBase: string | null
+      realSinBase: string | null
+      diferencia: string | null
+    }
+    facturasPendientes: FacturasPendientesCuadre
   }
 }
 
