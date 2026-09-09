@@ -165,6 +165,30 @@ alcance o feature terminada.
   creacion real dentro de una transaccion revertida, sin conservar datos de
   prueba. Las 17 suites/139 pruebas y la compilacion del servidor aprobaron.
 
+### 2026-09-08 — Cuadre de caja por turno
+
+- Caja incorpora una seccion propia de `Cuadre`, separada del registro de
+  movimientos. El formato se alimenta automaticamente con las ventas y pagos
+  que ya existen en el sistema, evitando que el cajero los vuelva a escribir.
+- El cuadre detalla por turno los pagos a empleados y proveedores con nombre,
+  concepto, medio de pago y valor. Los pagos de nomina por transferencia ahora
+  quedan asociados al turno abierto, sin afectar el efectivo fisico.
+- Nequi se concilia como saldo digital separado: se muestran los ingresos por
+  ventas, los pagos digitales y el neto, pero ninguno aumenta el dinero
+  esperado dentro del cajon.
+- El conteo muestra efectivo esperado y real tanto incluyendo como excluyendo
+  la base fija de 300.000 COP. La diferencia entre contado y esperado determina
+  si la caja quedo exacta, con sobrante o con faltante.
+- Las cuentas por pagar pendientes son informativas y no disminuyen el efectivo
+  hasta pagarse. Al cerrar el turno se congela en JSON su proveedor, concepto,
+  documento, vencimiento y saldo para que el cuadre historico no cambie luego.
+- Se agrego un historial navegable de turnos cerrados. Los turnos anteriores a
+  esta mejora conservan sus cifras, pero indican que no disponen de fotografia
+  historica de facturas pendientes.
+- Se aplico la migracion `20260908120000_cuadre_caja_por_turno` en la base local
+  `POS`, previo respaldo en `server/backups/`. Prisma reporta 19 migraciones al
+  dia; 18 suites/142 pruebas, compilaciones y lint aprobaron.
+
 ## Pendiente inmediato
 
 - La base local ya está migrada. En futuros ambientes de despliegue todavía se
