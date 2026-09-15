@@ -111,7 +111,7 @@ el valor de la clave por el generado en el paso 3:
 
 [Environment]::SetEnvironmentVariable(
   'POS_BACKEND_URL',
-  'http://localhost:3000',
+  'https://pos-api.onrender.com',
   'User'
 )
 
@@ -143,11 +143,14 @@ variables. Confirmar su presencia sin mostrar la clave:
 Resultado esperado:
 
 ```text
-Backend           : http://localhost:3000
+Backend           : https://pos-api.onrender.com
 ClaveConfigurada  : True
 Puerto            : 3001
 SondeoMs          : 3000
 ```
+
+Usar la URL real de Render, sin barra final. `http://localhost:3000` solo
+corresponde a pruebas en las que el backend tambien se ejecuta localmente.
 
 ## 6. Probar el agente manualmente
 
@@ -383,4 +386,3 @@ hacerlo solamente cuando ninguna otra impresora esté trabajando.
 - [ ] Ticket de prueba impreso físicamente.
 - [ ] Comanda mixta produce tickets separados de cocina y barra.
 - [ ] Una comanda enviada con el agente apagado se imprime al reiniciarlo.
-

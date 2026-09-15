@@ -1,100 +1,211 @@
-# Guía de despliegue
+# Guia de despliegue
 
-Este proyecto se despliega en tres servicios gratuitos:
+La arquitectura de despliegue del proyecto es:
 
-| Pieza | Servicio | Qué aloja |
+| Pieza | Servicio | Que aloja |
 | --- | --- | --- |
 | Base de datos | **Neon** | PostgreSQL |
-| Backend (`server/`) | **Render** | API NestJS |
+| Backend (`server/`) | **Render** | API NestJS y cola persistente de impresion |
 | Frontend (`client/`) | **Vercel** | SPA de Vite/React |
-| Imágenes de productos | **Cloudinary** | archivos subidos (el disco de Render es efímero) |
+| Imagenes de productos | **Cloudinary** | archivos subidos; el disco de Render es efimero |
+| Impresion USB | **Agente local de Windows** | consume la cola del backend y escribe ESC/POS en las impresoras |
 
-El repositorio ya viene preparado: `render.yaml` (blueprint del backend), `client/vercel.json`
-(fallback SPA), endpoint de salud en `/health` y soporte de Cloudinary/CORS por variables de
-entorno. Solo falta crear las cuentas y pegar los secretos.
+El repositorio incluye `render.yaml`, `client/vercel.json`, el endpoint `/health`
+y soporte de Cloudinary y CORS por variables de entorno. El agente de impresion
+no se despliega: se instala unicamente en el computador de caja.
 
----
+> El plan gratuito de Render sirve para pruebas y una puesta en marcha
+> provisional. Render no lo recomienda para produccion y puede tardar cerca de
+> un minuto en despertar despues de 15 minutos sin trafico. Para operar el
+> restaurante conviene pasar el backend a una instancia siempre activa cuando
+> termine la validacion.
+
+## 0. Decidir si se reutiliza el despliegue anterior
+
+Antes de crear recursos duplicados, entrar a Neon, Cloudinary, Render y Vercel
+con la cuenta usada en la version anterior.
+
+- Si los cuatro recursos todavia existen, reutilizarlos. Antes de migrar una
+  base Neon con datos importantes, crear una rama de respaldo en Neon o hacer
+  un `pg_dump` usando la conexion directa.
+- Si no interesa conservar los datos anteriores, crear un proyecto Neon nuevo
+  y seguir esta guia como un despliegue limpio.
+
+Subir primero la version actual a GitHub. Vercel y Render solo ven los commits
+que esten en el remoto:
+
+```powershell
+git status
+git push origin main
+```
+
+`git status` debe indicar que el arbol esta limpio y el `push` debe terminar sin
+errores.
 
 ## 1. Neon (base de datos)
 
-1. Crear un proyecto en <https://neon.tech> (región **US East** para que quede cerca de Render/Colombia).
-2. Copiar la **connection string**. Usar la conexión **directa** (la que **no** dice *pooled*),
-   incluye `?sslmode=require`. Se ve así:
-   ```
+1. Crear un proyecto en <https://neon.tech> o abrir el proyecto anterior. Usar
+   **AWS US East (N. Virginia)** para mantenerlo cerca de Render.
+2. Abrir **Connect** y copiar la connection string **directa**, la que no
+   contiene `-pooler`. Debe incluir cifrado, normalmente
+   `sslmode=require`, por ejemplo:
+
+   ```text
    postgresql://usuario:password@ep-xxxx.us-east-1.aws.neon.tech/neondb?sslmode=require
    ```
-   Guardar ese valor: es el `DATABASE_URL`.
 
-## 2. Cloudinary (imágenes)
+3. Guardar ese valor: sera `DATABASE_URL`. La conexion directa es la indicada
+   para migraciones y `pg_dump`. No exponerla en el frontend ni guardarla en
+   Git.
 
-1. Crear cuenta gratis en <https://cloudinary.com>.
-2. En el **Dashboard**, copiar la variable **`CLOUDINARY_URL`** (Cloudinary la muestra ya armada,
-   con formato `cloudinary://<api_key>:<api_secret>@<cloud_name>`). Ese es el valor de `CLOUDINARY_URL`.
+## 2. Cloudinary (imagenes)
+
+1. Crear una cuenta en <https://cloudinary.com> o abrir el entorno anterior.
+2. En **Settings -> API Keys**, copiar `CLOUDINARY_URL`. Tiene formato:
+
+   ```text
+   cloudinary://<api_key>:<api_secret>@<cloud_name>
+   ```
+
+3. Tratarla como un secreto: contiene el API secret y solo debe configurarse en
+   Render.
 
 ## 3. Render (backend)
 
-**Opción A — Blueprint (recomendada):**
+### Opcion A: Blueprint (recomendada)
 
-1. En <https://render.com>: **New → Blueprint** y seleccionar el repo `POS-app`.
-   Render lee `render.yaml` y propone el servicio `pos-api`.
-2. Rellenar las variables marcadas como secretas:
-   - `DATABASE_URL` → la de Neon (paso 1).
-   - `CLOUDINARY_URL` → la de Cloudinary (paso 2).
-   - `CORS_ORIGIN` → dejarla vacía por ahora (se rellena en el paso 5).
-   - `JWT_SECRET` y `TZ` ya vienen resueltas por el blueprint (secreto autogenerado y `America/Bogota`).
-3. **Create** y esperar el primer build. El build corre solo:
-   `pnpm install → prisma generate → prisma migrate deploy → build`.
+1. En <https://render.com>, elegir **New -> Blueprint** y conectar el repositorio
+   `Cuaresn0r-app`, rama `main`. Render leera `render.yaml` y propondra el
+   servicio `pos-api` con raiz `server/`.
+2. Completar las variables secretas:
+   - `DATABASE_URL`: la conexion directa de Neon.
+   - `CLOUDINARY_URL`: la variable completa de Cloudinary.
+   - `PRINT_AGENT_KEY`: una clave aleatoria que tambien se configurara en el
+     computador de caja. Se puede generar en PowerShell con:
 
-**Opción B — manual (sin blueprint):** New → Web Service, root directory `server`, y usar como
-build command `pnpm install && npx prisma generate && npx prisma migrate deploy && pnpm build`,
-start command `pnpm start:prod`, health check path `/health`, y las mismas variables de arriba
-(agregando `JWT_SECRET` a mano y `TZ=America/Bogota`).
+     ```powershell
+     $bytesClave = New-Object byte[] 32
+     [Security.Cryptography.RandomNumberGenerator]::Fill($bytesClave)
+     [Convert]::ToBase64String($bytesClave)
+     ```
 
-Al terminar, anotar la URL pública del backend, p. ej. `https://pos-api.onrender.com`.
-Verificar que responde: abrir `https://pos-api.onrender.com/health` → debe devolver `{"status":"ok"}`.
+   - `CORS_ORIGIN`: dejarla vacia inicialmente; se completa al obtener el
+     dominio de Vercel.
+   - `JWT_SECRET` y `TZ` los resuelve el Blueprint con un secreto generado y
+     `America/Bogota`, respectivamente.
+3. Crear el Blueprint y esperar el primer deploy. El build ejecuta
+   `prisma migrate deploy`, por lo que aplica automaticamente todas las
+   migraciones versionadas, incluido el conteo diario de inventario.
+4. Copiar la URL publica, por ejemplo `https://pos-api.onrender.com`, y abrir:
 
-## 4. Sembrar la base (una sola vez)
+   ```text
+   https://pos-api.onrender.com/health
+   ```
 
-Las tablas ya las creó `migrate deploy` en el build. Falta el seed (roles, admin, configs, caja).
-Se corre **una vez** desde tu máquina apuntando a Neon, en `server/`:
+   La respuesta esperada es `{"status":"ok"}`.
+
+### Opcion B: servicio manual
+
+Crear un **Web Service** con estos valores:
+
+| Campo | Valor |
+| --- | --- |
+| Repository | `Cuaresn0r-app` |
+| Branch | `main` |
+| Root Directory | `server` |
+| Runtime | Node |
+| Build Command | `pnpm install --frozen-lockfile && pnpm exec prisma generate && pnpm exec prisma migrate deploy && pnpm build` |
+| Start Command | `pnpm start:prod` |
+| Health Check Path | `/health` |
+
+Agregar manualmente `DATABASE_URL`, `JWT_SECRET`, `CLOUDINARY_URL`,
+`PRINT_AGENT_KEY`, `CORS_ORIGIN` y `TZ=America/Bogota`.
+
+## 4. Sembrar una base nueva (una sola vez)
+
+Omitir esta seccion si se reutilizo una base que ya tiene usuarios. En una base
+nueva, las tablas las crea `migrate deploy`, pero falta el seed de roles,
+administrador, configuraciones y caja. Ejecutarlo una vez desde `server/` con
+credenciales iniciales propias:
 
 ```powershell
-# PowerShell
-$env:DATABASE_URL="<connection-string-de-neon>"
-npx prisma db seed
+cd C:\Users\ASUS\Desktop\Proyectos\Cuaresn0r-app\server
+$env:DATABASE_URL="<connection-string-directa-de-neon>"
+$env:SEED_ADMIN_EMAIL="tu-correo@restaurante.com"
+$env:SEED_ADMIN_PASSWORD="una-clave-inicial-segura"
+pnpm exec prisma db seed
 ```
 
-Crea el admin `admin@pos.local` / `Admin123!` (o los valores de `SEED_ADMIN_EMAIL` /
-`SEED_ADMIN_PASSWORD` si los defines antes de correrlo). Cambiar esa contraseña tras el primer login.
+Cerrar esa terminal despues del seed para retirar los secretos de la sesion. El
+seed es idempotente para el correo configurado, pero no debe usarse como metodo
+habitual para crear administradores.
 
 ## 5. Vercel (frontend)
 
-1. En <https://vercel.com>: **Add New → Project** e importar el repo.
-2. **Root Directory:** `client`. Vercel detecta Vite solo (build `pnpm build`, output `dist`).
-3. Agregar la variable de entorno **`VITE_API_URL`** = la URL del backend de Render
-   (paso 3, **sin** barra final), p. ej. `https://pos-api.onrender.com`.
-4. **Deploy.** Anotar el dominio resultante, p. ej. `https://pos-app.vercel.app`.
+1. En <https://vercel.com>, elegir **Add New -> Project** e importar el mismo
+   repositorio.
+2. Configurar **Root Directory** como `client`. Vercel detectara Vite, usara
+   `pnpm build` y publicara `dist`.
+3. Agregar `VITE_API_URL` con la URL de Render, sin barra final, por ejemplo
+   `https://pos-api.onrender.com`. Marcarla para **Production** y, si se probaran
+   despliegues de ramas, tambien para **Preview**.
+4. Desplegar y copiar el dominio principal, por ejemplo
+   `https://pos-app.vercel.app`.
 
-## 6. Cerrar el círculo (CORS)
+`client/vercel.json` ya contiene el rewrite necesario para que las rutas
+internas de la SPA funcionen al recargar.
 
-1. Volver a Render → servicio `pos-api` → **Environment**.
-2. Poner `CORS_ORIGIN` = el dominio de Vercel del paso 5 (`https://pos-app.vercel.app`,
-   sin barra final; separar por comas si hay varios).
-3. Guardar (Render redesplega solo). Listo: el front ya puede hablar con el back.
+## 6. Cerrar el circulo de CORS
 
----
+1. Volver a Render -> `pos-api` -> **Environment**.
+2. Establecer `CORS_ORIGIN` con el origen exacto de Vercel, sin barra final, por
+   ejemplo `https://pos-app.vercel.app`.
+3. Si existen varios dominios permitidos, separarlos por comas. No usar `*` en
+   produccion.
+4. Guardar y esperar el redeploy de Render.
 
-## Verificación final
+## 7. Conectar el agente local de impresion
 
-- `GET https://<backend>/health` → `{"status":"ok"}`.
-- Entrar al dominio de Vercel, iniciar sesión con el admin del seed.
-- Crear un producto con imagen → la URL guardada debe apuntar a `res.cloudinary.com`
-  (confirma que las imágenes sobreviven a los redeploys).
+En el computador de caja seguir `GUIA_IMPRESION_COMANDAS.md`, teniendo en cuenta:
 
-## Notas del plan gratuito
+- `POS_BACKEND_URL` debe ser la URL publica de Render, sin barra final.
+- `PRINT_AGENT_KEY` debe coincidir exactamente con la configurada en Render.
+- El puerto `3001` permanece local; no se publica en Render ni en Vercel.
+- Al encender el computador, el agente consulta la cola persistente alojada en
+  Neon. Si Render o la impresora no estan disponibles, los trabajos quedan para
+  reintento.
 
-- **Render free** duerme el servicio tras ~15 min de inactividad: la primera petición luego de
-  dormir tarda ~50 s en responder (cold start). Es normal en el plan gratis.
-- **Neon free** también suspende el cómputo por inactividad; la primera consulta lo reactiva.
-- Al cambiar variables de entorno en Render o Vercel hay que redesplegar para que tomen efecto
-  (Render lo hace solo; en Vercel, *Redeploy*).
+## Verificacion final
+
+- `GET https://<backend>/health` devuelve `{"status":"ok"}`.
+- El dominio de Vercel permite iniciar sesion.
+- Crear un producto con imagen genera una URL de `res.cloudinary.com` y la
+  imagen sigue disponible despues de un redeploy.
+- En **Inventario -> Conteo diario**, crear y finalizar un conteo de prueba.
+- En **Caja**, abrir un turno de prueba y verificar que los datos persisten al
+  recargar la pagina.
+- Con el agente local abierto, usar **Ajustes -> Impresoras -> Probar** y luego
+  enviar una comanda real de prueba.
+
+## Diagnostico rapido
+
+| Sintoma | Revisar |
+| --- | --- |
+| `P1000` de Prisma | usuario, contrasena y URL directa de Neon en `DATABASE_URL` |
+| `P2022` o columna inexistente | logs del build; `prisma migrate deploy` debe haber terminado correctamente |
+| Error de CORS en el navegador | `CORS_ORIGIN` debe coincidir exactamente con el origen de Vercel |
+| Imagenes desaparecen | `CLOUDINARY_URL` ausente o invalida en Render |
+| Agente recibe `401` o `403` | `PRINT_AGENT_KEY` distinta entre Render y Windows |
+| Frontend llama a localhost | corregir `VITE_API_URL` y crear un deployment nuevo en Vercel |
+
+## Notas de los planes gratuitos
+
+- Render Free duerme el servicio tras 15 minutos sin trafico y puede tardar
+  cerca de un minuto en volver. El sondeo del agente de impresion cuenta como
+  trafico mientras el computador de caja esta encendido.
+- Neon Free tambien puede suspender el computo por inactividad; la primera
+  consulta lo reactiva.
+- Los cambios de variables en Vercel solo aplican a deployments nuevos. Render
+  normalmente redespliega al guardar variables.
+- El filesystem de Render es efimero; por eso los archivos persistentes deben
+  vivir en Cloudinary y los datos en Neon.

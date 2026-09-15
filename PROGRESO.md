@@ -224,6 +224,11 @@ alcance o feature terminada.
 
 ## Pendiente inmediato
 
+- La configuracion de despliegue se reviso para la arquitectura Neon + Render
+  + Vercel + Cloudinary. `render.yaml` ya declara la clave compartida del agente
+  de impresion y usa instalaciones reproducibles desde el lockfile. La guia de
+  despliegue distingue entre reutilizar el ambiente anterior y crear uno nuevo,
+  e incluye migraciones, seed, CORS, impresion y verificaciones operativas.
 - La base local ya está migrada. En futuros ambientes de despliegue todavía se
   debe ejecutar `prisma migrate deploy` y configurar las fichas iniciales del
   restaurante.

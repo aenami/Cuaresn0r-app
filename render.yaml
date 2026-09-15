@@ -9,7 +9,7 @@ services:
     plan: free
     region: virginia # us-east, el mas cercano a Colombia; usar la misma zona en Neon
     rootDir: server
-    buildCommand: pnpm install && npx prisma generate && npx prisma migrate deploy && pnpm build
+    buildCommand: pnpm install --frozen-lockfile && pnpm exec prisma generate && pnpm exec prisma migrate deploy && pnpm build
     startCommand: pnpm start:prod
     healthCheckPath: /health
     envVars:
@@ -19,6 +19,10 @@ services:
       # Secreto de firma de los JWT. Render genera uno aleatorio y lo persiste.
       - key: JWT_SECRET
         generateValue: true
+      # Clave compartida con el agente local de impresion. Debe copiarse
+      # exactamente en PRINT_AGENT_KEY del usuario de Windows del computador de caja.
+      - key: PRINT_AGENT_KEY
+        sync: false
       # Credenciales de Cloudinary: cloudinary://<api_key>:<api_secret>@<cloud_name>
       - key: CLOUDINARY_URL
         sync: false
