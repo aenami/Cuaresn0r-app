@@ -221,11 +221,6 @@ alcance o feature terminada.
   local `POS`, previo respaldo valido en `server/backups/`. La estructura y sus
   restricciones fueron verificadas directamente en PostgreSQL; 19 suites/150
   pruebas, compilaciones y lint aprobaron.
-- La base local conserva cuatro nombres de migraciones historicas de julio que
-  no existen en este repositorio (`compras_proveedores` y movimientos de caja
-  asociados). No bloquearon `migrate deploy` ni esta migracion, pero deben
-  recuperarse o documentarse como baseline antes de exigir un historial Prisma
-  identico entre esta base y una instalacion nueva.
 
 ## Pendiente inmediato
 
@@ -242,9 +237,6 @@ alcance o feature terminada.
 - Realizar una prueba operativa de punta a punta con una impresora real:
   factura, comanda compartida cocina/barra, falta de papel y reintento.
 - Definir si se activara una tercera impresora independiente para barra.
-- Recuperar o baselinar de forma explicita las cuatro migraciones historicas de
-  julio registradas solo en la base local; no borrar ni marcar manualmente esas
-  entradas sin reconstruir antes su SQL original.
 
 ## Reestructuracion solicitada (decisiones en definicion)
 
