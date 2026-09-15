@@ -231,6 +231,8 @@ alcance o feature terminada.
   e incluye migraciones, seed, CORS, impresion y verificaciones operativas.
 - El nuevo servicio de Render se identifica como `cuaresnor-pos-api`, evitando
   modificar por nombre el servicio `pos-api` asociado al repositorio anterior.
+- La generacion de `PRINT_AGENT_KEY` usa una API compatible con Windows
+  PowerShell 5.1; se descarto la clave nula producida por el intento fallido.
 - La base local ya está migrada. En futuros ambientes de despliegue todavía se
   debe ejecutar `prisma migrate deploy` y configurar las fichas iniciales del
   restaurante.

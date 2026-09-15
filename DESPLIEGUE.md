@@ -86,8 +86,11 @@ errores.
 
      ```powershell
      $bytesClave = New-Object byte[] 32
-     [Security.Cryptography.RandomNumberGenerator]::Fill($bytesClave)
-     [Convert]::ToBase64String($bytesClave)
+     $generadorClave = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+     $generadorClave.GetBytes($bytesClave)
+     $claveAgente = ([BitConverter]::ToString($bytesClave)).Replace('-', '').ToLowerInvariant()
+     $generadorClave.Dispose()
+     $claveAgente
      ```
 
    - `CORS_ORIGIN`: dejarla vacia inicialmente; se completa al obtener el
