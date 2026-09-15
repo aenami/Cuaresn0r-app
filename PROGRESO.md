@@ -189,6 +189,44 @@ alcance o feature terminada.
   `POS`, previo respaldo en `server/backups/`. Prisma reporta 19 migraciones al
   dia; 18 suites/142 pruebas, compilaciones y lint aprobaron.
 
+### 2026-09-14 — Conteo fisico diario de inventario
+
+- Inventario incorpora la pestaña `Conteo diario`, navegable por fecha y
+  disponible para cualquier trabajador autenticado. Cada hoja permite elegir
+  solo los productos e ingredientes que requieren verificacion al cierre.
+- Cada elemento conserva el ultimo conteo fisico finalizado como saldo
+  anterior. En el primer registro se solicita un saldo inicial; los dias
+  siguientes lo heredan automaticamente junto con la fecha de ese cierre.
+- Las entradas del dia se calculan sin duplicarlas:
+  - para ingredientes se toman los movimientos `ENTRADA`, incluidas las
+    recepciones confirmadas de proveedores;
+  - para productos se toman las lineas de cuentas por pagar cuya mercancia fue
+    recibida;
+  - las metas diarias marcadas `PRODUCIDO` tambien se suman como produccion
+    terminada del producto o ingrediente.
+- La salida aparente se congela al confirmar mediante la formula `saldo
+  anterior + entradas - conteo fisico`. En productos se presenta como venta
+  calculada y en ingredientes como consumo calculado. Un resultado negativo no
+  se oculta: queda resaltado como produccion o entrada pendiente de explicar.
+- Para ingredientes se conserva ademas una fotografia del stock automatico al
+  cerrar y se muestra su diferencia frente al conteo fisico. El conteo manual
+  es informativo y no altera existencias automaticamente.
+- El cierre registra trabajador y hora. Solo ADMIN puede reabrir o retirar un
+  conteo; un cierre no se puede reabrir si ya alimenta un dia posterior, para
+  no romper la cadena historica.
+- Las cuentas por pagar ahora admiten lineas de productos terminados ademas de
+  ingredientes. La recepcion puede confirmarse aunque la cuenta ya este pagada
+  y solo se reconoce como entrada cuando la mercancia fue recibida.
+- Se aplico la migracion `20260914120000_conteo_diario_inventario` en la base
+  local `POS`, previo respaldo valido en `server/backups/`. La estructura y sus
+  restricciones fueron verificadas directamente en PostgreSQL; 19 suites/150
+  pruebas, compilaciones y lint aprobaron.
+- La base local conserva cuatro nombres de migraciones historicas de julio que
+  no existen en este repositorio (`compras_proveedores` y movimientos de caja
+  asociados). No bloquearon `migrate deploy` ni esta migracion, pero deben
+  recuperarse o documentarse como baseline antes de exigir un historial Prisma
+  identico entre esta base y una instalacion nueva.
+
 ## Pendiente inmediato
 
 - La base local ya está migrada. En futuros ambientes de despliegue todavía se
@@ -204,6 +242,9 @@ alcance o feature terminada.
 - Realizar una prueba operativa de punta a punta con una impresora real:
   factura, comanda compartida cocina/barra, falta de papel y reintento.
 - Definir si se activara una tercera impresora independiente para barra.
+- Recuperar o baselinar de forma explicita las cuatro migraciones historicas de
+  julio registradas solo en la base local; no borrar ni marcar manualmente esas
+  entradas sin reconstruir antes su SQL original.
 
 ## Reestructuracion solicitada (decisiones en definicion)
 
