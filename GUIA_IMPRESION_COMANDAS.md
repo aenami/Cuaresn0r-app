@@ -111,7 +111,7 @@ el valor de la clave por el generado en el paso 3:
 
 [Environment]::SetEnvironmentVariable(
   'POS_BACKEND_URL',
-  'https://pos-api.onrender.com',
+  'https://cuaresnor-pos-api.onrender.com',
   'User'
 )
 
@@ -143,7 +143,7 @@ variables. Confirmar su presencia sin mostrar la clave:
 Resultado esperado:
 
 ```text
-Backend           : https://pos-api.onrender.com
+Backend           : https://cuaresnor-pos-api.onrender.com
 ClaveConfigurada  : True
 Puerto            : 3001
 SondeoMs          : 3000

@@ -229,6 +229,8 @@ alcance o feature terminada.
   de impresion y usa instalaciones reproducibles desde el lockfile. La guia de
   despliegue distingue entre reutilizar el ambiente anterior y crear uno nuevo,
   e incluye migraciones, seed, CORS, impresion y verificaciones operativas.
+- El nuevo servicio de Render se identifica como `cuaresnor-pos-api`, evitando
+  modificar por nombre el servicio `pos-api` asociado al repositorio anterior.
 - La base local ya está migrada. En futuros ambientes de despliegue todavía se
   debe ejecutar `prisma migrate deploy` y configurar las fichas iniciales del
   restaurante.

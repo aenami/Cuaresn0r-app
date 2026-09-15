@@ -4,7 +4,7 @@
 # `sync: false` se rellenan a mano en el panel (son secretos, no van al repo).
 services:
   - type: web
-    name: pos-api
+    name: cuaresnor-pos-api
     runtime: node
     plan: free
     region: virginia # us-east, el mas cercano a Colombia; usar la misma zona en Neon

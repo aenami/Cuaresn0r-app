@@ -76,7 +76,8 @@ errores.
 
 1. En <https://render.com>, elegir **New -> Blueprint** y conectar el repositorio
    `Cuaresn0r-app`, rama `main`. Render leera `render.yaml` y propondra el
-   servicio `pos-api` con raiz `server/`.
+   servicio `cuaresnor-pos-api` con raiz `server/`. El nombre es distinto al
+   `pos-api` del proyecto anterior para que Render no intente modificarlo.
 2. Completar las variables secretas:
    - `DATABASE_URL`: la conexion directa de Neon.
    - `CLOUDINARY_URL`: la variable completa de Cloudinary.
@@ -96,10 +97,10 @@ errores.
 3. Crear el Blueprint y esperar el primer deploy. El build ejecuta
    `prisma migrate deploy`, por lo que aplica automaticamente todas las
    migraciones versionadas, incluido el conteo diario de inventario.
-4. Copiar la URL publica, por ejemplo `https://pos-api.onrender.com`, y abrir:
+4. Copiar la URL publica, por ejemplo `https://cuaresnor-pos-api.onrender.com`, y abrir:
 
    ```text
-   https://pos-api.onrender.com/health
+   https://cuaresnor-pos-api.onrender.com/health
    ```
 
    La respuesta esperada es `{"status":"ok"}`.
@@ -147,7 +148,7 @@ habitual para crear administradores.
 2. Configurar **Root Directory** como `client`. Vercel detectara Vite, usara
    `pnpm build` y publicara `dist`.
 3. Agregar `VITE_API_URL` con la URL de Render, sin barra final, por ejemplo
-   `https://pos-api.onrender.com`. Marcarla para **Production** y, si se probaran
+   `https://cuaresnor-pos-api.onrender.com`. Marcarla para **Production** y, si se probaran
    despliegues de ramas, tambien para **Preview**.
 4. Desplegar y copiar el dominio principal, por ejemplo
    `https://pos-app.vercel.app`.
@@ -157,7 +158,7 @@ internas de la SPA funcionen al recargar.
 
 ## 6. Cerrar el circulo de CORS
 
-1. Volver a Render -> `pos-api` -> **Environment**.
+1. Volver a Render -> `cuaresnor-pos-api` -> **Environment**.
 2. Establecer `CORS_ORIGIN` con el origen exacto de Vercel, sin barra final, por
    ejemplo `https://pos-app.vercel.app`.
 3. Si existen varios dominios permitidos, separarlos por comas. No usar `*` en
