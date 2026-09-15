@@ -1,5 +1,6 @@
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { CrearCuentaPorPagarDto } from './dto/crear-cuenta-por-pagar.dto';
 import { PagarCuentaPorPagarDto } from './dto/pagar-cuenta-por-pagar.dto';
 import { CuentasPorPagarService } from './cuentas-por-pagar.service';
 
@@ -63,5 +64,88 @@ describe('CuentasPorPagarService.pagar', () => {
     expect(spies.cuentaUpdate.mock.calls[0][0].data).toEqual({
       estado_cuentaPorPagar: 'PARCIAL',
     });
+  });
+});
+
+describe('CuentasPorPagarService.mercancia', () => {
+  it('permite registrar productos terminados en una cuenta por pagar', async () => {
+    const crear = jest.fn((args: { data: Record<string, unknown> }) =>
+      Promise.resolve(args.data),
+    );
+    const prisma = {
+      proveedor: {
+        findUnique: jest.fn().mockResolvedValue({ proveedor_activo: true }),
+      },
+      ingrediente: { count: jest.fn().mockResolvedValue(0) },
+      producto: { count: jest.fn().mockResolvedValue(1) },
+      cuentaPorPagar: { create: crear },
+    } as unknown as PrismaService;
+    const servicio = new CuentasPorPagarService(prisma);
+
+    await servicio.crear({
+      idProveedor: 2,
+      concepto: 'Compra de postres',
+      montoTotal: 60000,
+      detalles: [{ idProducto: 7, cantidad: 12, precioUnitario: 5000 }],
+    } as CrearCuentaPorPagarDto);
+
+    expect(crear).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          detalles: {
+            create: [
+              expect.objectContaining({
+                id_producto_detalleCuenta: 7,
+                id_ingrediente_detalleCuenta: undefined,
+                cantidad_detalleCuenta: 12,
+              }),
+            ],
+          },
+        }),
+      }),
+    );
+  });
+
+  it('confirma productos recibidos sin crear movimientos de ingrediente', async () => {
+    const movimiento = jest.fn().mockResolvedValue({});
+    const actualizarIngrediente = jest.fn().mockResolvedValue({});
+    const actualizarCuenta = jest.fn().mockResolvedValue({});
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id_cuentaPorPagar: 5 }]),
+      cuentaPorPagar: {
+        findUnique: jest.fn().mockResolvedValue({
+          estado_cuentaPorPagar: 'PENDIENTE',
+          fecha_recepcion_mercancia: null,
+          detalles: [
+            {
+              id_detalleCuentaPorPagar: 9,
+              id_ingrediente_detalleCuenta: null,
+              id_producto_detalleCuenta: 7,
+              cantidad_detalleCuenta: new Prisma.Decimal(12),
+            },
+          ],
+        }),
+        update: actualizarCuenta,
+      },
+      movimientoInventario: { create: movimiento },
+      ingrediente: { update: actualizarIngrediente },
+    };
+    const prisma = {
+      $transaction: (callback: (cliente: typeof tx) => unknown) => callback(tx),
+    } as unknown as PrismaService;
+    const servicio = new CuentasPorPagarService(prisma);
+
+    await servicio.recibirMercancia(5, 2);
+
+    expect(movimiento).not.toHaveBeenCalled();
+    expect(actualizarIngrediente).not.toHaveBeenCalled();
+    expect(actualizarCuenta).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          fecha_recepcion_mercancia: expect.any(Date),
+          id_usuario_recibe_mercancia: 2,
+        }),
+      }),
+    );
   });
 });

@@ -6,13 +6,26 @@ import { IngredientsService } from './ingredients.service';
 import { InventoryService } from './inventory.service';
 import { ProductionPlansController } from './production-plans.controller';
 import { ProductionPlansService } from './production-plans.service';
+import { InventoryCountsController } from './inventory-counts.controller';
+import { InventoryCountsService } from './inventory-counts.service';
 
 @Module({
   // IngredientsController primero: Nest/Express matchea rutas en orden de
   // registro, y "/recipes/:id" (RecipesController) capturaria
   // "/recipes/ingredients" como si "ingredients" fuera el :id si fuera antes.
-  controllers: [IngredientsController, ProductionPlansController, RecipesController],
-  providers: [RecipesService, IngredientsService, InventoryService, ProductionPlansService],
+  controllers: [
+    IngredientsController,
+    ProductionPlansController,
+    InventoryCountsController,
+    RecipesController,
+  ],
+  providers: [
+    RecipesService,
+    IngredientsService,
+    InventoryService,
+    ProductionPlansService,
+    InventoryCountsService,
+  ],
   // InventoryService lo reutiliza Orders para descontar/revertir stock
   // dentro de sus propias transacciones al enviar/cancelar comandas.
   exports: [InventoryService],

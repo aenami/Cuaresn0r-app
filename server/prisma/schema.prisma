@@ -123,6 +123,11 @@ enum EstadoMetaProduccion {
   NO_PRODUCIDO
 }
 
+enum EstadoConteoInventario {
+  PENDIENTE
+  FINALIZADO
+}
+
 // Donde se prepara un producto y a que impresora va su comanda.
 // GENERAL aplica SOLO a impresoras: una unica termica que recibe los tickets
 // de cocina Y barra (el mesero reparte los papelitos). Las categorias y los
@@ -210,17 +215,19 @@ model Usuario {
   empleado Empleado @relation(fields: [id_empleado_usuario], references: [id_empleado])
   rol      Rol      @relation(fields: [id_rol], references: [id_rol])
 
-  pedidosComoMesero        Pedido[]
-  turnos                   Turno[]
-  movimientosInventario    MovimientoInventario[]
-  pagosNominaRegistrados   PagoNomina[]
-  comandasEnviadas         Comanda[]              @relation("ComandaEnviadaPor")
-  comentariosCuenta        ComentarioCuenta[]     @relation("ComentarioCuentaAutor")
-  comentariosResueltos     ComentarioCuenta[]     @relation("ComentarioCuentaResueltoPor")
-  pagosCuentasPorPagar     PagoCuentaPorPagar[]
-  recepcionesMercancia     CuentaPorPagar[]       @relation("CuentaRecibidaPor")
-  metasProduccionCreadas   PlanProduccionDiaria[] @relation("PlanProduccionCreador")
-  metasProduccionResueltas PlanProduccionDiaria[] @relation("PlanProduccionResueltoPor")
+  pedidosComoMesero         Pedido[]
+  turnos                    Turno[]
+  movimientosInventario     MovimientoInventario[]
+  pagosNominaRegistrados    PagoNomina[]
+  comandasEnviadas          Comanda[]                @relation("ComandaEnviadaPor")
+  comentariosCuenta         ComentarioCuenta[]       @relation("ComentarioCuentaAutor")
+  comentariosResueltos      ComentarioCuenta[]       @relation("ComentarioCuentaResueltoPor")
+  pagosCuentasPorPagar      PagoCuentaPorPagar[]
+  recepcionesMercancia      CuentaPorPagar[]         @relation("CuentaRecibidaPor")
+  metasProduccionCreadas    PlanProduccionDiaria[]   @relation("PlanProduccionCreador")
+  metasProduccionResueltas  PlanProduccionDiaria[]   @relation("PlanProduccionResueltoPor")
+  conteosInventarioCreados  ConteoInventarioDiario[] @relation("ConteoInventarioCreador")
+  conteosInventarioCerrados ConteoInventarioDiario[] @relation("ConteoInventarioCerradoPor")
 
   @@index([id_empleado_usuario])
   @@index([id_rol])
@@ -543,10 +550,12 @@ model Producto {
 
   categoria Categoria? @relation(fields: [categoria_producto], references: [id_categoria])
 
-  recetas         Receta[]
-  detallesCombo   DetalleCombo[]
-  detallesComanda DetalleComanda[]
-  metasProduccion PlanProduccionDiaria[]
+  recetas                Receta[]
+  detallesCombo          DetalleCombo[]
+  detallesComanda        DetalleComanda[]
+  metasProduccion        PlanProduccionDiaria[]
+  detallesCuentaPorPagar DetalleCuentaPorPagar[]
+  conteosInventario      ConteoInventarioDiario[]
 
   @@index([categoria_producto])
 }
@@ -593,6 +602,41 @@ model Ingrediente {
   movimientos                MovimientoInventario[]
   detallesCuentaPorPagar     DetalleCuentaPorPagar[]
   metasProduccion            PlanProduccionDiaria[]
+  conteosInventario          ConteoInventarioDiario[]
+}
+
+// Hoja diaria de verificacion fisica. El saldo anterior proviene del ultimo
+// conteo finalizado; las entradas y la salida aparente se congelan al cerrar.
+model ConteoInventarioDiario {
+  id_conteoInventario                 Int                    @id @default(autoincrement())
+  fecha_conteoInventario              DateTime               @db.Date
+  tipo_objetivo_conteoInventario      TipoObjetivoProduccion
+  id_producto_conteoInventario        Int?
+  id_ingrediente_conteoInventario     Int?
+  nombre_objetivo_conteoInventario    String                 @db.VarChar(25)
+  unidad_objetivo_conteoInventario    UnidadIngrediente
+  cantidad_anterior_conteoInventario  Decimal                @db.Decimal(20, 4)
+  fecha_anterior_conteoInventario     DateTime?              @db.Date
+  cantidad_entradas_conteoInventario  Decimal                @default(0) @db.Decimal(20, 4)
+  cantidad_fisica_conteoInventario    Decimal?               @db.Decimal(20, 4)
+  cantidad_salida_conteoInventario    Decimal?               @db.Decimal(20, 4)
+  stock_sistema_conteoInventario      Decimal?               @db.Decimal(20, 4)
+  estado_conteoInventario             EstadoConteoInventario @default(PENDIENTE)
+  id_usuario_crea_conteoInventario    Int
+  id_usuario_cierra_conteoInventario  Int?
+  fecha_creacion_conteoInventario     DateTime               @default(now()) @db.Timestamp(6)
+  fecha_finalizacion_conteoInventario DateTime?              @db.Timestamp(6)
+
+  producto      Producto?    @relation(fields: [id_producto_conteoInventario], references: [id_producto], onDelete: Restrict)
+  ingrediente   Ingrediente? @relation(fields: [id_ingrediente_conteoInventario], references: [id_ingrediente], onDelete: Restrict)
+  usuarioCrea   Usuario      @relation("ConteoInventarioCreador", fields: [id_usuario_crea_conteoInventario], references: [id_usuario])
+  usuarioCierra Usuario?     @relation("ConteoInventarioCerradoPor", fields: [id_usuario_cierra_conteoInventario], references: [id_usuario], onDelete: Restrict)
+
+  @@unique([fecha_conteoInventario, id_producto_conteoInventario])
+  @@unique([fecha_conteoInventario, id_ingrediente_conteoInventario])
+  @@index([fecha_conteoInventario, estado_conteoInventario])
+  @@index([id_usuario_crea_conteoInventario])
+  @@index([id_usuario_cierra_conteoInventario])
 }
 
 // Meta operativa completa para un dia. No registra cantidad parcial ni mueve
@@ -760,16 +804,20 @@ model CuentaPorPagar {
 model DetalleCuentaPorPagar {
   id_detalleCuentaPorPagar      Int     @id @default(autoincrement())
   id_cuentaPorPagar_detalle     Int
-  id_ingrediente_detalleCuenta  Int
+  id_ingrediente_detalleCuenta  Int?
+  id_producto_detalleCuenta     Int?
   cantidad_detalleCuenta        Decimal @db.Decimal(20, 4)
   precio_unitario_detalleCuenta Decimal @db.Decimal(20, 4)
 
   cuentaPorPagar CuentaPorPagar         @relation(fields: [id_cuentaPorPagar_detalle], references: [id_cuentaPorPagar])
-  ingrediente    Ingrediente            @relation(fields: [id_ingrediente_detalleCuenta], references: [id_ingrediente])
+  ingrediente    Ingrediente?           @relation(fields: [id_ingrediente_detalleCuenta], references: [id_ingrediente])
+  producto       Producto?              @relation(fields: [id_producto_detalleCuenta], references: [id_producto])
   movimientos    MovimientoInventario[]
 
   @@unique([id_cuentaPorPagar_detalle, id_ingrediente_detalleCuenta])
+  @@unique([id_cuentaPorPagar_detalle, id_producto_detalleCuenta])
   @@index([id_ingrediente_detalleCuenta])
+  @@index([id_producto_detalleCuenta])
 }
 
 model PagoCuentaPorPagar {

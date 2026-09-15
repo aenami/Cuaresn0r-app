@@ -14,7 +14,8 @@ import {
 } from 'class-validator';
 
 export class DetalleCompraDto {
-  @IsInt() @IsPositive() idIngrediente!: number;
+  @IsOptional() @IsInt() @IsPositive() idIngrediente?: number;
+  @IsOptional() @IsInt() @IsPositive() idProducto?: number;
   @IsNumber({ maxDecimalPlaces: 4 }) @IsPositive() cantidad!: number;
   @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) precioUnitario!: number;
 }

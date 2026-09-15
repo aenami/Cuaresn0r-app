@@ -11,7 +11,7 @@ import { PagarCuentaPorPagarDto } from './dto/pagar-cuenta-por-pagar.dto';
 
 const CUENTA_INCLUDE = {
   proveedor: true,
-  detalles: { include: { ingrediente: true } },
+  detalles: { include: { ingrediente: true, producto: true } },
   pagos: {
     include: {
       usuario: { select: { id_usuario: true, email_usuario: true } },
@@ -42,13 +42,35 @@ export class CuentasPorPagarService {
         'Proveedor inexistente o inactivo',
       );
 
-    const idsIngredientes =
-      dto.detalles?.map((detalle) => detalle.idIngrediente) ?? [];
-    if (new Set(idsIngredientes).size !== idsIngredientes.length) {
+    const detalles = dto.detalles ?? [];
+    if (
+      detalles.some(
+        (detalle) =>
+          Number(detalle.idIngrediente !== undefined) +
+            Number(detalle.idProducto !== undefined) !==
+          1,
+      )
+    ) {
       throw new UnprocessableEntityException(
-        'Un ingrediente no puede repetirse en la misma cuenta',
+        'Cada linea debe seleccionar un producto o un ingrediente, no ambos',
       );
     }
+    const claves = detalles.map((detalle) =>
+      detalle.idIngrediente !== undefined
+        ? `INGREDIENTE:${detalle.idIngrediente}`
+        : `PRODUCTO:${detalle.idProducto}`,
+    );
+    if (new Set(claves).size !== claves.length) {
+      throw new UnprocessableEntityException(
+        'Un producto o ingrediente no puede repetirse en la misma cuenta',
+      );
+    }
+    const idsIngredientes = detalles.flatMap((detalle) =>
+      detalle.idIngrediente !== undefined ? [detalle.idIngrediente] : [],
+    );
+    const idsProductos = detalles.flatMap((detalle) =>
+      detalle.idProducto !== undefined ? [detalle.idProducto] : [],
+    );
     if (idsIngredientes.length > 0) {
       const existentes = await this.prisma.ingrediente.count({
         where: { id_ingrediente: { in: idsIngredientes } },
@@ -57,6 +79,27 @@ export class CuentasPorPagarService {
         throw new UnprocessableEntityException(
           'Uno o mas ingredientes no existen',
         );
+    }
+    if (idsProductos.length > 0) {
+      const existentes = await this.prisma.producto.count({
+        where: { id_producto: { in: idsProductos } },
+      });
+      if (existentes !== idsProductos.length) {
+        throw new UnprocessableEntityException(
+          'Uno o mas productos no existen',
+        );
+      }
+      if (
+        detalles.some(
+          (detalle) =>
+            detalle.idProducto !== undefined &&
+            !Number.isInteger(detalle.cantidad),
+        )
+      ) {
+        throw new UnprocessableEntityException(
+          'La cantidad de un producto debe ser un numero entero',
+        );
+      }
     }
 
     return this.prisma.cuentaPorPagar.create({
@@ -73,8 +116,9 @@ export class CuentasPorPagarService {
         monto_total_cuentaPorPagar: dto.montoTotal,
         observacion_cuentaPorPagar: dto.observacion,
         detalles: {
-          create: (dto.detalles ?? []).map((detalle) => ({
+          create: detalles.map((detalle) => ({
             id_ingrediente_detalleCuenta: detalle.idIngrediente,
+            id_producto_detalleCuenta: detalle.idProducto,
             cantidad_detalleCuenta: detalle.cantidad,
             precio_unitario_detalleCuenta: detalle.precioUnitario,
           })),
@@ -122,6 +166,7 @@ export class CuentasPorPagarService {
         throw new ConflictException('La mercancia ya fue recibida');
 
       for (const detalle of cuenta.detalles) {
+        if (detalle.id_ingrediente_detalleCuenta === null) continue;
         await tx.movimientoInventario.create({
           data: {
             id_ingrediente_movimiento: detalle.id_ingrediente_detalleCuenta,
