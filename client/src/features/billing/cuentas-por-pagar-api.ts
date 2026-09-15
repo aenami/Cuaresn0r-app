@@ -42,7 +42,8 @@ export function useCrearCuentaPorPagar() {
       montoTotal: number
       observacion?: string
       detalles?: {
-        idIngrediente: number
+        idIngrediente?: number
+        idProducto?: number
         cantidad: number
         precioUnitario: number
       }[]

@@ -4,16 +4,18 @@ import { useEsAdmin } from '@/stores/auth.store'
 import { SeccionIngredientes } from '@/features/inventario/seccion-ingredientes'
 import { SeccionRecetas } from '@/features/inventario/seccion-recetas'
 import { SeccionProduccion } from '@/features/inventario/seccion-produccion'
+import { SeccionConteoDiario } from '@/features/inventario/seccion-conteo-diario'
 import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/_auth/inventario')({
   component: PaginaInventario,
 })
 
-type Pestana = 'produccion' | 'ingredientes' | 'recetas'
+type Pestana = 'produccion' | 'conteo' | 'ingredientes' | 'recetas'
 
 const PESTANAS: { id: Pestana; etiqueta: string }[] = [
   { id: 'produccion', etiqueta: 'Produccion diaria' },
+  { id: 'conteo', etiqueta: 'Conteo diario' },
   { id: 'ingredientes', etiqueta: 'Ingredientes' },
   { id: 'recetas', etiqueta: 'Recetas' },
 ]
@@ -27,12 +29,12 @@ function PaginaInventario() {
       <h1 className="font-heading text-3xl font-semibold uppercase tracking-tighter">Inventario</h1>
       {!esAdmin ? (
         <p className="mt-2 text-sm text-muted-foreground">
-          Puedes confirmar las metas de produccion; la configuracion del inventario la hace el administrador.
+          Puedes confirmar las metas de produccion y realizar el conteo fisico de cierre.
         </p>
       ) : null}
 
       {/* Pestañas subrayadas */}
-      <div className="mt-8 flex items-center gap-6 border-b border-border">
+      <div className="mt-8 flex items-center gap-6 overflow-x-auto border-b border-border">
         {PESTANAS.map((p) => (
           <button
             key={p.id}
@@ -53,6 +55,8 @@ function PaginaInventario() {
       <div className="mt-8">
         {pestana === 'produccion' ? (
           <SeccionProduccion esAdmin={esAdmin} />
+        ) : pestana === 'conteo' ? (
+          <SeccionConteoDiario esAdmin={esAdmin} />
         ) : pestana === 'ingredientes' ? (
           <SeccionIngredientes esAdmin={esAdmin} />
         ) : (

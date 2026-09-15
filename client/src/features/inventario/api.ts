@@ -1,6 +1,7 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type {
+  ConteoInventarioDiario,
   EstadoMetaProduccion,
   Ingrediente,
   MovimientoInventario,
@@ -44,6 +45,13 @@ export function planProduccionQuery(fecha: string) {
   })
 }
 
+export function conteoInventarioQuery(fecha: string) {
+  return queryOptions({
+    queryKey: ['inventario', 'conteo-diario', fecha],
+    queryFn: () => api.get<ConteoInventarioDiario[]>(`/recipes/inventory-counts?date=${fecha}`),
+  })
+}
+
 export interface MovimientoPayload {
   tipo: 'ENTRADA' | 'MERMA' | 'AJUSTE_POSITIVO' | 'AJUSTE_NEGATIVO'
   cantidad: number
@@ -61,6 +69,13 @@ export interface MetaProduccionPayload {
   tipo: TipoObjetivoProduccion
   idObjetivo: number
   cantidad: number
+}
+
+export interface ConteoInventarioPayload {
+  fecha: string
+  tipo: TipoObjetivoProduccion
+  idObjetivo: number
+  cantidadInicial?: number
 }
 
 function useInvalidarInventario() {
@@ -116,6 +131,40 @@ export function useEliminarMetaProduccion() {
   const invalidar = useInvalidarInventario()
   return useMutation({
     mutationFn: (id: number) => api.delete(`/recipes/production-plans/${id}`),
+    onSuccess: invalidar,
+  })
+}
+
+export function useCrearConteoInventario() {
+  const invalidar = useInvalidarInventario()
+  return useMutation({
+    mutationFn: (payload: ConteoInventarioPayload) =>
+      api.post<ConteoInventarioDiario>('/recipes/inventory-counts', payload),
+    onSuccess: invalidar,
+  })
+}
+
+export function useFinalizarConteoInventario() {
+  const invalidar = useInvalidarInventario()
+  return useMutation({
+    mutationFn: ({ id, cantidadFisica }: { id: number; cantidadFisica: number }) =>
+      api.patch<ConteoInventarioDiario>(`/recipes/inventory-counts/${id}/finalize`, { cantidadFisica }),
+    onSuccess: invalidar,
+  })
+}
+
+export function useReabrirConteoInventario() {
+  const invalidar = useInvalidarInventario()
+  return useMutation({
+    mutationFn: (id: number) => api.patch<ConteoInventarioDiario>(`/recipes/inventory-counts/${id}/reopen`),
+    onSuccess: invalidar,
+  })
+}
+
+export function useEliminarConteoInventario() {
+  const invalidar = useInvalidarInventario()
+  return useMutation({
+    mutationFn: (id: number) => api.delete(`/recipes/inventory-counts/${id}`),
     onSuccess: invalidar,
   })
 }

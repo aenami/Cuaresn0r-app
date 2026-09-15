@@ -12,6 +12,7 @@ import {
   useRecibirCuentaPorPagar,
 } from '@/features/billing/cuentas-por-pagar-api'
 import { ingredientesQuery } from '@/features/inventario/api'
+import { productosQuery } from '@/features/catalogo/api'
 import { useEsAdmin } from '@/stores/auth.store'
 import type { CuentaPorPagar } from '@/types/api'
 import { ApiError } from '@/lib/api'
@@ -154,7 +155,8 @@ function PaginaCuentasPorPagar() {
                   {actual.detalles.map((detalle) => (
                     <li key={detalle.id_detalleCuentaPorPagar} className="flex justify-between text-xs">
                       <span>
-                        {detalle.cantidad_detalleCuenta} × {detalle.ingrediente.nombre_ingrediente}
+                        {detalle.cantidad_detalleCuenta} ×{' '}
+                        {detalle.ingrediente?.nombre_ingrediente ?? detalle.producto?.nombre_producto ?? 'Elemento'}
                       </span>
                       <span>
                         {formatearPrecio(
@@ -168,27 +170,32 @@ function PaginaCuentasPorPagar() {
               <div className="mt-5 rounded-lg bg-surface-high p-3 text-xs">
                 <span className={actual.fecha_recepcion_mercancia ? 'text-secondary' : 'text-tertiary'}>
                   {actual.fecha_recepcion_mercancia
-                    ? 'Mercancia recibida e inventario actualizado'
+                    ? 'Mercancia recibida y registrada'
                     : 'Mercancia pendiente de confirmacion'}
                 </span>
               </div>
-              {actual.estado_cuentaPorPagar !== 'PAGADA' && actual.estado_cuentaPorPagar !== 'ANULADA' ? (
-                <div className="mt-4 grid grid-cols-2 gap-2">
+              {actual.estado_cuentaPorPagar !== 'ANULADA' &&
+              (actual.fecha_recepcion_mercancia === null || actual.estado_cuentaPorPagar !== 'PAGADA') ? (
+                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                  {actual.fecha_recepcion_mercancia === null ? (
                   <Button
                     variant="secondary"
-                    disabled={actual.fecha_recepcion_mercancia !== null || recibir.isPending}
+                    disabled={recibir.isPending}
                     onClick={() =>
                       recibir
                         .mutateAsync(actual.id_cuentaPorPagar)
-                        .then(() => toast.success('Mercancia recibida; inventario actualizado'))
+                        .then(() => toast.success('Mercancia recibida y registrada'))
                         .catch((e: unknown) => toast.error(textoError(e)))
                     }
                   >
                     <PackageCheck className="size-4" /> Recibir
                   </Button>
+                  ) : null}
+                  {actual.estado_cuentaPorPagar !== 'PAGADA' ? (
                   <Button className="btn-heat" onClick={() => setPagoAbierto(true)}>
                     <Banknote className="size-4" /> Pagar
                   </Button>
+                  ) : null}
                 </div>
               ) : null}
             </aside>
@@ -336,6 +343,7 @@ function DialogProveedor({ abierto, onCerrar }: { abierto: boolean; onCerrar: ()
 function DialogCuenta({ abierto, onCerrar }: { abierto: boolean; onCerrar: () => void }) {
   const { data: proveedores } = useQuery(proveedoresQuery)
   const { data: ingredientes } = useQuery(ingredientesQuery)
+  const { data: productos } = useQuery(productosQuery)
   const crear = useCrearCuentaPorPagar()
   const [idProveedor, setIdProveedor] = useState('')
   const [concepto, setConcepto] = useState('')
@@ -344,9 +352,16 @@ function DialogCuenta({ abierto, onCerrar }: { abierto: boolean; onCerrar: () =>
   const [vencimiento, setVencimiento] = useState('')
   const [monto, setMonto] = useState('')
   const [observacion, setObservacion] = useState('')
-  const [lineas, setLineas] = useState<Array<{ idIngrediente: string; cantidad: string; precioUnitario: string }>>([])
+  const [lineas, setLineas] = useState<
+    Array<{
+      tipo: 'INGREDIENTE' | 'PRODUCTO'
+      idObjetivo: string
+      cantidad: string
+      precioUnitario: string
+    }>
+  >([])
   const agregarLinea = () =>
-    setLineas((actuales) => [...actuales, { idIngrediente: '', cantidad: '', precioUnitario: '' }])
+    setLineas((actuales) => [...actuales, { tipo: 'INGREDIENTE', idObjetivo: '', cantidad: '', precioUnitario: '' }])
 
   return (
     <Dialog open={abierto} onOpenChange={(open) => !open && onCerrar()}>
@@ -354,8 +369,8 @@ function DialogCuenta({ abierto, onCerrar }: { abierto: boolean; onCerrar: () =>
         <DialogHeader>
           <DialogTitle>Registrar cuenta por pagar</DialogTitle>
           <DialogDescription>
-            La fecha del documento se conserva separada del momento en que se registra. El inventario solo aumenta al
-            confirmar la recepcion.
+            La fecha del documento se conserva separada del momento en que se registra. Las entradas solo se reconocen
+            al confirmar la recepcion.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -372,9 +387,11 @@ function DialogCuenta({ abierto, onCerrar }: { abierto: boolean; onCerrar: () =>
                 montoTotal: Number(monto),
                 observacion: observacion || undefined,
                 detalles: lineas
-                  .filter((linea) => linea.idIngrediente)
+                  .filter((linea) => linea.idObjetivo)
                   .map((linea) => ({
-                    idIngrediente: Number(linea.idIngrediente),
+                    ...(linea.tipo === 'INGREDIENTE'
+                      ? { idIngrediente: Number(linea.idObjetivo) }
+                      : { idProducto: Number(linea.idObjetivo) }),
                     cantidad: Number(linea.cantidad),
                     precioUnitario: Number(linea.precioUnitario),
                   })),
@@ -427,35 +444,67 @@ function DialogCuenta({ abierto, onCerrar }: { abierto: boolean; onCerrar: () =>
           </div>
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <Label>Mercancia / ingredientes (opcional)</Label>
+              <Label>Mercancia recibida (opcional)</Label>
               <Button type="button" size="sm" variant="ghost" onClick={agregarLinea}>
                 <Plus className="size-3" /> Linea
               </Button>
             </div>
             {lineas.map((linea, indice) => (
-              <div key={indice} className="mb-2 grid grid-cols-[1fr_7rem_8rem] gap-2">
+              <div key={indice} className="mb-3 grid gap-2 sm:grid-cols-[8.5rem_minmax(0,1fr)_7rem_8rem]">
                 <Select
-                  value={linea.idIngrediente}
+                  value={linea.tipo}
                   onValueChange={(valor) =>
                     setLineas((actuales) =>
-                      actuales.map((item, i) => (i === indice ? { ...item, idIngrediente: valor } : item)),
+                      actuales.map((item, i) =>
+                        i === indice
+                          ? {
+                              ...item,
+                              tipo: valor as 'INGREDIENTE' | 'PRODUCTO',
+                              idObjetivo: '',
+                            }
+                          : item,
+                      ),
                     )
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Ingrediente" />
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {(ingredientes ?? []).map((ingrediente) => (
-                      <SelectItem key={ingrediente.id_ingrediente} value={String(ingrediente.id_ingrediente)}>
-                        {ingrediente.nombre_ingrediente}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="INGREDIENTE">Ingrediente</SelectItem>
+                    <SelectItem value="PRODUCTO">Producto</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={linea.idObjetivo}
+                  onValueChange={(valor) =>
+                    setLineas((actuales) =>
+                      actuales.map((item, i) => (i === indice ? { ...item, idObjetivo: valor } : item)),
+                    )
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {linea.tipo === 'INGREDIENTE'
+                      ? (ingredientes ?? []).map((ingrediente) => (
+                          <SelectItem key={ingrediente.id_ingrediente} value={String(ingrediente.id_ingrediente)}>
+                            {ingrediente.nombre_ingrediente} · {ingrediente.unidades_ingrediente}
+                          </SelectItem>
+                        ))
+                      : (productos ?? [])
+                          .filter((producto) => producto.habilitado_producto)
+                          .map((producto) => (
+                            <SelectItem key={producto.id_producto} value={String(producto.id_producto)}>
+                              {producto.nombre_producto} · unidades
+                            </SelectItem>
+                          ))}
                   </SelectContent>
                 </Select>
                 <Input
                   type="number"
-                  step="any"
+                  step={linea.tipo === 'PRODUCTO' ? 1 : 'any'}
                   placeholder="Cantidad"
                   value={linea.cantidad}
                   onChange={(e) =>

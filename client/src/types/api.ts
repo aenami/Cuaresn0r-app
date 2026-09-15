@@ -122,6 +122,36 @@ export interface PlanProduccionDiaria {
   usuarioResuelve?: UsuarioMetaProduccion | null
 }
 
+export type EstadoConteoInventario = 'PENDIENTE' | 'FINALIZADO'
+
+export interface ConteoInventarioDiario {
+  id_conteoInventario: number
+  fecha_conteoInventario: string
+  tipo_objetivo_conteoInventario: TipoObjetivoProduccion
+  id_producto_conteoInventario: number | null
+  id_ingrediente_conteoInventario: number | null
+  nombre_objetivo_conteoInventario: string
+  unidad_objetivo_conteoInventario: UnidadIngrediente
+  cantidad_anterior_conteoInventario: string
+  fecha_anterior_conteoInventario: string | null
+  cantidad_entradas_conteoInventario: string
+  cantidad_fisica_conteoInventario: string | null
+  cantidad_salida_conteoInventario: string | null
+  stock_sistema_conteoInventario: string | null
+  estado_conteoInventario: EstadoConteoInventario
+  id_usuario_crea_conteoInventario: number
+  id_usuario_cierra_conteoInventario: number | null
+  fecha_creacion_conteoInventario: string
+  fecha_finalizacion_conteoInventario: string | null
+  producto?: Pick<Producto, 'id_producto' | 'nombre_producto' | 'habilitado_producto'> | null
+  ingrediente?: Pick<
+    Ingrediente,
+    'id_ingrediente' | 'nombre_ingrediente' | 'unidades_ingrediente' | 'stock_ingrediente'
+  > | null
+  usuarioCrea: UsuarioMetaProduccion
+  usuarioCierra?: UsuarioMetaProduccion | null
+}
+
 // ---- salon ----
 
 export type EstadoMesa = 'LIBRE' | 'RESERVADA' | 'OCUPADA' | 'DESACTIVADA'
@@ -435,7 +465,12 @@ export interface TurnoResumen extends Turno {
   detallePagosProveedores: PagoProveedorCuadre[]
   baseCaja: string
   resumenCuadre: {
-    ventas: { efectivo: string; transferencia: string; tarjeta: string; total: string }
+    ventas: {
+      efectivo: string
+      transferencia: string
+      tarjeta: string
+      total: string
+    }
     egresos: {
       nominaEfectivo: string
       nominaTransferencia: string
@@ -468,7 +503,8 @@ export interface DetalleCuentaPorPagar {
   id_detalleCuentaPorPagar: number
   cantidad_detalleCuenta: string
   precio_unitario_detalleCuenta: string
-  ingrediente: Ingrediente
+  ingrediente: Ingrediente | null
+  producto: Producto | null
 }
 
 export interface PagoCuentaPorPagar {
