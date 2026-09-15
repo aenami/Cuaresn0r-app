@@ -10,12 +10,21 @@ import {
   IsString,
   MaxLength,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 
 export class DetalleCompraDto {
-  @IsOptional() @IsInt() @IsPositive() idIngrediente?: number;
-  @IsOptional() @IsInt() @IsPositive() idProducto?: number;
+  @ValidateIf((_, valor) => valor !== undefined)
+  @IsInt()
+  @IsPositive()
+  idIngrediente?: number;
+
+  @ValidateIf((_, valor) => valor !== undefined)
+  @IsInt()
+  @IsPositive()
+  idProducto?: number;
+
   @IsNumber({ maxDecimalPlaces: 4 }) @IsPositive() cantidad!: number;
   @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) precioUnitario!: number;
 }

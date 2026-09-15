@@ -86,7 +86,7 @@ export class InventoryCountsService {
     });
 
     let cantidadAnterior: Prisma.Decimal;
-    if (anterior?.cantidad_fisica_conteoInventario !== null && anterior) {
+    if (anterior && anterior.cantidad_fisica_conteoInventario !== null) {
       cantidadAnterior = anterior.cantidad_fisica_conteoInventario;
     } else if (dto.cantidadInicial !== undefined) {
       cantidadAnterior = new Prisma.Decimal(dto.cantidadInicial);
