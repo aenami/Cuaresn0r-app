@@ -222,6 +222,21 @@ alcance o feature terminada.
   restricciones fueron verificadas directamente en PostgreSQL; 19 suites/150
   pruebas, compilaciones y lint aprobaron.
 
+### 2026-09-15 — Despliegue provisional en la nube
+
+- Se creo una base PostgreSQL nueva en Neon. El primer despliegue de Render
+  aplico las migraciones versionadas y el seed inicial se ejecuto correctamente.
+- El backend se publico como `cuaresnor-pos-api` en
+  `https://cuaresnor-pos-api.onrender.com`; su endpoint `/health` responde 200.
+- El frontend se publico en
+  `https://cuaresnor-pos-web.vercel.app` y su compilacion contiene la URL
+  correcta del backend.
+- Cloudinary quedo configurado como almacenamiento persistente de imagenes.
+- `CORS_ORIGIN` autoriza exclusivamente el origen principal de Vercel. Una
+  solicitud preflight real a `/auth/login` respondio 204 con ese origen.
+- Los secretos `DATABASE_URL`, `CLOUDINARY_URL`, `JWT_SECRET` y
+  `PRINT_AGENT_KEY` permanecen fuera del repositorio.
+
 ## Pendiente inmediato
 
 - La configuracion de despliegue se reviso para la arquitectura Neon + Render
