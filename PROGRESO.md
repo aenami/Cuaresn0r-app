@@ -258,7 +258,9 @@ alcance o feature terminada.
   prueba fisica en el restaurante.
 - Los planes gratuitos permiten la demostracion; para uso comercial, Vercel
   Hobby requiere cambio de plan o de alojamiento y Render Free debe evaluarse
-  por su suspension tras inactividad.
+  por su suspension tras inactividad. El sondeo del agente cada 3 segundos
+  puede mantener Neon activa durante todo el turno, por lo que sus CU-horas
+  tambien necesitan vigilancia temprana.
 
 ## Pendiente inmediato
 

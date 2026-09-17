@@ -19,8 +19,10 @@ no se despliega: se instala unicamente en el computador de caja.
 > empieza a operar con el POS, hay que cambiar a Vercel Pro o trasladar el
 > frontend a un alojamiento que permita uso comercial. Render Free tampoco se
 > recomienda para operacion diaria: puede tardar cerca de un minuto en
-> despertar despues de 15 minutos sin trafico. La base Neon y las imagenes en
-> Cloudinary pueden mantenerse gratuitas mientras sus cuotas sean suficientes.
+> despertar despues de 15 minutos sin trafico. Cloudinary puede mantenerse
+> gratuito mientras sus cuotas sean suficientes. Vigilar Neon especialmente:
+> el agente consulta la cola de impresion cada 3 segundos y, mientras el PC
+> este encendido, puede mantener activa la base incluso sin nuevas ventas.
 
 ## 0. Decidir si se reutiliza el despliegue anterior
 
@@ -218,4 +220,5 @@ En el computador de caja seguir `GUIA_IMPRESION_COMANDAS.md`, teniendo en cuenta
   vivir en Cloudinary y los datos en Neon.
 - Antes de operar comercialmente, revisar las condiciones de Vercel Hobby y
   aumentar Render a un plan que no duerma el backend. Supervisar en los paneles
-  el almacenamiento/compute de Neon y los creditos de Cloudinary.
+  el almacenamiento y las CU-horas de Neon (sobre todo con el agente encendido)
+  y los creditos de Cloudinary. Mantener respaldos externos de la base.
