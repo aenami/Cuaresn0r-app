@@ -14,11 +14,13 @@ El repositorio incluye `render.yaml`, `client/vercel.json`, el endpoint `/health
 y soporte de Cloudinary y CORS por variables de entorno. El agente de impresion
 no se despliega: se instala unicamente en el computador de caja.
 
-> El plan gratuito de Render sirve para pruebas y una puesta en marcha
-> provisional. Render no lo recomienda para produccion y puede tardar cerca de
-> un minuto en despertar despues de 15 minutos sin trafico. Para operar el
-> restaurante conviene pasar el backend a una instancia siempre activa cuando
-> termine la validacion.
+> Estos planes gratuitos sirven para demostraciones y pruebas. Vercel Hobby
+> restringe su uso a proyectos personales/no comerciales; si el restaurante
+> empieza a operar con el POS, hay que cambiar a Vercel Pro o trasladar el
+> frontend a un alojamiento que permita uso comercial. Render Free tampoco se
+> recomienda para operacion diaria: puede tardar cerca de un minuto en
+> despertar despues de 15 minutos sin trafico. La base Neon y las imagenes en
+> Cloudinary pueden mantenerse gratuitas mientras sus cuotas sean suficientes.
 
 ## 0. Decidir si se reutiliza el despliegue anterior
 
@@ -189,7 +191,8 @@ En el computador de caja seguir `GUIA_IMPRESION_COMANDAS.md`, teniendo en cuenta
 - En **Caja**, abrir un turno de prueba y verificar que los datos persisten al
   recargar la pagina.
 - Con el agente local abierto, usar **Ajustes -> Impresoras -> Probar** y luego
-  enviar una comanda real de prueba.
+  enviar una comanda real de prueba. Registrar dos colas: `GENERAL` para
+  cocina/barra y `CAJA` para facturas; probar ambas por separado.
 
 ## Diagnostico rapido
 
@@ -213,3 +216,6 @@ En el computador de caja seguir `GUIA_IMPRESION_COMANDAS.md`, teniendo en cuenta
   normalmente redespliega al guardar variables.
 - El filesystem de Render es efimero; por eso los archivos persistentes deben
   vivir en Cloudinary y los datos en Neon.
+- Antes de operar comercialmente, revisar las condiciones de Vercel Hobby y
+  aumentar Render a un plan que no duerma el backend. Supervisar en los paneles
+  el almacenamiento/compute de Neon y los creditos de Cloudinary.

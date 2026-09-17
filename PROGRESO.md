@@ -237,6 +237,29 @@ alcance o feature terminada.
 - Los secretos `DATABASE_URL`, `CLOUDINARY_URL`, `JWT_SECRET` y
   `PRINT_AGENT_KEY` permanecen fuera del repositorio.
 
+### 2026-09-16 — Separacion de impresoras de caja y preparacion
+
+- Se agrego el destino `CAJA` para una impresora termica dedicada a facturas;
+  `GENERAL` se conserva para la impresora compartida de cocina/barra.
+- La emision de un ticket de factura usa exclusivamente una impresora `CAJA`
+  activa. Si no existe, devuelve un motivo claro y no desvia el ticket a la
+  impresora de preparacion. Las comandas no usan `CAJA` como respaldo.
+- Los trabajos de factura pendientes creados con el enrutamiento anterior se
+  marcan como fallidos durante la migracion para impedir que salgan por barra;
+  se pueden reenviar desde Cuentas cobradas una vez configurada la caja.
+- El modulo Impresoras permite registrar ambas colas USB y muestra si falta
+  cobertura para caja, cocina o barra. Se actualizo la guia de instalacion y
+  prueba fisica de las dos impresoras.
+- Las migraciones `20260916120000_impresora_caja` y
+  `20260916121000_cancelar_facturas_ruta_anterior` se aplicaron en la base
+  local `POS` tras un respaldo en `server/backups/`. Prisma confirma que el
+  esquema local esta al dia. La validacion suma 20 suites/154 pruebas,
+  compilacion del servidor y compilacion/lint del cliente. Sigue pendiente la
+  prueba fisica en el restaurante.
+- Los planes gratuitos permiten la demostracion; para uso comercial, Vercel
+  Hobby requiere cambio de plan o de alojamiento y Render Free debe evaluarse
+  por su suspension tras inactividad.
+
 ## Pendiente inmediato
 
 - La configuracion de despliegue se reviso para la arquitectura Neon + Render

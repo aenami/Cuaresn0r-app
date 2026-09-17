@@ -1,4 +1,4 @@
-# Guía de instalación — impresión de comandas en Windows
+# Guía de instalación — impresión de comandas y facturas en Windows
 
 Esta guía deja operativo el recorrido completo:
 
@@ -7,16 +7,17 @@ POS web -> servidor NestJS -> cola persistente PostgreSQL
         -> agente local de Windows -> cola Epson -> impresora USB
 ```
 
-El procedimiento está pensado para el computador de caja y la impresora
-Epson TM-m30II compartida por cocina y barra.
+El procedimiento está pensado para el computador de caja y sus dos impresoras
+USB: una para facturas en caja y la Epson TM-m30II compartida por cocina y barra.
 
 ## 1. Requisitos
 
 - Windows 10 u 11 en el computador de caja.
 - Node.js 20 o superior instalado.
 - Servidor del POS y PostgreSQL funcionando.
-- Impresora Epson TM-m30II conectada por USB, encendida y con papel.
-- Controlador Epson APD instalado.
+- Ambas impresoras conectadas por USB, encendidas y con papel.
+- Controlador Epson APD instalado para la TM-m30II de preparación; instalar
+  también el controlador correspondiente al modelo de caja.
 - Acceso de administrador al POS y a Windows.
 
 Comprobar Node.js:
@@ -29,18 +30,21 @@ La versión debe comenzar por `v20` o una superior.
 
 ## 2. Instalar y comprobar la impresora en Windows
 
-1. Instalar el controlador Epson APD correspondiente a la TM-m30II.
-2. Conectar la impresora por USB y esperar a que Windows cree la cola.
+1. Instalar Epson Advanced Printer Driver 6 (`APD_612_m30II_WM.exe`) para la
+   TM-m30II de preparación y el controlador de la impresora de caja según su
+   modelo exacto.
+2. Conectar ambas por USB y esperar a que Windows cree dos colas distintas.
 3. Abrir **Configuración > Bluetooth y dispositivos > Impresoras y
-   escáneres** y confirmar que aparece la Epson.
-4. Darle un nombre inequívoco, por ejemplo:
+   escáneres** y confirmar que aparecen las dos.
+4. Darles nombres inequívocos, por ejemplo:
 
    ```text
    EPSON TM-m30II COCINA-BARRA
+   TERMICA CAJA
    ```
 
-5. Imprimir una página de prueba desde Windows para comprobar el controlador y
-   el cable USB.
+5. Imprimir una página de prueba en cada una desde Windows para comprobar los
+   controladores y cables USB.
 
 Obtener el nombre exacto que deberá registrarse en el POS:
 
@@ -50,11 +54,15 @@ Get-Printer |
   Format-Table -AutoSize
 ```
 
-El valor de la columna `Name` debe copiarse sin abreviarlo ni modificarlo.
+El valor `Name` de cada cola debe copiarse sin abreviarlo ni modificarlo. No
+asumir que la impresora de caja tiene el mismo modelo que la de preparación.
 
 ## 3. Crear la clave del agente
 
-El agente y el backend se autentican con la misma clave privada. En PowerShell:
+El agente y el backend se autentican con la misma clave privada. Para el
+despliegue actual, **reutilizar la `PRINT_AGENT_KEY` ya guardada en Render**:
+no generar una nueva solo para el computador de caja. Si se instala un entorno
+nuevo y aun no existe clave, generarla en PowerShell:
 
 ```powershell
 $bytes = New-Object byte[] 32
@@ -68,39 +76,42 @@ $claveAgente
 Copiar temporalmente el resultado. No guardar la clave en este documento ni
 subirla a Git.
 
-## 4. Configurar el servidor
+## 4. Comprobar la clave del servidor
 
-Abrir `server/.env` y agregar la clave generada:
+El backend desplegado ya tiene `PRINT_AGENT_KEY` configurada en Render. No
+cambiarla salvo que tambien se actualice la variable del computador de caja.
+Despues de configurar Windows en el paso siguiente, verificar la comunicacion:
+
+```powershell
+$clave = [Environment]::GetEnvironmentVariable('PRINT_AGENT_KEY', 'User')
+Invoke-RestMethod `
+  -Uri 'https://cuaresnor-pos-api.onrender.com/printing/agent/health' `
+  -Headers @{ 'x-agent-key' = $clave }
+```
+
+La respuesta esperada es `{"ok":true}`. Si se trabaja con un backend local
+en lugar de Render, agregar la misma clave a `server/.env`:
 
 ```env
 PRINT_AGENT_KEY=pegar-aqui-la-clave-generada
 ```
 
-No añadir comillas ni espacios alrededor del valor. Después hay que reiniciar
-el servidor NestJS para que lea la variable:
+Reiniciar NestJS local para que lea la variable. No agregar comillas ni
+espacios alrededor del valor en `server/.env`:
 
 ```powershell
 cd C:\Users\ASUS\Desktop\Proyectos\Cuaresn0r-app\server
 pnpm start:dev
 ```
 
-En otra ventana de PowerShell se puede comprobar el backend:
-
-```powershell
-$clave = [Environment]::GetEnvironmentVariable('PRINT_AGENT_KEY', 'User')
-Invoke-RestMethod `
-  -Uri 'http://localhost:3000/printing/agent/health' `
-  -Headers @{ 'x-agent-key' = $clave }
-```
-
-Esta comprobación debe hacerse después del paso siguiente, cuando la variable
-también exista en el usuario de Windows. La respuesta esperada es
-`{"ok":true}`.
+En el entorno local, sustituir la URL de Render del comando anterior por
+`http://localhost:3000`.
 
 ## 5. Configurar las variables de Windows
 
 Ejecutar desde la cuenta de Windows que se usará diariamente en caja. Sustituir
-el valor de la clave por el generado en el paso 3:
+el valor de la clave por la que ya esta en Render (o la generada para un entorno
+nuevo en el paso 3):
 
 ```powershell
 [Environment]::SetEnvironmentVariable(
@@ -225,34 +236,25 @@ Start-ScheduledTask -TaskName 'POS Print Agent'
 
 ## 8. Registrar la impresora en el POS
 
-1. Iniciar sesión como administrador.
-2. Abrir el módulo **Impresoras**.
-3. Pulsar **Nueva impresora**.
-4. Configurar:
+1. Iniciar sesión como administrador y abrir **Impresoras**.
+2. Crear la impresora `Cocina y barra` con destino **Cocina y barra
+   (compartida)**, nombre exacto de la cola de preparación y ancho real de
+   papel (80 o 58 mm).
+3. Crear la impresora `Caja` con destino **Caja (facturas)**, nombre exacto de
+   la otra cola de Windows y su ancho real de papel.
+4. Confirmar que ambas queden activas. El sistema permite una impresora activa
+   por destino: activar otra del mismo destino desactiva la anterior.
 
-   - **Nombre:** `Cocina y barra`.
-   - **Destino:** `General (única impresora)`.
-   - **Nombre en Windows:** el valor exacto obtenido con `Get-Printer`.
-   - **Papel:** `80 mm`, salvo que físicamente se use papel de 58 mm.
-
-5. Guardar y confirmar que quede activa.
-
-Con el enrutamiento actual, `GENERAL` recibe dos tickets independientes cuando
-una comanda contiene productos de cocina y de barra. No crear simultáneamente
-otra impresora activa `GENERAL`.
-
-> **Limitación conocida:** actualmente la impresora `GENERAL` también es la
-> elegida para facturas térmicas. Esta configuración deja funcionales las
-> comandas compartidas, pero el botón **Imprimir en térmica** de las cuentas
-> cobradas enviaría la factura a cocina/barra. No debe usarse para facturas
-> hasta separar en el código los destinos `FACTURACION` y
-> `PREPARACION_GENERAL`.
+`GENERAL` recibe dos tickets independientes cuando una comanda contiene
+productos de cocina y de barra. `CAJA` recibe exclusivamente las facturas.
+Si falta la impresora de caja activa, el POS mostrará un error al intentar
+imprimir una factura: nunca la enviará a cocina/barra.
 
 ## 9. Imprimir el ticket de prueba
 
-En el módulo **Impresoras**, pulsar el botón **Imprimir prueba** de la impresora
-registrada. La respuesta de la interfaz confirma que el ticket entró a la cola;
-la confirmación física es que salga el papel.
+En **Impresoras**, pulsar **Imprimir prueba** por separado para las dos colas.
+La respuesta de la interfaz confirma que cada ticket entró a la cola; la
+confirmación física es que salga el papel de la impresora correspondiente.
 
 Si no sale, consultar el agente:
 
@@ -284,6 +286,8 @@ Procedimiento:
    - otro encabezado `BARRA`, con solo sus productos.
 6. Revisar en el pedido que ambos destinos aparezcan como impresos. Si la
    pantalla no se actualiza inmediatamente, recargar el pedido.
+7. Desde **Caja -> Cuentas cobradas**, abrir una factura y usar **Imprimir en
+   térmica**. Debe salir solo en la impresora de caja.
 
 ## 11. Prueba de recuperación ante fallos
 
@@ -333,8 +337,9 @@ no existe en la sesión o en el usuario que ejecuta la tarea.
 
 ### El backend responde 401
 
-La clave de `server/.env` y la variable de usuario `PRINT_AGENT_KEY` no son
-idénticas, o el servidor no se reinició después del cambio.
+La clave de Render (o de `server/.env` si el backend es local) y la variable
+de usuario `PRINT_AGENT_KEY` no son idénticas, o el servidor no se reinició
+después del cambio.
 
 ### “La impresora no tiene configurado su nombre de dispositivo”
 
@@ -355,10 +360,10 @@ Get-Printer -Name 'EPSON TM-m30II COCINA-BARRA' |
 
 ### Se imprime texto ilegible o no se corta el papel
 
-Confirmar que se está usando la cola de la Epson TM-m30II, no una impresora
-virtual, y que el controlador instalado corresponde al modelo. El agente envía
-datos ESC/POS en modo `RAW`; una impresora que no interprete ESC/POS no sirve
-para esta ruta.
+Confirmar que la cola seleccionada corresponde a la impresora física correcta,
+no a una impresora virtual, y que el controlador instalado corresponde a su
+modelo. El agente envía datos ESC/POS en modo `RAW`; ambas térmicas deben
+interpretar ESC/POS para usar esta ruta.
 
 ### Reiniciar completamente la impresión
 
@@ -376,13 +381,14 @@ hacerlo solamente cuando ninguna otra impresora esté trabajando.
 
 - [ ] Node.js 20 o superior instalado.
 - [ ] Controlador Epson APD instalado.
-- [ ] Cola TM-m30II visible y funcional en Windows.
-- [ ] Nombre exacto de la cola registrado en el POS.
-- [ ] `PRINT_AGENT_KEY` idéntica en `server/.env` y en el usuario de Windows.
-- [ ] Backend reiniciado después de configurar la clave.
+- [ ] Las dos colas USB visibles y funcionales en Windows.
+- [ ] Nombres exactos de ambas colas registrados en el POS.
+- [ ] `PRINT_AGENT_KEY` idéntica en Render (o `server/.env` si es local) y en el usuario de Windows.
+- [ ] Backend reiniciado si se cambió la clave.
 - [ ] Tarea `POS Print Agent` instalada y ejecutándose.
 - [ ] `http://127.0.0.1:3001/health` responde `ok: true`.
-- [ ] Impresora activa con destino `GENERAL` y papel correcto.
-- [ ] Ticket de prueba impreso físicamente.
+- [ ] Impresoras activas `GENERAL` (preparación) y `CAJA` (facturas).
+- [ ] Tickets de prueba impresos físicamente en las dos impresoras.
 - [ ] Comanda mixta produce tickets separados de cocina y barra.
+- [ ] Factura pagada sale solo en la impresora de caja.
 - [ ] Una comanda enviada con el agente apagado se imprime al reiniciarlo.
