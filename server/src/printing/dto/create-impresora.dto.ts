@@ -10,8 +10,8 @@ export class CreateImpresoraDto {
   @IsEnum(DestinoImpresion)
   destino!: DestinoImpresion;
 
-  // Nombre exacto de la cola instalada en Windows. Ambas impresoras actuales
-  // se configuran como EPSON TM-m30II y el agente envia ESC/POS en modo RAW.
+  // Nombre exacto de la cola instalada en Windows. El agente envia ESC/POS
+  // en modo RAW, independientemente del nombre o modelo de cada termica.
   @IsNotEmpty()
   @IsString()
   @MaxLength(100)

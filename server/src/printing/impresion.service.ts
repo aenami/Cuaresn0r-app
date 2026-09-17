@@ -11,12 +11,16 @@ import {
 
 function nombreUsuario(
   usuario:
-    | { email_usuario: string; empleado: { nombre_empleado: string; apellido_empleado: string } | null }
+    | {
+        email_usuario: string;
+        empleado: { nombre_empleado: string; apellido_empleado: string } | null;
+      }
     | null
     | undefined,
 ): string | null {
   if (!usuario) return null;
-  if (usuario.empleado) return `${usuario.empleado.nombre_empleado} ${usuario.empleado.apellido_empleado}`.trim();
+  if (usuario.empleado)
+    return `${usuario.empleado.nombre_empleado} ${usuario.empleado.apellido_empleado}`.trim();
   return usuario.email_usuario;
 }
 
@@ -27,8 +31,14 @@ export class ImpresionService {
     private readonly ticketBuilder: TicketBuilderService,
   ) {}
 
-  async imprimirComanda(idComanda: number, reimpresion = false, soloDestino?: DestinoImpresion) {
-    const impresoras = await this.prisma.impresora.findMany({ where: { impresora_activa: true } });
+  async imprimirComanda(
+    idComanda: number,
+    reimpresion = false,
+    soloDestino?: DestinoImpresion,
+  ) {
+    const impresoras = await this.prisma.impresora.findMany({
+      where: { impresora_activa: true },
+    });
     if (impresoras.length === 0) return [];
 
     const comanda = await this.prisma.comanda.findUnique({
@@ -37,10 +47,14 @@ export class ImpresionService {
     });
     if (!comanda) throw new NotFoundException('Comanda no encontrada');
 
-    const destinos = destinosDeComanda(comanda).filter((destino) => soloDestino === undefined || destino === soloDestino);
+    const destinos = destinosDeComanda(comanda).filter(
+      (destino) => soloDestino === undefined || destino === soloDestino,
+    );
     const resultados = [];
     for (const destino of destinos) {
-      resultados.push(await this.encolarComanda(comanda, destino, impresoras, reimpresion));
+      resultados.push(
+        await this.encolarComanda(comanda, destino, impresoras, reimpresion),
+      );
     }
     return resultados;
   }
@@ -52,18 +66,31 @@ export class ImpresionService {
     });
     if (!factura) throw new NotFoundException('Factura no encontrada');
 
-    const impresoras = await this.prisma.impresora.findMany({ where: { impresora_activa: true } });
-    const impresora = impresoras.find((item) => item.destino_impresora === 'GENERAL') ?? impresoras[0];
-    if (!impresora) return { ok: false, motivo: 'No hay ninguna impresora activa configurada' };
+    const impresora = await this.prisma.impresora.findFirst({
+      where: { impresora_activa: true, destino_impresora: 'CAJA' },
+    });
+    if (!impresora) {
+      return {
+        ok: false,
+        motivo: 'No hay una impresora activa de Caja para imprimir facturas',
+      };
+    }
 
-    const negocio = await this.prisma.configuracionNegocio.findFirst({ where: { configuracion_activa: true } });
+    const negocio = await this.prisma.configuracionNegocio.findFirst({
+      where: { configuracion_activa: true },
+    });
     const cajero = nombreUsuario(factura.pagos[0]?.turno.usuario);
-    const contenido = this.ticketBuilder.armarTicketFactura(factura, negocio, cajero, impresora.ancho_papel_impresora);
+    const contenido = this.ticketBuilder.armarTicketFactura(
+      factura,
+      negocio,
+      cajero,
+      impresora.ancho_papel_impresora,
+    );
     const trabajo = await this.prisma.trabajoImpresion.create({
       data: {
         clave_idempotencia_trabajo: `factura:${idFactura}:${Date.now()}`,
         tipo_trabajo: 'FACTURA',
-        destino_trabajo: impresora.destino_impresora,
+        destino_trabajo: 'CAJA',
         id_impresora_trabajo: impresora.id_impresora,
         id_factura_trabajo: idFactura,
         contenido_escpos_trabajo: new Uint8Array(contenido),
@@ -73,7 +100,9 @@ export class ImpresionService {
   }
 
   async probarImpresora(idImpresora: number) {
-    const impresora = await this.prisma.impresora.findUnique({ where: { id_impresora: idImpresora } });
+    const impresora = await this.prisma.impresora.findUnique({
+      where: { id_impresora: idImpresora },
+    });
     if (!impresora) throw new NotFoundException('Impresora no encontrada');
 
     const contenido = this.ticketBuilder.armarTicketPrueba(
@@ -106,8 +135,15 @@ export class ImpresionService {
           destino_impresion: destino,
         },
       },
-      create: { id_comanda_impresion: comanda.id_comanda, destino_impresion: destino },
-      update: { estado_impresion: 'PENDIENTE', motivo_fallo: null, fecha_actualizacion: new Date() },
+      create: {
+        id_comanda_impresion: comanda.id_comanda,
+        destino_impresion: destino,
+      },
+      update: {
+        estado_impresion: 'PENDIENTE',
+        motivo_fallo: null,
+        fecha_actualizacion: new Date(),
+      },
     });
 
     // En el montaje actual la impresora GENERAL recibe cocina y barra. Si se
@@ -134,7 +170,9 @@ export class ImpresionService {
     );
     const sufijo = reimpresion ? `reimpresion:${Date.now()}` : 'original';
     const trabajo = await this.prisma.trabajoImpresion.upsert({
-      where: { clave_idempotencia_trabajo: `comanda:${comanda.id_comanda}:${destino}:${sufijo}` },
+      where: {
+        clave_idempotencia_trabajo: `comanda:${comanda.id_comanda}:${destino}:${sufijo}`,
+      },
       create: {
         clave_idempotencia_trabajo: `comanda:${comanda.id_comanda}:${destino}:${sufijo}`,
         tipo_trabajo: 'COMANDA',

@@ -129,13 +129,14 @@ enum EstadoConteoInventario {
 }
 
 // Donde se prepara un producto y a que impresora va su comanda.
-// GENERAL aplica SOLO a impresoras: una unica termica que recibe los tickets
-// de cocina Y barra (el mesero reparte los papelitos). Las categorias y los
-// registros de impresion siempre usan COCINA/BARRA.
+// GENERAL aplica a la impresora compartida de preparacion: recibe los tickets
+// de cocina Y barra. CAJA es exclusiva para facturas y recibos de venta.
+// Las categorias y los registros de comandas solo usan COCINA/BARRA.
 enum DestinoImpresion {
   COCINA
   BARRA
   GENERAL
+  CAJA
 }
 
 enum EstadoImpresion {
@@ -1059,8 +1060,8 @@ model PagoNominaDetalle {
 model Impresora {
   id_impresora          Int              @id @default(autoincrement())
   nombre_impresora      String           @db.VarChar(30)
-  // Que tipo de comandas imprime (una activa por destino: indice parcial en
-  // la migracion).
+  // Ruta de impresion: COCINA/BARRA/GENERAL para comandas, CAJA para facturas.
+  // Solo una impresora activa por destino (indice parcial en la migracion).
   destino_impresora     DestinoImpresion
   // Nombre exacto de la cola instalada en Windows (por ejemplo,
   // "EPSON TM-m30II Receipt"). El agente local usa WritePrinter en modo RAW.
