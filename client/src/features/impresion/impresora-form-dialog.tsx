@@ -33,7 +33,7 @@ import {
 
 const esquema = z.object({
   nombre: z.string().min(1, 'Ingresa el nombre').max(30, 'Maximo 30 caracteres'),
-  destino: z.enum(['COCINA', 'BARRA', 'GENERAL']),
+  destino: z.enum(['COCINA', 'BARRA', 'GENERAL', 'CAJA']),
   dispositivo: z.string().min(1, 'Ingresa el nombre de la cola de Windows').max(100),
   anchoPapel: z.enum(['80', '58']),
 })
@@ -55,14 +55,14 @@ export function ImpresoraFormDialog({
 
   const form = useForm<Valores>({
     resolver: zodResolver(esquema),
-    defaultValues: { nombre: '', destino: 'COCINA', dispositivo: '', anchoPapel: '80' },
+    defaultValues: { nombre: '', destino: 'GENERAL', dispositivo: '', anchoPapel: '80' },
   })
 
   useEffect(() => {
     if (abierto) {
       form.reset({
         nombre: impresora?.nombre_impresora ?? '',
-        destino: impresora?.destino_impresora ?? 'COCINA',
+        destino: impresora?.destino_impresora ?? 'GENERAL',
         dispositivo: impresora?.dispositivo_impresora ?? '',
         anchoPapel: String(impresora?.ancho_papel_impresora ?? 80) as '80' | '58',
       })
@@ -95,10 +95,9 @@ export function ImpresoraFormDialog({
             {impresora ? 'Editar impresora' : 'Nueva impresora'}
           </DialogTitle>
           <DialogDescription>
-            Termica USB Epson TM-m30II instalada como impresora de Windows. Solo hay
-            una impresora activa por destino: crear o activar otra desactiva la anterior. Si el
-            local tiene una sola termica, usa el destino General: recibe los tickets de cocina
-            y barra por separado y el mesero los reparte.
+            Registra el nombre exacto de cada cola de Windows. Caja imprime facturas;
+            Cocina y barra imprime las comandas por separado. Solo puede
+            haber una impresora activa por destino.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -111,7 +110,7 @@ export function ImpresoraFormDialog({
                   <FormItem>
                     <FormLabel>Nombre</FormLabel>
                     <FormControl>
-                      <Input placeholder="Cocina principal" {...field} />
+                      <Input placeholder="Caja o Cocina y barra" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -132,7 +131,8 @@ export function ImpresoraFormDialog({
                       <SelectContent>
                         <SelectItem value="COCINA">Cocina</SelectItem>
                         <SelectItem value="BARRA">Barra</SelectItem>
-                        <SelectItem value="GENERAL">General (unica impresora)</SelectItem>
+                        <SelectItem value="GENERAL">Cocina y barra (compartida)</SelectItem>
+                        <SelectItem value="CAJA">Caja (facturas)</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />

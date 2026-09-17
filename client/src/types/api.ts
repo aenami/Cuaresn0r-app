@@ -5,8 +5,8 @@
 
 // Donde se prepara (categorias y tickets): siempre un lugar concreto.
 export type DestinoPreparacion = 'COCINA' | 'BARRA'
-// Las impresoras ademas aceptan GENERAL: una sola termica recibe todo.
-export type DestinoImpresion = DestinoPreparacion | 'GENERAL'
+// GENERAL comparte cocina/barra; CAJA es exclusiva para facturas.
+export type DestinoImpresion = DestinoPreparacion | 'GENERAL' | 'CAJA'
 
 export interface Categoria {
   id_categoria: number

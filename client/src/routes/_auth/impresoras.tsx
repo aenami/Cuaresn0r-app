@@ -27,7 +27,7 @@ function errorATexto(e: unknown): string {
 type Destino = Impresora['destino_impresora']
 
 function nombreDestino(d: Destino): string {
-  return d === 'COCINA' ? 'Cocina' : d === 'BARRA' ? 'Barra' : 'General'
+  return d === 'COCINA' ? 'Cocina' : d === 'BARRA' ? 'Barra' : d === 'CAJA' ? 'Caja' : 'Cocina y barra'
 }
 
 function PaginaImpresoras() {
@@ -54,8 +54,11 @@ function PaginaImpresoras() {
   const lista = impresoras ?? []
   const activas = lista.filter((i) => i.impresora_activa)
   const hayGeneralActiva = activas.some((i) => i.destino_impresora === 'GENERAL')
-  const cubierto = (d: Destino) => hayGeneralActiva || activas.some((i) => i.destino_impresora === d)
-  const destinosSinCubrir = (['COCINA', 'BARRA'] as const).filter((d) => !cubierto(d))
+  const destinosSinCubrir = (['COCINA', 'BARRA', 'CAJA'] as const).filter((d) =>
+    d === 'CAJA'
+      ? !activas.some((i) => i.destino_impresora === 'CAJA')
+      : !hayGeneralActiva && !activas.some((i) => i.destino_impresora === d),
+  )
 
   return (
     <div className="p-6 md:p-10">
@@ -89,8 +92,8 @@ function PaginaImpresoras() {
           </div>
           <p className="mt-4 font-heading text-lg font-semibold">Sin impresoras configuradas</p>
           <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-            La impresion queda apagada: las comandas solo se ven en pantalla. Crea la primera para
-            empezar a imprimir tickets de cocina y barra.
+            La impresion queda apagada: las comandas y facturas solo se ven en pantalla.
+            Registra la impresora de preparacion y la de caja para habilitar ambos recorridos.
           </p>
         </div>
       ) : (
@@ -100,7 +103,7 @@ function PaginaImpresoras() {
             <TarjetaResumen
               etiqueta="Impresoras activas"
               valor={activas.length}
-              sufijo="sirviendo comandas"
+              sufijo="configuradas por ruta"
               acento="primary"
               icono={Printer}
             />
@@ -172,10 +175,10 @@ function PaginaImpresoras() {
 
           {/* Nota honesta de ruteo (sustituye las "reglas de ruteo" del mockup) */}
           <p className="mt-4 max-w-3xl text-xs leading-relaxed text-muted-foreground">
-            Cada comanda se imprime en la impresora <span className="text-foreground">activa</span> de su
-            destino (una por destino). Con una sola termica, usa el destino{' '}
-            <span className="text-foreground">General</span> y recibe cocina y barra por separado. Si un
-            destino queda sin impresora activa, sus comandas no se imprimen: solo se ven en pantalla.
+            Las comandas van a la impresora <span className="text-foreground">Cocina y barra</span>{' '}
+            (o a una dedicada por zona). Las facturas van exclusivamente a{' '}
+            <span className="text-foreground">Caja</span>: si no hay una impresora de caja activa,
+            el sistema no enviara el recibo a la impresora de preparacion.
           </p>
         </>
       )}
@@ -296,7 +299,9 @@ function BadgeRuta({ destino }: { destino: Destino }) {
       ? 'bg-primary/15 text-primary'
       : destino === 'BARRA'
         ? 'bg-tertiary/15 text-tertiary'
-        : 'bg-secondary text-secondary-foreground'
+        : destino === 'CAJA'
+          ? 'bg-secondary text-secondary-foreground'
+          : 'bg-primary/10 text-primary'
   return (
     <span
       className={cn(
