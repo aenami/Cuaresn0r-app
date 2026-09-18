@@ -68,7 +68,7 @@ function PaginaPedido() {
           />
         ) : null}
         {pedidoAbierto ? (
-          <SeccionMenu onSeleccionar={setSeleccion} />
+          <SeccionMenu key={idPedido} onSeleccionar={setSeleccion} />
         ) : (
           <p className="mt-6 text-sm text-muted-foreground">
             Este pedido esta {TEXTO_ESTADO_PEDIDO[pedido.estado_pedido].toLowerCase()}; ya no admite cambios.

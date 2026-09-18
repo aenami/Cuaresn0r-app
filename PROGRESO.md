@@ -22,6 +22,16 @@ alcance o feature terminada.
 
 ## Completado
 
+### 2026-09-18 — Buscador en la toma de pedidos
+
+- Buscador por nombre en el menú, enfocado automáticamente al entrar a un pedido.
+- Filtrado inmediato dentro de la categoría seleccionada, incluidos los combos
+  en su pestaña; ignora mayúsculas y tildes y permite buscar varias palabras.
+- Botón para limpiar y volver a escribir, y mensaje cuando no hay coincidencias.
+- Al cambiar de pedido se reinicia el buscador y recupera el foco; funciona
+  tanto para pedidos generales como para la modalidad por cuenta.
+- Validación: compilación de producción y lint del cliente completados.
+
 ### 2026-09-01 — Trazabilidad financiera y pedidos por cliente
 
 - Cuentas por pagar:
