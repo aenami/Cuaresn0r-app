@@ -124,6 +124,15 @@ export interface PlanProduccionDiaria {
 
 export type EstadoConteoInventario = 'PENDIENTE' | 'FINALIZADO'
 
+export interface ElementoConteoDiario {
+  id: number
+  tipo: TipoObjetivoProduccion
+  idProducto: number | null
+  idIngrediente: number | null
+  producto: Producto | null
+  ingrediente: Ingrediente | null
+}
+
 export interface ConteoInventarioDiario {
   id_conteoInventario: number
   fecha_conteoInventario: string

@@ -12,6 +12,7 @@ import {
 } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInventoryCountDto } from './dto/create-inventory-count.dto';
+import { CreateCountElementDto } from './dto/create-count-element.dto';
 
 const CONTEO_INCLUDE = {
   producto: {
@@ -56,6 +57,127 @@ type ConteoIncluido = Prisma.ConteoInventarioDiarioGetPayload<{
 @Injectable()
 export class InventoryCountsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  listElements() {
+    return this.prisma.elementoConteoDiario.findMany({
+      where: { activo: true },
+      include: { producto: true, ingrediente: true },
+      orderBy: { id: 'asc' },
+    });
+  }
+
+  async addElement(dto: CreateCountElementDto) {
+    await this.obtenerObjetivo(dto.tipo, dto.idObjetivo);
+    const anterior = await this.prisma.conteoInventarioDiario.findFirst({
+      where: {
+        ...this.filtroObjetivo(dto.tipo, dto.idObjetivo),
+        estado_conteoInventario: 'FINALIZADO',
+        fecha_conteoInventario: { lte: this.fechaDeHoy() },
+      },
+      orderBy: { fecha_conteoInventario: 'desc' },
+    });
+    const inicial =
+      dto.cantidadInicial ?? anterior?.cantidad_fisica_conteoInventario;
+    if (inicial === undefined || inicial === null) {
+      throw new BadRequestException(
+        'Indica el saldo inicial para comenzar el historial de este elemento',
+      );
+    }
+    const cantidad = new Prisma.Decimal(inicial);
+    if (
+      cantidad.isNegative() ||
+      (dto.tipo === 'PRODUCTO' && !cantidad.isInteger())
+    ) {
+      throw new BadRequestException(
+        'El saldo debe ser positivo o cero y entero para productos',
+      );
+    }
+    const where =
+      dto.tipo === 'PRODUCTO'
+        ? { idProducto: dto.idObjetivo }
+        : { idIngrediente: dto.idObjetivo };
+    const existente = await this.prisma.elementoConteoDiario.findUnique({
+      where,
+    });
+    if (existente?.activo)
+      throw new ConflictException(
+        'Este elemento ya pertenece a la lista diaria',
+      );
+    return this.prisma.elementoConteoDiario.upsert({
+      where,
+      create: {
+        ...where,
+        tipo: dto.tipo,
+        cantidadInicial: cantidad,
+        fechaInicio: this.fechaDeHoy(),
+      },
+      update: {
+        activo: true,
+        cantidadInicial: cantidad,
+        fechaInicio: this.fechaDeHoy(),
+      },
+    });
+  }
+
+  async removeElement(id: number) {
+    const elemento = await this.prisma.elementoConteoDiario.findUnique({
+      where: { id },
+    });
+    if (!elemento)
+      throw new NotFoundException('Elemento de conteo no encontrado');
+    // Los registros diarios, incluso los pendientes, permanecen como historial.
+    return this.prisma.elementoConteoDiario.update({
+      where: { id },
+      data: { activo: false },
+    });
+  }
+
+  async prepare(fecha: string | undefined, idUsuario: number) {
+    const dia = fecha ? this.parsearFecha(fecha) : this.fechaDeHoy();
+    // Consultar otra fecha nunca materializa ni altera el historial.
+    if (dia.getTime() !== this.fechaDeHoy().getTime())
+      return this.findAll(fecha);
+    const [elementos, existentes] = await Promise.all([
+      this.prisma.elementoConteoDiario.findMany({
+        where: {
+          activo: true,
+          fechaInicio: { lte: dia },
+          OR: [
+            { ingrediente: { isNot: null } },
+            { producto: { habilitado_producto: true } },
+          ],
+        },
+      }),
+      this.prisma.conteoInventarioDiario.findMany({
+        where: { fecha_conteoInventario: dia },
+      }),
+    ]);
+    const claves = new Set(
+      existentes.map(
+        (c) =>
+          `${c.tipo_objetivo_conteoInventario}:${c.id_producto_conteoInventario ?? c.id_ingrediente_conteoInventario}`,
+      ),
+    );
+    for (const elemento of elementos) {
+      const idObjetivo = elemento.idProducto ?? elemento.idIngrediente!;
+      if (claves.has(`${elemento.tipo}:${idObjetivo}`)) continue;
+      try {
+        await this.create(
+          {
+            fecha: dia.toISOString().slice(0, 10),
+            tipo: elemento.tipo,
+            idObjetivo,
+            cantidadInicial: Number(elemento.cantidadInicial),
+          },
+          idUsuario,
+        );
+      } catch (error) {
+        // Dos trabajadores pueden abrir simultáneamente la misma jornada.
+        if (!(error instanceof ConflictException)) throw error;
+      }
+    }
+    return this.findAll(fecha);
+  }
 
   async findAll(fecha?: string) {
     const fechaDb = fecha ? this.parsearFecha(fecha) : this.fechaDeHoy();
@@ -482,9 +604,16 @@ export class InventoryCountsService {
   }
 
   private fechaDeHoy() {
-    const ahora = new Date();
-    return new Date(
-      Date.UTC(ahora.getFullYear(), ahora.getMonth(), ahora.getDate()),
+    const partes = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Bogota',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date());
+    const valor = (tipo: string) =>
+      partes.find((parte) => parte.type === tipo)!.value;
+    return this.parsearFecha(
+      `${valor('year')}-${valor('month')}-${valor('day')}`,
     );
   }
 

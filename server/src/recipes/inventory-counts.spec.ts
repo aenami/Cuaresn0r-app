@@ -6,6 +6,7 @@ import {
 } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { InventoryCountsService } from './inventory-counts.service';
+import { InventoryCountsController } from './inventory-counts.controller';
 
 function setup(
   overrides: {
@@ -79,7 +80,14 @@ function setup(
     planProduccionDiaria: { aggregate: spies.produccion },
   };
   const prisma = {
+    elementoConteoDiario: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null),
+      upsert: jest.fn().mockResolvedValue({ id: 1 }),
+      update: jest.fn().mockResolvedValue({ id: 1, activo: false }),
+    },
     conteoInventarioDiario: {
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: spies.anterior,
       create: spies.crear,
       findUnique: spies.encontrar,
@@ -89,8 +97,137 @@ function setup(
     $transaction: (callback: (cliente: typeof tx) => unknown) => callback(tx),
   } as unknown as PrismaService;
 
-  return { service: new InventoryCountsService(prisma), spies };
+  return { service: new InventoryCountsService(prisma), spies, prisma };
 }
+
+describe('Lista permanente de conteo', () => {
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-21T02:00:00Z'));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('prepara el día colombiano sin duplicar elementos ya registrados', async () => {
+    const { service, prisma } = setup();
+    jest.spyOn(prisma.elementoConteoDiario, 'findMany').mockResolvedValue([
+      {
+        id: 1,
+        tipo: 'PRODUCTO',
+        idProducto: 3,
+        idIngrediente: null,
+        cantidadInicial: new Prisma.Decimal(10),
+      },
+      {
+        id: 2,
+        tipo: 'INGREDIENTE',
+        idProducto: null,
+        idIngrediente: 8,
+        cantidadInicial: new Prisma.Decimal(4),
+      },
+    ] as never);
+    jest
+      .spyOn(prisma.conteoInventarioDiario, 'findMany')
+      .mockResolvedValue([
+        {
+          tipo_objetivo_conteoInventario: 'PRODUCTO',
+          id_producto_conteoInventario: 3,
+        },
+      ] as never);
+    const crear = jest.spyOn(service, 'create').mockResolvedValue({} as never);
+    jest.spyOn(service, 'findAll').mockResolvedValue([]);
+    await service.prepare('2026-09-20', 2);
+    expect(crear).toHaveBeenCalledTimes(1);
+    expect(crear).toHaveBeenCalledWith(
+      {
+        fecha: '2026-09-20',
+        tipo: 'INGREDIENTE',
+        idObjetivo: 8,
+        cantidadInicial: 4,
+      },
+      2,
+    );
+  });
+
+  it.each(['2026-09-19', '2026-09-21'])(
+    'no genera registros al consultar %s',
+    async (fecha) => {
+      const { service, prisma } = setup();
+      const listar = jest.spyOn(service, 'findAll').mockResolvedValue([]);
+      await service.prepare(fecha, 2);
+      expect(listar).toHaveBeenCalledWith(fecha);
+      expect(prisma.elementoConteoDiario.findMany).not.toHaveBeenCalled();
+    },
+  );
+
+  it('tolera que otro equipo cree el mismo conteo durante la preparación', async () => {
+    const { service, prisma } = setup();
+    jest
+      .spyOn(prisma.elementoConteoDiario, 'findMany')
+      .mockResolvedValue([
+        {
+          tipo: 'PRODUCTO',
+          idProducto: 3,
+          cantidadInicial: new Prisma.Decimal(10),
+        },
+      ] as never);
+    jest.spyOn(service, 'create').mockRejectedValue(new ConflictException());
+    const listar = jest.spyOn(service, 'findAll').mockResolvedValue([]);
+    await expect(service.prepare('2026-09-20', 2)).resolves.toEqual([]);
+    expect(listar).toHaveBeenCalled();
+  });
+
+  it('exige saldo inicial para elementos sin historial', async () => {
+    const { service, prisma } = setup();
+    await expect(
+      service.addElement({ tipo: 'PRODUCTO', idObjetivo: 3 }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.elementoConteoDiario.upsert).not.toHaveBeenCalled();
+  });
+
+  it('permite configurar con el saldo del último cierre y rechaza fracciones de productos', async () => {
+    const { service, prisma } = setup({
+      anterior: { cantidad_fisica_conteoInventario: new Prisma.Decimal(7) },
+    });
+    await service.addElement({ tipo: 'PRODUCTO', idObjetivo: 3 });
+    expect(prisma.elementoConteoDiario.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          cantidadInicial: new Prisma.Decimal(7),
+          fechaInicio: new Date('2026-09-20'),
+        }),
+      }),
+    );
+    await expect(
+      service.addElement({
+        tipo: 'PRODUCTO',
+        idObjetivo: 3,
+        cantidadInicial: 0.5,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('retirar de la lista desactiva la configuración sin eliminar el historial', async () => {
+    const { service, prisma } = setup();
+    jest
+      .spyOn(prisma.elementoConteoDiario, 'findUnique')
+      .mockResolvedValue({ id: 1 } as never);
+    await service.removeElement(1);
+    expect(prisma.elementoConteoDiario.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { activo: false },
+    });
+  });
+
+  it('reserva la configuración y la selección manual al administrador', () => {
+    for (const metodo of ['addElement', 'removeElement', 'create'] as const) {
+      expect(
+        Reflect.getMetadata(
+          'roles',
+          InventoryCountsController.prototype[metodo],
+        ),
+      ).toEqual(['ADMIN']);
+    }
+  });
+});
 
 describe('InventoryCountsService', () => {
   it('exige un saldo inicial cuando no existe un cierre anterior', async () => {

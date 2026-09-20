@@ -22,6 +22,27 @@ alcance o feature terminada.
 
 ## Completado
 
+### 2026-09-20 — Lista fija para el conteo diario de inventario
+
+- El administrador configura una lista permanente de productos e ingredientes
+  desde «Configurar lista diaria». Los trabajadores solo ingresan el conteo físico.
+- Al abrir la jornada actual se crean automáticamente los pendientes que falten,
+  sin duplicados al volver a entrar o acceder desde varios equipos. La fecha
+  operativa se calcula en America/Bogota tanto en el cliente como en el servidor.
+- El saldo se toma del último cierre finalizado; el saldo inicial se pide una
+  sola vez cuando no existe historial. Se mantienen entradas y cálculos actuales.
+- Retirar un elemento de la lista lo desactiva para nuevas jornadas; conserva
+  todos los conteos ya creados. Los productos deshabilitados no generan pendientes.
+- Consultar fechas pasadas o futuras no genera registros retroactivos.
+- Migración `20260920120000_elementos_fijos_conteo`: nueva configuración persistente
+  con relaciones a productos/ingredientes; importa la selección de la última
+  jornada registrada como lista inicial sin modificar sus conteos.
+- Migración aplicada localmente tras respaldo en `server/backups/`. Para producción
+  se aplicará mediante `prisma migrate deploy` en el despliegue del servidor.
+- Validación: 14 pruebas del servicio, compilaciones de servidor y cliente, lint
+  del cliente y prueba contra PostgreSQL real de creación, cierre, arrastre al día
+  siguiente, retiro e historial. Los datos de esa prueba se revirtieron al terminar.
+
 ### 2026-09-18 — Buscador en la toma de pedidos
 
 - Buscador por nombre en el menú, enfocado automáticamente al entrar a un pedido.

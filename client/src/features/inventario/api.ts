@@ -2,6 +2,7 @@ import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query
 import { api } from '@/lib/api'
 import type {
   ConteoInventarioDiario,
+  ElementoConteoDiario,
   EstadoMetaProduccion,
   Ingrediente,
   MovimientoInventario,
@@ -48,7 +49,29 @@ export function planProduccionQuery(fecha: string) {
 export function conteoInventarioQuery(fecha: string) {
   return queryOptions({
     queryKey: ['inventario', 'conteo-diario', fecha],
-    queryFn: () => api.get<ConteoInventarioDiario[]>(`/recipes/inventory-counts?date=${fecha}`),
+    // Operación idempotente: prepara únicamente hoy; otras fechas son de consulta.
+    queryFn: () => api.post<ConteoInventarioDiario[]>(`/recipes/inventory-counts/prepare?date=${fecha}`),
+  })
+}
+
+export const elementosConteoQuery = queryOptions({
+  queryKey: ['inventario', 'elementos-conteo'],
+  queryFn: () => api.get<ElementoConteoDiario[]>('/recipes/inventory-counts/elements'),
+})
+
+export function useAgregarElementoConteo() {
+  const invalidar = useInvalidarInventario()
+  return useMutation({
+    mutationFn: (payload: Omit<ConteoInventarioPayload, 'fecha'>) => api.post('/recipes/inventory-counts/elements', payload),
+    onSuccess: invalidar,
+  })
+}
+
+export function useRetirarElementoConteo() {
+  const invalidar = useInvalidarInventario()
+  return useMutation({
+    mutationFn: (id: number) => api.delete(`/recipes/inventory-counts/elements/${id}`),
+    onSuccess: invalidar,
   })
 }
 

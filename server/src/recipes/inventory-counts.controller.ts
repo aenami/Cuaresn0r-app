@@ -15,16 +15,43 @@ import { AuthenticatedRequest } from '../auth/types/authenticated-request';
 import { CreateInventoryCountDto } from './dto/create-inventory-count.dto';
 import { FinalizeInventoryCountDto } from './dto/finalize-inventory-count.dto';
 import { InventoryCountsService } from './inventory-counts.service';
+import { CreateCountElementDto } from './dto/create-count-element.dto';
 
 @Controller('/recipes/inventory-counts')
 export class InventoryCountsController {
   constructor(private readonly counts: InventoryCountsService) {}
+
+  @Get('elements')
+  listElements() {
+    return this.counts.listElements();
+  }
+
+  @Roles('ADMIN')
+  @Post('elements')
+  addElement(@Body() dto: CreateCountElementDto) {
+    return this.counts.addElement(dto);
+  }
+
+  @Roles('ADMIN')
+  @Delete('elements/:id')
+  removeElement(@Param('id', ParseIntPipe) id: number) {
+    return this.counts.removeElement(id);
+  }
+
+  @Post('prepare')
+  prepare(
+    @Query('date') fecha: string | undefined,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.counts.prepare(fecha, req.user.id);
+  }
 
   @Get()
   findAll(@Query('date') fecha?: string) {
     return this.counts.findAll(fecha);
   }
 
+  @Roles('ADMIN')
   @Post()
   create(
     @Body() dto: CreateInventoryCountDto,

@@ -557,6 +557,7 @@ model Producto {
   metasProduccion        PlanProduccionDiaria[]
   detallesCuentaPorPagar DetalleCuentaPorPagar[]
   conteosInventario      ConteoInventarioDiario[]
+  elementosConteo       ElementoConteoDiario[]
 
   @@index([categoria_producto])
 }
@@ -604,6 +605,20 @@ model Ingrediente {
   detallesCuentaPorPagar     DetalleCuentaPorPagar[]
   metasProduccion            PlanProduccionDiaria[]
   conteosInventario          ConteoInventarioDiario[]
+  elementosConteo           ElementoConteoDiario[]
+}
+
+// Seleccion permanente administrada por el restaurante para cada nueva jornada.
+model ElementoConteoDiario {
+  id              Int                    @id @default(autoincrement())
+  tipo            TipoObjetivoProduccion
+  idProducto      Int?                   @unique
+  idIngrediente   Int?                   @unique
+  cantidadInicial Decimal                @db.Decimal(20, 4)
+  activo          Boolean                @default(true)
+  fechaInicio     DateTime               @db.Date
+  producto        Producto?              @relation(fields: [idProducto], references: [id_producto], onDelete: Restrict)
+  ingrediente     Ingrediente?           @relation(fields: [idIngrediente], references: [id_ingrediente], onDelete: Restrict)
 }
 
 // Hoja diaria de verificacion fisica. El saldo anterior proviene del ultimo

@@ -20,8 +20,9 @@ import { productosQuery } from '@/features/catalogo/api'
 import {
   conteoInventarioQuery,
   ingredientesQuery,
-  useCrearConteoInventario,
-  useEliminarConteoInventario,
+  elementosConteoQuery,
+  useAgregarElementoConteo,
+  useRetirarElementoConteo,
   useFinalizarConteoInventario,
   useReabrirConteoInventario,
 } from '@/features/inventario/api'
@@ -36,15 +37,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils'
 
 function fechaLocalIso(fecha = new Date()) {
-  const anio = fecha.getFullYear()
-  const mes = String(fecha.getMonth() + 1).padStart(2, '0')
-  const dia = String(fecha.getDate()).padStart(2, '0')
-  return `${anio}-${mes}-${dia}`
+  const partes = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota',
+    year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(fecha)
+  const valor = (tipo: string) => partes.find((parte) => parte.type === tipo)!.value
+  return `${valor('year')}-${valor('month')}-${valor('day')}`
 }
 
 function desplazarFecha(fecha: string, dias: number) {
   const [anio, mes, dia] = fecha.split('-').map(Number)
-  return fechaLocalIso(new Date(anio, mes - 1, dia + dias, 12))
+  return fechaLocalIso(new Date(Date.UTC(anio, mes - 1, dia + dias, 12)))
 }
 
 function fechaLarga(fecha: string) {
@@ -78,7 +79,7 @@ function nombreUsuario(conteo: ConteoInventarioDiario) {
 export function SeccionConteoDiario({ esAdmin }: { esAdmin: boolean }) {
   const [fecha, setFecha] = useState(() => fechaLocalIso())
   const [dialogoAbierto, setDialogoAbierto] = useState(false)
-  const { data: conteos, isPending } = useQuery(conteoInventarioQuery(fecha))
+  const { data: conteos, isPending, error } = useQuery(conteoInventarioQuery(fecha))
   const resumen = useMemo(() => {
     const lista = conteos ?? []
     return {
@@ -144,9 +145,11 @@ export function SeccionConteoDiario({ esAdmin }: { esAdmin: boolean }) {
                 Hoy
               </Button>
             ) : null}
-            <Button type="button" className="btn-heat gap-2" onClick={() => setDialogoAbierto(true)}>
-              <Plus className="size-4" /> Agregar al conteo
-            </Button>
+            {esAdmin ? (
+              <Button type="button" className="btn-heat gap-2" onClick={() => setDialogoAbierto(true)}>
+                <ClipboardList className="size-4" /> Configurar lista diaria
+              </Button>
+            ) : null}
           </div>
         </div>
 
@@ -160,12 +163,16 @@ export function SeccionConteoDiario({ esAdmin }: { esAdmin: boolean }) {
 
       {isPending ? (
         <p className="mt-6 text-sm text-muted-foreground">Cargando hoja de conteo…</p>
+      ) : error ? (
+        <p role="alert" className="mt-6 text-sm text-destructive">{textoError(error)}</p>
       ) : resumen.total === 0 ? (
         <div className="mt-6 rounded-xl border border-dashed border-border bg-surface-low p-10 text-center">
           <Scale className="mx-auto size-9 text-muted-foreground" />
           <p className="mt-3 font-heading text-lg font-semibold">No hay elementos para verificar</p>
           <p className="mx-auto mt-1 max-w-lg text-sm text-muted-foreground">
-            Agrega los productos o ingredientes cuyo saldo fisico debe revisar el equipo al cierre.
+            {esHoy
+              ? 'El administrador define la lista diaria. Sus elementos aparecerán automáticamente cada día para ingresar el conteo físico.'
+              : 'No hay conteos registrados para esta fecha. La lista automática se prepara en la jornada actual.'}
           </p>
         </div>
       ) : (
@@ -176,7 +183,9 @@ export function SeccionConteoDiario({ esAdmin }: { esAdmin: boolean }) {
         </ul>
       )}
 
-      <DialogNuevoConteo abierto={dialogoAbierto} fecha={fecha} onCerrar={() => setDialogoAbierto(false)} />
+      {esAdmin && dialogoAbierto ? (
+        <DialogNuevoConteo abierto={dialogoAbierto} onCerrar={() => setDialogoAbierto(false)} />
+      ) : null}
     </div>
   )
 }
@@ -194,7 +203,6 @@ function TarjetaConteo({ conteo, esAdmin }: { conteo: ConteoInventarioDiario; es
   const [cantidadFisica, setCantidadFisica] = useState('')
   const finalizar = useFinalizarConteoInventario()
   const reabrir = useReabrirConteoInventario()
-  const eliminar = useEliminarConteoInventario()
   const anterior = Number(conteo.cantidad_anterior_conteoInventario)
   const entradas = Number(conteo.cantidad_entradas_conteoInventario)
   const disponible = anterior + entradas
@@ -358,23 +366,7 @@ function TarjetaConteo({ conteo, esAdmin }: { conteo: ConteoInventarioDiario; es
                 >
                   <RotateCcw className="size-3" /> Reabrir
                 </Button>
-              ) : (
-                <Button
-                  type="button"
-                  size="icon-xs"
-                  variant="ghost"
-                  disabled={eliminar.isPending}
-                  onClick={() =>
-                    eliminar
-                      .mutateAsync(conteo.id_conteoInventario)
-                      .then(() => toast.success('Elemento retirado del conteo'))
-                      .catch((error: unknown) => toast.error(textoError(error)))
-                  }
-                  aria-label="Retirar del conteo"
-                >
-                  <Trash2 className="size-3" />
-                </Button>
-              )}
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -429,14 +421,16 @@ function Resultado({
   )
 }
 
-function DialogNuevoConteo({ abierto, fecha, onCerrar }: { abierto: boolean; fecha: string; onCerrar: () => void }) {
+function DialogNuevoConteo({ abierto, onCerrar }: { abierto: boolean; onCerrar: () => void }) {
   const { data: productos } = useQuery(productosQuery)
   const { data: ingredientes } = useQuery(ingredientesQuery)
-  const crear = useCrearConteoInventario()
+  const { data: elementos, isPending, error } = useQuery(elementosConteoQuery)
+  const crear = useAgregarElementoConteo()
+  const retirar = useRetirarElementoConteo()
   const [tipo, setTipo] = useState<TipoObjetivoProduccion>('INGREDIENTE')
   const [idObjetivo, setIdObjetivo] = useState('')
   const [cantidadInicial, setCantidadInicial] = useState('')
-  const opciones =
+  const opcionesDisponibles =
     tipo === 'PRODUCTO'
       ? (productos ?? [])
           .filter((producto) => producto.habilitado_producto)
@@ -451,11 +445,14 @@ function DialogNuevoConteo({ abierto, fecha, onCerrar }: { abierto: boolean; fec
           detalle: ingrediente.unidades_ingrediente,
         }))
 
+  const opciones = opcionesDisponibles.filter((opcion) => !(elementos ?? []).some((elemento) =>
+    elemento.tipo === tipo && (elemento.idProducto ?? elemento.idIngrediente) === opcion.id,
+  ))
+
   function enviar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault()
     crear
       .mutateAsync({
-        fecha,
         tipo,
         idObjetivo: Number(idObjetivo),
         ...(cantidadInicial !== '' && {
@@ -463,23 +460,46 @@ function DialogNuevoConteo({ abierto, fecha, onCerrar }: { abierto: boolean; fec
         }),
       })
       .then(() => {
-        toast.success('Elemento agregado al conteo')
+        toast.success('Elemento agregado a la lista diaria')
         setIdObjetivo('')
         setCantidadInicial('')
-        onCerrar()
       })
       .catch((error: unknown) => toast.error(textoError(error)))
   }
 
   return (
     <Dialog open={abierto} onOpenChange={(open) => !open && onCerrar()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[85svh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Agregar al conteo diario</DialogTitle>
+          <DialogTitle>Lista fija del conteo diario</DialogTitle>
           <DialogDescription>
-            Selecciona un elemento que el equipo debe verificar fisicamente al cierre del {fecha}.
+            Define una sola vez qué debe contar el equipo. Los elementos se incluirán desde hoy y cada día siguiente.
+            Retirarlos detiene su inclusión en nuevas jornadas; los conteos ya creados se conservan.
           </DialogDescription>
         </DialogHeader>
+        {isPending ? <p className="text-sm text-muted-foreground">Cargando lista…</p> : error ? (
+          <p role="alert" className="text-sm text-destructive">{textoError(error)}</p>
+        ) : (
+          <ul className="max-h-52 space-y-2 overflow-y-auto">
+            {elementos?.map((elemento) => (
+              <li key={elemento.id} className="flex items-center justify-between gap-3 rounded-lg bg-surface-high p-3">
+                <div className="min-w-0 text-sm">
+                  <p className="font-semibold">{elemento.producto?.nombre_producto ?? elemento.ingrediente?.nombre_ingrediente}</p>
+                  <p className="text-xs text-muted-foreground">{elemento.tipo === 'PRODUCTO' ? 'Producto' : 'Ingrediente'}
+                    {elemento.producto?.habilitado_producto === false ? ' · Deshabilitado: no se incluirá' : ''}
+                  </p>
+                </div>
+                <Button type="button" variant="ghost" size="sm" disabled={retirar.isPending}
+                  onClick={() => retirar.mutateAsync(elemento.id)
+                    .then(() => toast.success('Elemento retirado de la lista diaria. Se conserva el historial.'))
+                    .catch((error: unknown) => toast.error(textoError(error)))}>
+                  <Trash2 className="size-3" /> Retirar
+                </Button>
+              </li>
+            ))}
+            {elementos?.length === 0 ? <li className="text-sm text-muted-foreground">Aún no hay elementos en la lista diaria.</li> : null}
+          </ul>
+        )}
         <form className="space-y-4" onSubmit={enviar}>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
@@ -533,7 +553,7 @@ function DialogNuevoConteo({ abierto, fecha, onCerrar }: { abierto: boolean; fec
               nuevo.
             </p>
           </div>
-          <Button className="btn-heat w-full" disabled={!idObjetivo || crear.isPending}>
+          <Button className="btn-heat w-full" disabled={!idObjetivo || crear.isPending || isPending || !!error}>
             <Plus className="size-4" /> Agregar elemento
           </Button>
         </form>
