@@ -147,7 +147,7 @@ export function SeccionConteoDiario({ esAdmin }: { esAdmin: boolean }) {
             ) : null}
             {esAdmin ? (
               <Button type="button" className="btn-heat gap-2" onClick={() => setDialogoAbierto(true)}>
-                <ClipboardList className="size-4" /> Configurar lista diaria
+                <ClipboardList className="size-4" /> Configurar lista fija
               </Button>
             ) : null}
           </div>
@@ -171,7 +171,7 @@ export function SeccionConteoDiario({ esAdmin }: { esAdmin: boolean }) {
           <p className="mt-3 font-heading text-lg font-semibold">No hay elementos para verificar</p>
           <p className="mx-auto mt-1 max-w-lg text-sm text-muted-foreground">
             {esHoy
-              ? 'El administrador define la lista diaria. Sus elementos aparecerán automáticamente cada día para ingresar el conteo físico.'
+              ? 'El administrador configura la lista fija una sola vez. Sus elementos aparecerán automáticamente cada día para ingresar el conteo físico.'
               : 'No hay conteos registrados para esta fecha. La lista automática se prepara en la jornada actual.'}
           </p>
         </div>
@@ -460,7 +460,7 @@ function DialogNuevoConteo({ abierto, onCerrar }: { abierto: boolean; onCerrar: 
         }),
       })
       .then(() => {
-        toast.success('Elemento agregado a la lista diaria')
+        toast.success('Elemento agregado a la lista fija')
         setIdObjetivo('')
         setCantidadInicial('')
       })
@@ -474,7 +474,8 @@ function DialogNuevoConteo({ abierto, onCerrar }: { abierto: boolean; onCerrar: 
           <DialogTitle>Lista fija del conteo diario</DialogTitle>
           <DialogDescription>
             Define una sola vez qué debe contar el equipo. Los elementos se incluirán desde hoy y cada día siguiente.
-            Retirarlos detiene su inclusión en nuevas jornadas; los conteos ya creados se conservan.
+            Los cambios aplican desde hoy. Al retirar un elemento desaparece del conteo de hoy si está pendiente;
+            los días anteriores y los conteos ya confirmados se conservan.
           </DialogDescription>
         </DialogHeader>
         {isPending ? <p className="text-sm text-muted-foreground">Cargando lista…</p> : error ? (
@@ -491,13 +492,13 @@ function DialogNuevoConteo({ abierto, onCerrar }: { abierto: boolean; onCerrar: 
                 </div>
                 <Button type="button" variant="ghost" size="sm" disabled={retirar.isPending}
                   onClick={() => retirar.mutateAsync(elemento.id)
-                    .then(() => toast.success('Elemento retirado de la lista diaria. Se conserva el historial.'))
+                    .then(() => toast.success('Elemento retirado de la lista fija. Se conservan el historial y los conteos confirmados.'))
                     .catch((error: unknown) => toast.error(textoError(error)))}>
                   <Trash2 className="size-3" /> Retirar
                 </Button>
               </li>
             ))}
-            {elementos?.length === 0 ? <li className="text-sm text-muted-foreground">Aún no hay elementos en la lista diaria.</li> : null}
+            {elementos?.length === 0 ? <li className="text-sm text-muted-foreground">Aún no hay elementos en la lista fija.</li> : null}
           </ul>
         )}
         <form className="space-y-4" onSubmit={enviar}>

@@ -100,9 +100,7 @@ export class InventoryCountsService {
       where,
     });
     if (existente?.activo)
-      throw new ConflictException(
-        'Este elemento ya pertenece a la lista diaria',
-      );
+      throw new ConflictException('Este elemento ya pertenece a la lista fija');
     return this.prisma.elementoConteoDiario.upsert({
       where,
       create: {
@@ -120,15 +118,30 @@ export class InventoryCountsService {
   }
 
   async removeElement(id: number) {
-    const elemento = await this.prisma.elementoConteoDiario.findUnique({
-      where: { id },
-    });
-    if (!elemento)
-      throw new NotFoundException('Elemento de conteo no encontrado');
-    // Los registros diarios, incluso los pendientes, permanecen como historial.
-    return this.prisma.elementoConteoDiario.update({
-      where: { id },
-      data: { activo: false },
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "ElementoConteoDiario" WHERE "id" = ${id} FOR UPDATE`;
+      const elemento = await tx.elementoConteoDiario.findUnique({
+        where: { id },
+      });
+      if (!elemento)
+        throw new NotFoundException('Elemento de conteo no encontrado');
+      const actualizado = await tx.elementoConteoDiario.update({
+        where: { id },
+        data: { activo: false },
+      });
+      // Solo se retira el pendiente de hoy; el historial y lo contado se conservan.
+      await tx.conteoInventarioDiario.deleteMany({
+        where: {
+          ...this.filtroObjetivo(
+            elemento.tipo,
+            elemento.idProducto ?? elemento.idIngrediente!,
+          ),
+          fecha_conteoInventario: this.fechaDeHoy(),
+          estado_conteoInventario: EstadoConteoInventario.PENDIENTE,
+          cantidad_fisica_conteoInventario: null,
+        },
+      });
+      return actualizado;
     });
   }
 
@@ -162,15 +175,24 @@ export class InventoryCountsService {
       const idObjetivo = elemento.idProducto ?? elemento.idIngrediente!;
       if (claves.has(`${elemento.tipo}:${idObjetivo}`)) continue;
       try {
-        await this.create(
-          {
-            fecha: dia.toISOString().slice(0, 10),
-            tipo: elemento.tipo,
-            idObjetivo,
-            cantidadInicial: Number(elemento.cantidadInicial),
-          },
-          idUsuario,
-        );
+        await this.prisma.$transaction(async (tx) => {
+          // Comparte el bloqueo con retirar: una preparación en curso no revive el elemento.
+          await tx.$queryRaw`SELECT "id" FROM "ElementoConteoDiario" WHERE "id" = ${elemento.id} FOR UPDATE`;
+          const vigente = await tx.elementoConteoDiario.findUnique({
+            where: { id: elemento.id },
+          });
+          if (!vigente?.activo) return;
+          await this.create(
+            {
+              fecha: dia.toISOString().slice(0, 10),
+              tipo: elemento.tipo,
+              idObjetivo,
+              cantidadInicial: Number(vigente.cantidadInicial),
+            },
+            idUsuario,
+            tx,
+          );
+        });
       } catch (error) {
         // Dos trabajadores pueden abrir simultáneamente la misma jornada.
         if (!(error instanceof ConflictException)) throw error;
@@ -194,11 +216,15 @@ export class InventoryCountsService {
     return this.agregarEntradasEnCurso(conteos, fechaDb);
   }
 
-  async create(dto: CreateInventoryCountDto, idUsuario: number) {
+  async create(
+    dto: CreateInventoryCountDto,
+    idUsuario: number,
+    db: Prisma.TransactionClient = this.prisma,
+  ) {
     const fecha = this.parsearFecha(dto.fecha);
     const objetivo = await this.obtenerObjetivo(dto.tipo, dto.idObjetivo);
     const filtroObjetivo = this.filtroObjetivo(dto.tipo, dto.idObjetivo);
-    const anterior = await this.prisma.conteoInventarioDiario.findFirst({
+    const anterior = await db.conteoInventarioDiario.findFirst({
       where: {
         ...filtroObjetivo,
         estado_conteoInventario: EstadoConteoInventario.FINALIZADO,
@@ -228,7 +254,7 @@ export class InventoryCountsService {
     }
 
     try {
-      const creado = await this.prisma.conteoInventarioDiario.create({
+      const creado = await db.conteoInventarioDiario.create({
         data: {
           fecha_conteoInventario: fecha,
           tipo_objetivo_conteoInventario: dto.tipo,

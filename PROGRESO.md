@@ -22,6 +22,21 @@ alcance o feature terminada.
 
 ## Completado
 
+### 2026-09-22 — Lista fija de conteo y retiro de pendientes del día
+
+- La selección es una configuración permanente, creada una sola vez y editable
+  por el administrador; se aclararon los textos como «lista fija».
+- Retirar un producto o ingrediente desactiva su inclusión futura y elimina
+  únicamente su conteo pendiente de hoy (fecha de Colombia), sin cantidad física
+  confirmada. Los registros de días anteriores y los finalizados se conservan.
+- El retiro y la preparación automática usan transacciones y un bloqueo común
+  para evitar que otra pantalla vuelva a crear un elemento recién retirado.
+- Verificación: 16 pruebas unitarias, compilaciones de servidor y cliente y lint
+  del cliente. Prueba local con PostgreSQL de retiro, reinclusión, saldo anterior,
+  persistencia entre días y conservación de pendientes históricos y confirmados;
+  todos los datos de prueba se revirtieron. No requiere nueva migración.
+- Cambio local; publicación en producción pendiente.
+
 ### 2026-09-22 — Evitar cierre accidental de formularios al descartar selectores
 
 - El componente compartido `DialogContent` evita el cierre por clic o toque fuera

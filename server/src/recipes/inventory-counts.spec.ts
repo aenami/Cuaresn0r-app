@@ -73,6 +73,7 @@ function setup(
       findUniqueOrThrow: spies.encontrarObligatorio,
       update: spies.actualizar,
       count: spies.contar,
+      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     ingrediente: { findUnique: spies.ingrediente },
     movimientoInventario: { aggregate: spies.entradasIngrediente },
@@ -96,8 +97,9 @@ function setup(
     ingrediente: { findUnique: spies.ingrediente },
     $transaction: (callback: (cliente: typeof tx) => unknown) => callback(tx),
   } as unknown as PrismaService;
+  Object.assign(tx, { elementoConteoDiario: prisma.elementoConteoDiario });
 
-  return { service: new InventoryCountsService(prisma), spies, prisma };
+  return { service: new InventoryCountsService(prisma), spies, prisma, tx };
 }
 
 describe('Lista permanente de conteo', () => {
@@ -124,15 +126,19 @@ describe('Lista permanente de conteo', () => {
         cantidadInicial: new Prisma.Decimal(4),
       },
     ] as never);
-    jest
-      .spyOn(prisma.conteoInventarioDiario, 'findMany')
-      .mockResolvedValue([
-        {
-          tipo_objetivo_conteoInventario: 'PRODUCTO',
-          id_producto_conteoInventario: 3,
-        },
-      ] as never);
+    jest.spyOn(prisma.conteoInventarioDiario, 'findMany').mockResolvedValue([
+      {
+        tipo_objetivo_conteoInventario: 'PRODUCTO',
+        id_producto_conteoInventario: 3,
+      },
+    ] as never);
     const crear = jest.spyOn(service, 'create').mockResolvedValue({} as never);
+    jest
+      .spyOn(prisma.elementoConteoDiario, 'findUnique')
+      .mockResolvedValue({
+        activo: true,
+        cantidadInicial: new Prisma.Decimal(4),
+      } as never);
     jest.spyOn(service, 'findAll').mockResolvedValue([]);
     await service.prepare('2026-09-20', 2);
     expect(crear).toHaveBeenCalledTimes(1);
@@ -144,6 +150,7 @@ describe('Lista permanente de conteo', () => {
         cantidadInicial: 4,
       },
       2,
+      expect.any(Object),
     );
   });
 
@@ -160,16 +167,20 @@ describe('Lista permanente de conteo', () => {
 
   it('tolera que otro equipo cree el mismo conteo durante la preparación', async () => {
     const { service, prisma } = setup();
-    jest
-      .spyOn(prisma.elementoConteoDiario, 'findMany')
-      .mockResolvedValue([
-        {
-          tipo: 'PRODUCTO',
-          idProducto: 3,
-          cantidadInicial: new Prisma.Decimal(10),
-        },
-      ] as never);
+    jest.spyOn(prisma.elementoConteoDiario, 'findMany').mockResolvedValue([
+      {
+        tipo: 'PRODUCTO',
+        idProducto: 3,
+        cantidadInicial: new Prisma.Decimal(10),
+      },
+    ] as never);
     jest.spyOn(service, 'create').mockRejectedValue(new ConflictException());
+    jest
+      .spyOn(prisma.elementoConteoDiario, 'findUnique')
+      .mockResolvedValue({
+        activo: true,
+        cantidadInicial: new Prisma.Decimal(10),
+      } as never);
     const listar = jest.spyOn(service, 'findAll').mockResolvedValue([]);
     await expect(service.prepare('2026-09-20', 2)).resolves.toEqual([]);
     expect(listar).toHaveBeenCalled();
@@ -205,16 +216,48 @@ describe('Lista permanente de conteo', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('retirar de la lista desactiva la configuración sin eliminar el historial', async () => {
+  it.each(['PRODUCTO', 'INGREDIENTE'] as const)(
+    'retira solo el pendiente de hoy para %s y conserva historial y confirmados',
+    async (tipo) => {
+      const { service, prisma, tx } = setup();
+      jest
+        .spyOn(prisma.elementoConteoDiario, 'findUnique')
+        .mockResolvedValue({
+          id: 1,
+          tipo,
+          idProducto: tipo === 'PRODUCTO' ? 3 : null,
+          idIngrediente: tipo === 'INGREDIENTE' ? 8 : null,
+        } as never);
+      await service.removeElement(1);
+      expect(prisma.elementoConteoDiario.update).toHaveBeenCalledWith({
+        where: { id: 1 },
+        data: { activo: false },
+      });
+      expect(tx.conteoInventarioDiario.deleteMany).toHaveBeenCalledWith({
+        where: {
+          ...(tipo === 'PRODUCTO'
+            ? { id_producto_conteoInventario: 3 }
+            : { id_ingrediente_conteoInventario: 8 }),
+          fecha_conteoInventario: new Date('2026-09-20'),
+          estado_conteoInventario: 'PENDIENTE',
+          cantidad_fisica_conteoInventario: null,
+        },
+      });
+    },
+  );
+
+  it('no vuelve a crear un elemento retirado mientras otra pantalla preparaba el día', async () => {
     const { service, prisma } = setup();
     jest
+      .spyOn(prisma.elementoConteoDiario, 'findMany')
+      .mockResolvedValue([{ id: 1, tipo: 'PRODUCTO', idProducto: 3 }] as never);
+    jest
       .spyOn(prisma.elementoConteoDiario, 'findUnique')
-      .mockResolvedValue({ id: 1 } as never);
-    await service.removeElement(1);
-    expect(prisma.elementoConteoDiario.update).toHaveBeenCalledWith({
-      where: { id: 1 },
-      data: { activo: false },
-    });
+      .mockResolvedValue({ activo: false } as never);
+    const crear = jest.spyOn(service, 'create');
+    jest.spyOn(service, 'findAll').mockResolvedValue([]);
+    await service.prepare('2026-09-20', 2);
+    expect(crear).not.toHaveBeenCalled();
   });
 
   it('reserva la configuración y la selección manual al administrador', () => {
