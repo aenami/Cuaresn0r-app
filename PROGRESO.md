@@ -22,6 +22,44 @@ alcance o feature terminada.
 
 ## Completado
 
+### 2026-09-23 — Conteo obligatorio al cierre y conciliación por entregas
+
+- Al abrir caja se selecciona obligatoriamente Mañana, Tarde-noche o Turno único.
+  Mañana no exige inventario; los otros dos requieren todos los elementos del
+  conteo finalizados. La comprobación está en el servidor, también para ADMIN,
+  y detecta elementos de la lista fija que todavía no tienen registro diario.
+- Los turnos antiguos conservan tipo nulo; si aún están abiertos deben
+  clasificarse al cerrarlos. No se pueden reclasificar turnos nuevos desde el
+  cierre para evadir el requisito. Lista vacía bloquea el cierre requerido.
+- Se registra `fecha_entrega_dc` al entregar individualmente o por comanda,
+  sin cambiarla en reintentos. El conteo compara salida física (saldo anterior
+  + entradas recibidas/producción - físico) contra unidades ENTREGADAS,
+  independientemente del pago. Los componentes de combos cuentan por producto.
+- Para ingredientes se suman los movimientos SALIDA_RECETA originales, sin
+  reversos, correspondientes a productos entregados; no se recalcula con la
+  receta actual ni se cambia el descuento de stock que ocurre al preparar.
+- La pantalla muestra coincidencia, faltante o sobrante y advierte que mermas,
+  ajustes u omisiones pueden explicar diferencias. No ajusta stock automáticamente.
+  Las inconsistencias informan, pero no impiden cerrar cuando se completó el conteo.
+- Entregas posteriores a la confirmación requieren reabrir y volver a contar
+  el elemento antes de cerrar. Durante la confirmación del cuadre se estabilizan
+  lista, conteos y entregas con bloqueo transaccional; se conserva una fotografía
+  de la conciliación en el turno para consulta histórica.
+- Fechas diarias en Colombia (UTC-5, 00:00 a 24:00). El turno exige el conteo de
+  su fecha de apertura; no se agrupan entregas de otro día calendario. Los
+  registros anteriores sin fecha de entrega no reciben fechas inventadas;
+  días con esos registros o con saltos desde el saldo anterior muestran que no
+  son comparables, en lugar de anunciar una coincidencia falsa.
+- Migración `20260922180000_cierre_conteo_entregas` aplicada en PostgreSQL local,
+  con copia previa en `server/backups/POS-before-delivery-count-1790134125773.dump`.
+  No se modificó la base de producción.
+- Verificación: suite completa de 176 pruebas del servidor, compilación de ambos
+  proyectos, lint del cliente y prueba PostgreSQL con rollback (bloqueo sin
+  conteo, entregas sin pagos, exclusión de preparados/cancelados, reconteo y
+  cierre con discrepancia). Prueba Chromium con API simulada: selección de
+  turno, bloqueo/habilitación del cierre y faltante visible en escritorio/móvil.
+- Implementación local; pendiente publicar y ejecutar la migración en producción.
+
 ### 2026-09-22 — Lista fija de conteo y retiro de pendientes del día
 
 - La selección es una configuración permanente, creada una sola vez y editable

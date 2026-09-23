@@ -174,7 +174,7 @@ describe('ComandasService.entregarComanda', () => {
     await svc.entregarComanda(10, 100);
     expect(spies.comandaUpdateMany).toHaveBeenCalledWith({
       where: { id_comanda_dc: 100, estado_dc: 'PREPARANDO' },
-      data: { estado_dc: 'ENTREGADO' },
+      data: { estado_dc: 'ENTREGADO', fecha_entrega_dc: expect.any(Date) },
     });
     expect(spies.recalcular).toHaveBeenCalledWith(expect.anything(), 10);
   });

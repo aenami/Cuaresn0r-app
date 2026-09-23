@@ -148,7 +148,7 @@ export class ComandasService {
 
       await tx.detalleComanda.updateMany({
         where: { id_comanda_dc: idComanda, estado_dc: 'PREPARANDO' },
-        data: { estado_dc: 'ENTREGADO' },
+        data: { estado_dc: 'ENTREGADO', fecha_entrega_dc: new Date() },
       });
 
       await this.pedidosService.recalcularEstadoPedido(tx, idPedido);

@@ -11,7 +11,8 @@ import {
   TrendingUp,
   Wallet,
 } from 'lucide-react'
-import type { TurnoResumen } from '@/types/api'
+import type { TipoTurno, TurnoResumen } from '@/types/api'
+import { SelectorTipoTurno } from './tipo-turno'
 import { formatearPrecio } from '@/lib/formato'
 import {
   cajasQuery,
@@ -375,14 +376,15 @@ export function AbrirTurnoForm() {
   const { data: cajas } = useQuery(cajasQuery)
   const abrir = useAbrirTurno()
   const [idCaja, setIdCaja] = useState<string>('')
+  const [tipo, setTipo] = useState<TipoTurno | ''>('')
 
   const cajasLibres = (cajas ?? []).filter((c) => (c.turnos ?? []).length === 0)
-  const valido = idCaja !== ''
+  const valido = idCaja !== '' && tipo !== ''
 
   function abrirTurno() {
-    if (!valido) return
+    if (!valido || !tipo) return
     abrir
-      .mutateAsync({ idCaja: Number(idCaja) })
+      .mutateAsync({ idCaja: Number(idCaja), tipo })
       .then(() => toast.success('Turno abierto'))
       .catch((e: unknown) => toast.error(errorApi(e)))
   }
@@ -423,6 +425,7 @@ export function AbrirTurnoForm() {
           )}
         </div>
 
+        <SelectorTipoTurno valor={tipo} onCambiar={setTipo} />
         <div className="rounded-lg bg-surface-low p-3">
           <p className="micro-label">Base fija de caja</p>
           <p className="mt-1 font-heading text-xl font-semibold tabular-nums">{formatearPrecio(300000)}</p>

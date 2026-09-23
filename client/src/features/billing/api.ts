@@ -14,6 +14,8 @@ import type {
   TipoMovimientoCaja,
   Turno,
   TurnoResumen,
+  TipoTurno,
+  EstadoConteoCierre,
 } from '@/types/api'
 
 // ---- queries ----
@@ -64,6 +66,14 @@ export function turnoQuery(idTurno: number) {
   return queryOptions({
     queryKey: ['billing', 'turno', idTurno],
     queryFn: () => api.get<TurnoResumen>(`/billing/turnos/${idTurno}`),
+  })
+}
+
+export function estadoConteoCierreQuery(id: number) {
+  return queryOptions({
+    queryKey: ['inventario', 'cierre-turno', id],
+    queryFn: () => api.get<EstadoConteoCierre>(`/billing/turnos/${id}/conteo-inventario`),
+    refetchInterval: 15_000,
   })
 }
 
@@ -124,7 +134,7 @@ function useInvalidarCobro() {
 export function useAbrirTurno() {
   const invalidar = useInvalidarBilling()
   return useMutation({
-    mutationFn: (datos: { idCaja: number }) => api.post<Turno>('/billing/turnos', datos),
+    mutationFn: (datos: { idCaja: number; tipo: TipoTurno }) => api.post<Turno>('/billing/turnos', datos),
     onSuccess: invalidar,
   })
 }
@@ -132,7 +142,7 @@ export function useAbrirTurno() {
 export function useCerrarTurno(idTurno: number) {
   const invalidar = useInvalidarBilling()
   return useMutation({
-    mutationFn: (datos: { montoCierreReal: number; conteo?: Record<string, number> }) =>
+    mutationFn: (datos: { montoCierreReal: number; conteo?: Record<string, number>; tipo?: TipoTurno }) =>
       api.patch<Turno>(`/billing/turnos/${idTurno}/cerrar`, datos),
     onSuccess: invalidar,
   })

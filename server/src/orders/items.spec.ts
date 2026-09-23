@@ -24,6 +24,7 @@ function setup(opts: { item?: Record<string, unknown> | null; hijos?: { id_detal
     detalleComanda: {
       findUnique: spies.dcFindUnique,
       update: spies.dcUpdate,
+      updateMany: spies.dcUpdate,
       findMany: spies.dcFindMany,
       findUniqueOrThrow: spies.dcFind,
     },
@@ -49,7 +50,7 @@ describe('ItemsService.entregar', () => {
   it('marca ENTREGADO y recalcula el estado del pedido', async () => {
     const { svc, spies } = setup();
     await svc.entregar(10, 1);
-    expect(spies.dcUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: { estado_dc: 'ENTREGADO' } }));
+    expect(spies.dcUpdate).toHaveBeenCalledWith({ where: { id_detalleComanda: 1, estado_dc: 'PREPARANDO' }, data: { estado_dc: 'ENTREGADO', fecha_entrega_dc: expect.any(Date) } });
     expect(spies.recalcular).toHaveBeenCalledWith(expect.anything(), 10);
   });
 });

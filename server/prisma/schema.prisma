@@ -88,6 +88,12 @@ enum EstadoTurno {
   CERRADO
 }
 
+enum TipoTurno {
+  MANANA
+  TARDE_NOCHE
+  UNICO
+}
+
 enum TipoMovimientoCaja {
   INGRESO
   EGRESO
@@ -320,6 +326,7 @@ model DetalleComanda {
   id_receta_usada_dc        Int?
   id_subcuenta_dc           Int?
   estado_dc                 EstadoDetalleComanda @default(PENDIENTE)
+  fecha_entrega_dc           DateTime?            @db.Timestamp(6)
   cantidad_producto_dc      Int
   precio_unitario_dc        Decimal              @db.Decimal(20, 4)
   indicaciones_dc           String?              @db.VarChar(150)
@@ -342,6 +349,7 @@ model DetalleComanda {
   @@index([id_producto_dc])
   @@index([id_combo_dc])
   @@index([id_receta_usada_dc])
+  @@index([fecha_entrega_dc, estado_dc])
   @@index([id_subcuenta_dc])
 }
 
@@ -492,6 +500,9 @@ model Turno {
   // Permite consultar el historico sin que cambie cuando se paguen despues.
   facturas_pendientes_cierre_turno Json?       @db.JsonB
   estado_turno                     EstadoTurno @default(ABIERTO)
+  // Null identifica turnos históricos, sin inventar su clasificación.
+  tipo_turno                       TipoTurno?
+  conteo_inventario_cierre_turno    Json?       @db.JsonB
 
   caja    Caja    @relation(fields: [id_caja_turno], references: [id_caja])
   usuario Usuario @relation(fields: [id_usuario_turno], references: [id_usuario])

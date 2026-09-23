@@ -87,6 +87,7 @@ export function SeccionConteoDiario({ esAdmin }: { esAdmin: boolean }) {
       pendientes: lista.filter((item) => item.estado_conteoInventario === 'PENDIENTE').length,
       finalizados: lista.filter((item) => item.estado_conteoInventario === 'FINALIZADO').length,
       conEntradas: lista.filter((item) => Number(item.cantidad_entradas_conteoInventario) > 0).length,
+      diferencias: lista.filter(item => item.conciliacion?.estado === 'DIFERENCIA' || item.conciliacion?.estado === 'NO_COMPARABLE' || item.conciliacion?.requiereReconteo).length,
     }
   }, [conteos])
   const esHoy = fecha === fechaLocalIso()
@@ -104,8 +105,8 @@ export function SeccionConteoDiario({ esAdmin }: { esAdmin: boolean }) {
               {fechaLarga(fecha)}
             </h2>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              Compara el saldo anterior y las entradas recibidas o producidas con el conteo fisico. La diferencia
-              muestra la salida aparente del dia sin modificar el inventario automatico.
+              Compara la salida física (saldo anterior + entradas − conteo) con los productos entregados,
+              pagados o no. Para ingredientes se usa el consumo registrado de sus recetas.
             </p>
           </div>
 
@@ -156,7 +157,7 @@ export function SeccionConteoDiario({ esAdmin }: { esAdmin: boolean }) {
         <div className="relative mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Indicador etiqueta="Por contar" valor={resumen.pendientes} clase="text-tertiary" />
           <Indicador etiqueta="Finalizados" valor={resumen.finalizados} clase="text-emerald-300" />
-          <Indicador etiqueta="Con entradas" valor={resumen.conEntradas} clase="text-sky-300" />
+          <Indicador etiqueta="Por revisar" valor={resumen.diferencias} clase="text-rose-300" />
           <Indicador etiqueta="Elementos" valor={resumen.total} clase="text-foreground" />
         </div>
       </section>
@@ -212,6 +213,9 @@ function TarjetaConteo({ conteo, esAdmin }: { conteo: ConteoInventarioDiario; es
     conteo.cantidad_salida_conteoInventario === null ? null : Number(conteo.cantidad_salida_conteoInventario)
   const salida = salidaFinal ?? salidaVista
   const finalizado = conteo.estado_conteoInventario === 'FINALIZADO'
+  const conciliacion = conteo.conciliacion
+  const diferenciaEntregas = conciliacion?.diferencia === null || conciliacion?.diferencia === undefined
+    ? null : Number(conciliacion.diferencia)
   const unidad = conteo.unidad_objetivo_conteoInventario
   const diferenciaSistema =
     finalizado && conteo.stock_sistema_conteoInventario !== null && conteo.cantidad_fisica_conteoInventario !== null
@@ -275,7 +279,7 @@ function TarjetaConteo({ conteo, esAdmin }: { conteo: ConteoInventarioDiario; es
             />
             <Resultado
               etiqueta={
-                conteo.tipo_objetivo_conteoInventario === 'PRODUCTO' ? 'Vendido calculado' : 'Consumo calculado'
+                'Salida física calculada'
               }
               valor={salida ?? 0}
               unidad={unidad}
@@ -303,7 +307,7 @@ function TarjetaConteo({ conteo, esAdmin }: { conteo: ConteoInventarioDiario; es
               </div>
             </div>
             <Resultado
-              etiqueta={conteo.tipo_objetivo_conteoInventario === 'PRODUCTO' ? 'Venta estimada' : 'Consumo estimado'}
+              etiqueta="Salida física estimada"
               valor={salida ?? 0}
               unidad={unidad}
               clase={salida !== null && salida < 0 ? 'text-rose-300' : 'text-tertiary'}
@@ -327,6 +331,20 @@ function TarjetaConteo({ conteo, esAdmin }: { conteo: ConteoInventarioDiario; es
             </Button>
           </div>
         )}
+
+        {conciliacion ? <div className="mt-4 space-y-2 border-t border-border pt-3 text-sm">
+          <p className="flex flex-wrap justify-between gap-2">
+            <span>{conteo.tipo_objetivo_conteoInventario === 'PRODUCTO' ? 'Entregado en el sistema' : 'Consumo por productos entregados'}</span>
+            <span className="font-semibold tabular-nums">{formatearCantidad(conciliacion.cantidadSistema)} {unidad}</span>
+          </p>
+          {conciliacion.motivoNoComparable ? <p className="text-tertiary">{conciliacion.motivoNoComparable}</p>
+            : conciliacion.requiereReconteo ? <p className="text-rose-300" role="status">Hubo entregas después de contar. Solicita al administrador reabrir este conteo y vuelve a verificarlo antes de cerrar caja.</p>
+            : finalizado && diferenciaEntregas !== null ? <p className={diferenciaEntregas === 0 ? 'text-emerald-300' : 'text-rose-300'}>
+              {diferenciaEntregas === 0 ? 'Coincide con las entregas registradas.'
+                : `${diferenciaEntregas > 0 ? 'Faltante' : 'Sobrante'} de ${formatearCantidad(Math.abs(diferenciaEntregas))} ${unidad} frente a las entregas registradas.`}
+            </p> : <p className="text-xs text-muted-foreground">Confirma el conteo para registrar si coincide. Cobrar no mueve esta cantidad; entregar sí.</p>}
+          <p className="text-xs text-muted-foreground">Una diferencia puede corresponder a mermas, ajustes o registros pendientes; no se corrige el stock automáticamente.</p>
+        </div> : null}
 
         {salida !== null && salida < 0 ? (
           <div className="mt-3 flex gap-2 rounded-lg border border-rose-400/25 bg-rose-400/8 p-3 text-xs text-rose-200">

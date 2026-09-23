@@ -1,6 +1,11 @@
-import { IsNumber, Min, IsObject, IsOptional } from 'class-validator';
+import { IsEnum, IsNumber, Min, IsObject, IsOptional } from 'class-validator';
+import { TipoTurno } from '../../generated/prisma/client';
 
 export class CerrarTurnoDto {
+  // Solo para clasificar un turno abierto antes de esta funcionalidad.
+  @IsOptional()
+  @IsEnum(TipoTurno)
+  tipo?: TipoTurno;
   // Efectivo fisico contado por el cajero al cierre; la diferencia contra
   // monto_cierre_esperado revela faltante o sobrante (seccion 7 de la spec).
   @IsNumber({ maxDecimalPlaces: 4 })

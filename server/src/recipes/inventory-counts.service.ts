@@ -13,6 +13,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInventoryCountDto } from './dto/create-inventory-count.dto';
 import { CreateCountElementDto } from './dto/create-count-element.dto';
+import { compararConteo, salidasEntregadas } from './inventory-reconciliation';
 
 const CONTEO_INCLUDE = {
   producto: {
@@ -213,7 +214,11 @@ export class InventoryCountsService {
       ],
     });
 
-    return this.agregarEntradasEnCurso(conteos, fechaDb);
+    const [actualizados, salidas] = await Promise.all([
+      this.agregarEntradasEnCurso(conteos, fechaDb),
+      salidasEntregadas(this.prisma, fechaDb),
+    ]);
+    return actualizados.map(conteo => ({ ...conteo, conciliacion: compararConteo(conteo, salidas) }));
   }
 
   async create(

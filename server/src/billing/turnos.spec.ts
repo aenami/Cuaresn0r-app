@@ -16,7 +16,7 @@ import { Prisma } from '../generated/prisma/client';
 
 // ---- abrir ----
 
-const abrirDto = (idCaja = 1) => ({ idCaja }) as unknown as AbrirTurnoDto;
+const abrirDto = (idCaja = 1) => ({ idCaja, tipo: 'MANANA' }) as AbrirTurnoDto;
 
 function setupAbrir(
   opts: { caja?: unknown; turnoUsuario?: unknown; turnoCaja?: unknown } = {},
@@ -79,13 +79,14 @@ describe('TurnosService.abrir (creacion)', () => {
     expect(data.monto_apertura_turno.toString()).toBe('300000');
     expect(data.monto_cierre_esperado.toString()).toBe('300000');
     expect(data.id_usuario_turno).toBe(5);
+    expect(data.tipo_turno).toBe('MANANA');
   });
 });
 
 // ---- cerrar ----
 
 const cerrarDto = (montoCierreReal = 165000) =>
-  ({ montoCierreReal }) as unknown as CerrarTurnoDto;
+  ({ montoCierreReal, tipo: 'MANANA' }) as CerrarTurnoDto;
 
 function setupCerrar(
   opts: {
@@ -96,6 +97,9 @@ function setupCerrar(
     ingresos?: Prisma.Decimal | null;
     egresos?: Prisma.Decimal | null;
     facturasPendientes?: Array<Record<string, unknown>>;
+    conteos?: Array<Record<string, unknown>>;
+    elementos?: Array<Record<string, unknown>>;
+    entregados?: Array<Record<string, unknown>>;
   } = {},
 ) {
   const {
@@ -129,13 +133,23 @@ function setupCerrar(
       }),
     ),
     cuentasFindMany: jest.fn().mockResolvedValue(facturasPendientes),
+    estabilizarInventario: jest.fn().mockResolvedValue(0),
+    conteos: jest.fn().mockResolvedValue(opts.conteos ?? []),
   };
   const tx = {
     $queryRaw: spies.queryRaw,
+    $executeRaw: spies.estabilizarInventario,
     turno: { findUniqueOrThrow: spies.turnoFind, update: spies.turnoUpdate },
     pago: { aggregate: spies.pagoAggregate },
     movimientoCaja: { aggregate: spies.movimientoAggregate },
     cuentaPorPagar: { findMany: spies.cuentasFindMany },
+    conteoInventarioDiario: { findMany: spies.conteos },
+    elementoConteoDiario: {
+      findMany: jest.fn().mockResolvedValue(opts.elementos ?? []),
+    },
+    detalleComanda: {
+      findMany: jest.fn().mockResolvedValue(opts.entregados ?? []),
+    },
   };
   const prisma = {
     $transaction: (cb: (t: typeof tx) => unknown) => cb(tx),
@@ -194,6 +208,64 @@ describe('TurnosService.cerrar (guardas)', () => {
 });
 
 describe('TurnosService.cerrar (cuadre)', () => {
+  it.each(['TARDE_NOCHE', 'UNICO'])(
+    'exige conteo completo para %s incluso a un ADMIN',
+    async (tipo) => {
+      const { svc, spies } = setupCerrar({
+        turno: {
+          id_turno: 3,
+          tipo_turno: tipo,
+          fecha_apertura_turno: new Date('2026-09-22T15:00:00Z'),
+          estado_turno: 'ABIERTO',
+          id_usuario_turno: 1,
+        },
+      });
+      // Enviar MANANA en el cierre no debe permitir evadir el tipo guardado.
+      await expect(svc.cerrar(3, 1, 'ADMIN', cerrarDto())).rejects.toThrow(
+        /conteo diario/,
+      );
+      expect(spies.turnoUpdate).not.toHaveBeenCalled();
+    },
+  );
+
+  it('permite cierre nocturno con discrepancia y guarda el resultado del conteo', async () => {
+    const { svc, spies } = setupCerrar({
+      turno: {
+        id_turno: 3,
+        tipo_turno: 'TARDE_NOCHE',
+        fecha_apertura_turno: new Date('2026-09-22T15:00:00Z'),
+        estado_turno: 'ABIERTO',
+        id_usuario_turno: 1,
+        monto_apertura_turno: new Prisma.Decimal(300000),
+      },
+      conteos: [
+        {
+          id_conteoInventario: 1,
+          nombre_objetivo_conteoInventario: 'Agua',
+          tipo_objetivo_conteoInventario: 'PRODUCTO',
+          id_producto_conteoInventario: 3,
+          fecha_conteoInventario: new Date('2026-09-22'),
+          fecha_anterior_conteoInventario: null,
+          cantidad_salida_conteoInventario: new Prisma.Decimal(5),
+          estado_conteoInventario: 'FINALIZADO',
+        },
+      ],
+    });
+    await svc.cerrar(3, 1, 'CAJERO', cerrarDto());
+    expect(
+      spies.turnoUpdate.mock.calls[0][0].data.conteo_inventario_cierre_turno,
+    ).toMatchObject({ completo: true, inconsistencias: 1 });
+  });
+
+  it('mañana no exige conteo y un turno antiguo requiere clasificación explícita', async () => {
+    const { svc, spies } = setupCerrar();
+    await expect(
+      svc.cerrar(3, 1, 'CAJERO', { montoCierreReal: 0 }),
+    ).rejects.toThrow(/tipo/);
+    await svc.cerrar(3, 1, 'CAJERO', cerrarDto());
+    expect(spies.conteos).not.toHaveBeenCalled();
+  });
+
   it('congela el esperado recalculado: apertura + efectivo + ingresos - egresos', async () => {
     const { svc, spies } = setupCerrar(); // 100000 + 50000 + 20000 - 5000
     await svc.cerrar(3, 1, 'CAJERO', cerrarDto(165000));

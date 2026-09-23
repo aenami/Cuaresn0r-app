@@ -26,7 +26,7 @@ export class ItemsService {
         throw new ConflictException(`No se puede marcar entregado: el item esta ${item.estado_dc}`);
       }
 
-      await tx.detalleComanda.update({ where: { id_detalleComanda: idItem }, data: { estado_dc: 'ENTREGADO' } });
+      await tx.detalleComanda.updateMany({ where: { id_detalleComanda: idItem, estado_dc: 'PREPARANDO' }, data: { estado_dc: 'ENTREGADO', fecha_entrega_dc: new Date() } });
       await this.pedidosService.recalcularEstadoPedido(tx, idPedido);
 
       return tx.detalleComanda.findUniqueOrThrow({ where: { id_detalleComanda: idItem }, include: ITEM_INCLUDE });

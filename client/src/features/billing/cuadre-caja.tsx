@@ -22,8 +22,12 @@ import type {
   PagoProveedorCuadre,
   Turno,
   TurnoResumen,
+  TipoTurno,
 } from '@/types/api'
-import { turnoQuery, turnosQuery, useCerrarTurno } from '@/features/billing/api'
+import { estadoConteoCierreQuery, turnoQuery, turnosQuery, useCerrarTurno } from '@/features/billing/api'
+import { SelectorTipoTurno } from './tipo-turno'
+import { nombresTurno } from './tipos-turno'
+import { Link } from '@tanstack/react-router'
 import { formatearPrecio } from '@/lib/formato'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -69,6 +73,11 @@ function CuadreActivo({ turno }: { turno: TurnoResumen }) {
   const cerrar = useCerrarTurno(turno.id_turno)
   const [conteo, setConteo] = useState<Record<number, string>>({})
   const [confirmando, setConfirmando] = useState(false)
+  const [tipoAnterior, setTipoAnterior] = useState<TipoTurno | ''>('')
+  const tipo = turno.tipo_turno ?? tipoAnterior
+  const exigeInventario = tipo === 'TARDE_NOCHE' || tipo === 'UNICO'
+  const inventario = useQuery({ ...estadoConteoCierreQuery(turno.id_turno), enabled: exigeInventario })
+  const bloqueoInventario = !tipo || (exigeInventario && (!inventario.data?.completo || inventario.isError))
 
   const denominaciones = [...BILLETES, ...MONEDAS]
   const totalContado = denominaciones.reduce(
@@ -81,13 +90,14 @@ function CuadreActivo({ turno }: { turno: TurnoResumen }) {
   const diferencia = totalContado - esperado
 
   function confirmarCierre() {
+    if (bloqueoInventario || !tipo) return
     const conteoNumerico = Object.fromEntries(
       denominaciones
         .map((denominacion) => [denominacion, parseInt(conteo[denominacion] || '0', 10) || 0] as const)
         .filter(([, cantidad]) => cantidad > 0),
     )
     cerrar
-      .mutateAsync({ montoCierreReal: totalContado, conteo: conteoNumerico })
+      .mutateAsync({ montoCierreReal: totalContado, conteo: conteoNumerico, ...(!turno.tipo_turno && { tipo }) })
       .then(() => {
         setConfirmando(false)
         const estado = resultadoCuadre(diferencia)
@@ -104,6 +114,24 @@ function CuadreActivo({ turno }: { turno: TurnoResumen }) {
         <InformeCuadre turno={turno} />
 
         <aside className="space-y-4 xl:sticky xl:top-6">
+          {!turno.tipo_turno ? <SelectorTipoTurno valor={tipoAnterior} onCambiar={setTipoAnterior} /> : null}
+          {exigeInventario ? <div className="rounded-lg bg-surface-high p-4 text-sm" role="status">
+            <p className="font-semibold">Conteo diario de inventario</p>
+            {inventario.isPending ? <p>Verificando conteo…</p> : inventario.isError ? <>
+              <p className="text-destructive">No se pudo verificar el conteo. El cierre sigue bloqueado.</p>
+              <Button variant="ghost" onClick={() => void inventario.refetch()}>Reintentar</Button>
+            </> : inventario.data ? <>
+              <p className="mt-1">Fecha: {inventario.data.fecha}</p>
+              <p className={inventario.data.completo ? 'text-emerald-300' : 'text-tertiary'}>
+                {inventario.data.completo ? 'Conteo completo. Puedes cerrar caja.' : inventario.data.total === 0
+                  ? 'Configura la lista fija y completa el conteo antes de cerrar.'
+                  : `Elementos por contar o verificar: ${inventario.data.faltantes.length + inventario.data.pendientes.length + inventario.data.recontar.length}.`}
+              </p>
+              {inventario.data.recontar.length > 0 ? <p>Hubo entregas después del conteo. Solicita al administrador reabrir esos elementos.</p> : null}
+              {inventario.data.inconsistencias > 0 ? <p className="text-tertiary">{inventario.data.inconsistencias} diferencias registradas. No bloquean el cierre.</p> : null}
+            </> : null}
+            <Link to="/inventario" className="mt-2 inline-block text-primary underline underline-offset-4">Ir a inventario → Conteo diario</Link>
+          </div> : null}
           <ConteoEfectivo conteo={conteo} onCambiar={setConteo} />
           <TarjetaResultado
             base={base}
@@ -113,7 +141,7 @@ function CuadreActivo({ turno }: { turno: TurnoResumen }) {
           />
           <Button
             className="btn-heat h-12 w-full gap-2 font-heading text-sm font-semibold uppercase tracking-wide"
-            disabled={!tieneConteo || cerrar.isPending}
+            disabled={!tieneConteo || cerrar.isPending || bloqueoInventario}
             onClick={() => setConfirmando(true)}
           >
             {cerrar.isPending ? <Loader2 className="size-4 animate-spin" /> : <Lock className="size-4" />}
@@ -139,7 +167,7 @@ function CuadreActivo({ turno }: { turno: TurnoResumen }) {
             <Button
               variant="outline"
               className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-              disabled={cerrar.isPending}
+              disabled={cerrar.isPending || bloqueoInventario}
               onClick={confirmarCierre}
             >
               {cerrar.isPending ? <Loader2 className="size-4 animate-spin" /> : <Lock className="size-4" />}
@@ -167,6 +195,7 @@ function EncabezadoCuadre({ turno, historico }: { turno: TurnoResumen; historico
           </h1>
           <p className="mt-2 text-sm text-muted-foreground first-letter:uppercase">
             {fechaLarga(turno.fecha_apertura_turno)} · Turno #{turno.id_turno}
+            {' · '}{turno.tipo_turno ? nombresTurno[turno.tipo_turno] : 'Sin clasificación (anterior)'}
           </p>
         </div>
         <div className="rounded-lg border border-border bg-surface-lowest/70 px-4 py-3 text-right">
@@ -243,6 +272,10 @@ function InformeCuadre({ turno }: { turno: TurnoResumen }) {
       </section>
 
       <TablaNomina pagos={turno.detallePagosNomina} />
+      {turno.conteo_inventario_cierre_turno ? <section className="rounded-lg bg-surface-high p-4 text-sm">
+        <h2 className="font-semibold">Inventario verificado al cerrar</h2>
+        <p className="mt-1">{turno.conteo_inventario_cierre_turno.fecha} · {turno.conteo_inventario_cierre_turno.total} elementos contados · {turno.conteo_inventario_cierre_turno.inconsistencias} diferencias registradas.</p>
+      </section> : null}
       <TablaProveedores pagos={turno.detallePagosProveedores} />
       <FacturasPendientes
         cuentas={resumen.facturasPendientes.cuentas}

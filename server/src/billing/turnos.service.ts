@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -8,6 +9,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, EstadoTurno, Turno } from '../generated/prisma/client';
 import { AbrirTurnoDto } from './dto/abrir-turno.dto';
 import { CerrarTurnoDto } from './dto/cerrar-turno.dto';
+import {
+  estadoConteoCierre,
+  fechaColombia,
+} from '../recipes/inventory-reconciliation';
 
 const BASE_CAJA_COP = new Prisma.Decimal(300_000);
 
@@ -76,6 +81,7 @@ export class TurnosService {
       return tx.turno.create({
         data: {
           id_caja_turno: dto.idCaja,
+          tipo_turno: dto.tipo,
           id_usuario_turno: idUsuario,
           monto_apertura_turno: BASE_CAJA_COP,
           monto_cierre_esperado: BASE_CAJA_COP,
@@ -109,6 +115,33 @@ export class TurnosService {
         );
       }
 
+      const tipo = turno.tipo_turno ?? dto.tipo;
+      if (!tipo)
+        throw new BadRequestException(
+          'Selecciona el tipo de este turno antes de cerrarlo',
+        );
+      if (tipo !== 'MANANA') {
+        // Solo durante el cierre: estabiliza lista, conteos y entregas hasta
+        // guardar el cuadre. Evita cerrar con un conteo reabierto en paralelo
+        // o con una entrega que llegó entre la verificación y la confirmación.
+        await tx.$executeRaw`LOCK TABLE "ElementoConteoDiario", "ConteoInventarioDiario", "DetalleComanda" IN SHARE MODE`;
+      }
+      const inventario =
+        tipo === 'MANANA'
+          ? null
+          : await estadoConteoCierre(
+              tx,
+              fechaColombia(turno.fecha_apertura_turno),
+            );
+      if (inventario && !inventario.completo) {
+        throw new ConflictException(
+          `Completa el conteo diario del ${inventario.fecha} antes de cerrar caja. ` +
+            (inventario.total === 0
+              ? 'El administrador debe configurar la lista fija.'
+              : `Pendientes: ${[...inventario.faltantes, ...inventario.pendientes, ...inventario.recontar].join(', ')}. Si hubo entregas después del conteo, solicita reabrirlo y cuenta nuevamente.`),
+        );
+      }
+
       // Al cerrar se congela el esperado recalculado desde la fuente de
       // verdad (apertura + pagos EFECTIVO + INGRESO - EGRESO), no el cache:
       // asi un descuadre del cache nunca queda congelado en el historico.
@@ -121,6 +154,11 @@ export class TurnosService {
         where: { id_turno: idTurno },
         data: {
           estado_turno: 'CERRADO',
+          tipo_turno: tipo,
+          ...(inventario && {
+            conteo_inventario_cierre_turno:
+              inventario as unknown as Prisma.InputJsonValue,
+          }),
           fecha_cierre_turno: new Date(),
           monto_cierre_esperado: esperado,
           monto_cierre_real_turno: dto.montoCierreReal,
@@ -235,6 +273,17 @@ export class TurnosService {
     });
     if (!turno) throw new NotFoundException('Turno no encontrado');
     return this.conResumen(id);
+  }
+
+  async estadoInventario(id: number) {
+    const turno = await this.prisma.turno.findUnique({
+      where: { id_turno: id },
+    });
+    if (!turno) throw new NotFoundException('Turno no encontrado');
+    return estadoConteoCierre(
+      this.prisma,
+      fechaColombia(turno.fecha_apertura_turno),
+    );
   }
 
   // Detalle con totales por metodo de pago: tarjeta/transferencia no entran

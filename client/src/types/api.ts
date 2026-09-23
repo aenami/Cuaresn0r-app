@@ -134,6 +134,13 @@ export interface ElementoConteoDiario {
 }
 
 export interface ConteoInventarioDiario {
+  conciliacion?: {
+    cantidadSistema: string
+    diferencia: string | null
+    estado: 'PENDIENTE' | 'COINCIDE' | 'DIFERENCIA' | 'RECONTAR' | 'NO_COMPARABLE'
+    motivoNoComparable: string | null
+    requiereReconteo: boolean
+  }
   id_conteoInventario: number
   fecha_conteoInventario: string
   tipo_objetivo_conteoInventario: TipoObjetivoProduccion
@@ -397,7 +404,21 @@ export interface MovimientoCaja {
   fecha_mc: string
 }
 
+export type TipoTurno = 'MANANA' | 'TARDE_NOCHE' | 'UNICO'
+
+export interface EstadoConteoCierre {
+  fecha: string
+  total: number
+  faltantes: string[]
+  pendientes: string[]
+  recontar: string[]
+  completo: boolean
+  inconsistencias: number
+}
+
 export interface Turno {
+  tipo_turno: TipoTurno | null
+  conteo_inventario_cierre_turno?: EstadoConteoCierre | null
   id_turno: number
   id_caja_turno: number
   id_usuario_turno: number

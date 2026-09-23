@@ -42,4 +42,9 @@ export class TurnosController {
   ) {
     return this.turnosService.cerrar(id, req.user.id, req.user.rolNombre, cerrarTurnoDto);
   }
+
+  @Get(':id/conteo-inventario')
+  estadoInventario(@Param('id', ParseIntPipe) id: number) {
+    return this.turnosService.estadoInventario(id);
+  }
 }
