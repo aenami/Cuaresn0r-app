@@ -22,6 +22,17 @@ alcance o feature terminada.
 
 ## Completado
 
+### 2026-09-22 — Evitar cierre accidental de formularios al descartar selectores
+
+- El componente compartido `DialogContent` evita el cierre por clic o toque fuera
+  del diálogo, preservando los datos al descartar un selector sin elegir opción.
+- Se mantienen los cierres explícitos mediante X, Cancelar y Escape. Con un
+  selector abierto, el primer Escape cierra el selector y el siguiente el diálogo.
+- Validación en Chromium con Playwright sobre lista diaria e ingreso de ingredientes:
+  clic fuera del selector dentro y fuera del formulario, conservación de valores,
+  selección de opciones, Escape y X. API simulada, sin crear registros reales.
+- Compilación de producción y lint del cliente correctos.
+
 ### 2026-09-20 — Lista fija para el conteo diario de inventario
 
 - El administrador configura una lista permanente de productos e ingredientes

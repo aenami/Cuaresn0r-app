@@ -49,6 +49,7 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  onPointerDownOutside,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
@@ -63,6 +64,12 @@ function DialogContent({
           className
         )}
         {...props}
+        onPointerDownOutside={(event) => {
+          onPointerDownOutside?.(event)
+          // Cerrar un selector o pulsar el fondo no debe descartar el formulario.
+          // El usuario puede cerrar explícitamente con la X, Cancelar o Escape.
+          event.preventDefault()
+        }}
       >
         {children}
         {showCloseButton && (
