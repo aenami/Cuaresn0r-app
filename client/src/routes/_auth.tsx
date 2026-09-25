@@ -9,6 +9,7 @@ import {
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import {
   BookOpen,
+  Croissant,
   Boxes,
   CircleDollarSign,
   Flame,
@@ -22,6 +23,7 @@ import {
   UserCog,
   Users,
   Wallet,
+  ArrowRightLeft,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { SesionUsuario } from '@/stores/auth.store'
@@ -46,20 +48,23 @@ type ItemNav = {
   icono: LucideIcon
   soloAdmin?: boolean
   soloCaja?: boolean
+  area?: 'RESTAURANTE' | 'PANADERIA'
   ocultarMesero?: boolean
 }
 
 const NAVEGACION: ItemNav[] = [
   // Inicio no aplica al MESERO: su `/` redirige a /mesas, asi que el enlace
   // seria un rebote inutil. Lo ocultamos de su barra.
-  { etiqueta: 'Inicio', to: '/', icono: LayoutDashboard, ocultarMesero: true },
-  { etiqueta: 'Pedidos', to: '/mesas', icono: Hash },
-  { etiqueta: 'Caja', to: '/caja', icono: Wallet, soloCaja: true },
-  { etiqueta: 'Cuentas por pagar', to: '/cuentas-por-pagar', icono: ReceiptText, soloCaja: true },
-  { etiqueta: 'Nomina', to: '/nomina', icono: Users, soloCaja: true },
+  { etiqueta: 'Inicio', to: '/', icono: LayoutDashboard, ocultarMesero: true, area: 'RESTAURANTE' },
+  { etiqueta: 'Pedidos', to: '/mesas', icono: Hash, area: 'RESTAURANTE' },
+  { etiqueta: 'Panaderia', to: '/panaderia', icono: Croissant, soloCaja: true, area: 'PANADERIA' },
+  { etiqueta: 'Traslados', to: '/traslados', icono: ArrowRightLeft, soloCaja: true, area: 'RESTAURANTE' },
+  { etiqueta: 'Caja', to: '/caja', icono: Wallet, soloCaja: true, area: 'RESTAURANTE' },
+  { etiqueta: 'Cuentas por pagar', to: '/cuentas-por-pagar', icono: ReceiptText, soloCaja: true, area: 'RESTAURANTE' },
+  { etiqueta: 'Nomina', to: '/nomina', icono: Users, soloCaja: true, area: 'RESTAURANTE' },
   { etiqueta: 'Mi nomina', to: '/mi-nomina', icono: CircleDollarSign },
-  { etiqueta: 'Catalogo', to: '/catalogo', icono: BookOpen },
-  { etiqueta: 'Inventario', to: '/inventario', icono: Boxes },
+  { etiqueta: 'Catalogo', to: '/catalogo', icono: BookOpen, area: 'RESTAURANTE' },
+  { etiqueta: 'Inventario', to: '/inventario', icono: Boxes, area: 'RESTAURANTE' },
   { etiqueta: 'Impresoras', to: '/impresoras', icono: Printer, soloAdmin: true },
   { etiqueta: 'Usuarios', to: '/usuarios', icono: UserCog, soloAdmin: true },
 ]
@@ -155,7 +160,8 @@ function AppShell() {
     (item) =>
       (!item.soloAdmin || esAdmin) &&
       (!item.soloCaja || esCaja) &&
-      (!item.ocultarMesero || !esMesero),
+      (!item.ocultarMesero || !esMesero) &&
+      (!item.area || esAdmin || item.area === usuario?.area),
   )
   const navigate = useNavigate()
   const [menuAbierto, setMenuAbierto] = useState(false)

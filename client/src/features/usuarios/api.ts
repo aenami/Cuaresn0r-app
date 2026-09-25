@@ -23,6 +23,7 @@ export interface CrearUsuarioPayload {
   idRol: number
   email: string
   password: string
+  area: 'RESTAURANTE' | 'PANADERIA'
 }
 
 function useInvalidarUsuarios() {
@@ -42,7 +43,7 @@ export function useEditarUsuario() {
   const invalidar = useInvalidarUsuarios()
   return useMutation({
     // El backend solo acepta cambiar email y/o rol (no reasignar empleado ni clave).
-    mutationFn: ({ id, ...payload }: { id: number; email?: string; idRol?: number }) =>
+    mutationFn: ({ id, ...payload }: { id: number; email?: string; idRol?: number; area?: 'RESTAURANTE' | 'PANADERIA' }) =>
       api.patch<Usuario>(`/auth/usuarios/${id}`, payload),
     onSuccess: invalidar,
   })

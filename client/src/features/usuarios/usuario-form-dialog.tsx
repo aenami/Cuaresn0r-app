@@ -38,6 +38,7 @@ function construirEsquema(esEdicion: boolean) {
       ? z.string().optional()
       : z.string().min(1, 'Selecciona un empleado'),
     idRol: z.string().min(1, 'Selecciona un rol'),
+    area: z.enum(['RESTAURANTE', 'PANADERIA']),
     email: z.string().min(1, 'Ingresa el email').email('Email invalido').max(100, 'Maximo 100 caracteres'),
     // En edicion la clave no se toca aqui (hay "Restablecer contraseña" aparte).
     password: esEdicion ? z.string().optional() : z.string().min(8, 'Minimo 8 caracteres'),
@@ -67,7 +68,7 @@ export function UsuarioFormDialog({
 
   const form = useForm<Valores>({
     resolver: zodResolver(esquema),
-    defaultValues: { idEmpleado: '', idRol: '', email: '', password: '' },
+    defaultValues: { idEmpleado: '', idRol: '', area: 'RESTAURANTE', email: '', password: '' },
   })
 
   useEffect(() => {
@@ -75,6 +76,7 @@ export function UsuarioFormDialog({
       form.reset({
         idEmpleado: usuario ? String(usuario.empleado.id_empleado) : '',
         idRol: usuario ? String(usuario.rol.id_rol) : '',
+        area: usuario?.area ?? 'RESTAURANTE',
         email: usuario?.email_usuario ?? '',
         password: '',
       })
@@ -83,10 +85,11 @@ export function UsuarioFormDialog({
 
   function enviar(valores: Valores) {
     const promesa = usuario
-      ? editar.mutateAsync({ id: usuario.id_usuario, email: valores.email, idRol: Number(valores.idRol) })
+      ? editar.mutateAsync({ id: usuario.id_usuario, email: valores.email, idRol: Number(valores.idRol), area: valores.area })
       : crear.mutateAsync({
           idEmpleado: Number(valores.idEmpleado),
           idRol: Number(valores.idRol),
+          area: valores.area,
           email: valores.email,
           password: valores.password ?? '',
         })
@@ -191,6 +194,17 @@ export function UsuarioFormDialog({
                 </FormItem>
               )}
             />
+
+            <FormField control={form.control} name="area" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Area asignada</FormLabel>
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <FormControl><SelectTrigger className="w-full"><SelectValue /></SelectTrigger></FormControl>
+                  <SelectContent><SelectItem value="RESTAURANTE">Restaurante / cafeteria</SelectItem><SelectItem value="PANADERIA">Panaderia</SelectItem></SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )} />
 
             {!esEdicion && (
               <FormField

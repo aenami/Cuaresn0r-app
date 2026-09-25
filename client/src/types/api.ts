@@ -419,6 +419,7 @@ export interface EstadoConteoCierre {
 export interface Turno {
   tipo_turno: TipoTurno | null
   conteo_inventario_cierre_turno?: EstadoConteoCierre | null
+  conteo_panaderia_cierre_turno?: { valorDiferencia: string; completo: boolean } | null
   id_turno: number
   id_caja_turno: number
   id_usuario_turno: number
@@ -847,6 +848,7 @@ export interface Rol {
 // Espejo del SAFE_SELECT del backend: nunca incluye password_usuario.
 export interface Usuario {
   id_usuario: number
+  area: 'RESTAURANTE' | 'PANADERIA'
   email_usuario: string
   fecha_creacion_usuario: string
   empleado: {

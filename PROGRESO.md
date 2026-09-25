@@ -414,3 +414,43 @@ alcance o feature terminada.
 ## Decisiones descartadas
 
 - Rol y pantalla exclusiva de cocina (`COCINERO`).
+
+### 2026-09-25 — Panaderia como segunda area del POS (implementacion local)
+
+- Se incorporo `PANADERIA` como area separada. Las cajas y turnos conservan
+  el area; los usuarios tienen una asignacion de area y los cajeros solo
+  acceden a la suya. Los administradores pueden operar ambas vistas.
+- La panaderia tiene catalogo y existencias propios: panes, externos e
+  insumos no vendibles. Los insumos conservan unidades y fracciones; la
+  venta directa no usa mesas y acepta pagos mixtos.
+- Las hornadas, recepciones, ventas, mermas y traslados quedan registrados
+  como movimientos de inventario. El conteo muestra saldo inicial del dia,
+  entradas, ventas POS, existencia de sistema, conteo fisico y diferencia
+  valorada. Las diferencias se muestran para revision, sin crear ventas.
+- La caja de panaderia permite apertura, movimientos, cuadre e historial
+  propios. El cierre de tarde-noche y turno unico exige el conteo completo;
+  el cierre conserva una fotografia de sus diferencias.
+- Hay traslados internos en ambos sentidos. Panaderia a restaurante crea
+  una cuenta por pagar en restaurante. Restaurante a panaderia solo envia
+  ingredientes con stock a insumos de la misma unidad; panaderia registra
+  su deuda interna. Salida, recepcion, pago y confirmacion del ingreso son
+  pasos separados, con cantidad y precio pactado por traslado.
+- Los reintentos de venta y de creacion de traslados usan una clave unica
+  de operacion para evitar duplicados tras una respuesta de red incierta.
+- La migracion aditiva `20260924190000_panaderia_separada` se verifico
+  aplicando toda la historia sobre una base PostgreSQL temporal local. La
+  base de datos de trabajo `POS` no fue modificada: Prisma detecta un drift
+  **anterior** de migraciones en ese ambiente y su sugerencia de reinicio
+  borraria datos. No ejecutar `migrate reset` alli.
+- Verificacion: esquema Prisma valido, compilacion de backend y frontend,
+  lint del cliente, 23 suites/185 pruebas y revision visual desktop/movil
+  con respuestas simuladas. Ademas, en una base PostgreSQL temporal se
+  recorrio apertura, venta y reintento idempotente, traslados en ambos
+  sentidos, recepcion, pago, conteo y cierre de caja. Falta la validacion
+  operativa con los datos reales del negocio.
+- **Pendiente fiscal:** confirmar NIT y numeracion de las dos areas. Por
+  ahora las ventas de panaderia y los traslados generan comprobantes
+  internos, no facturas fiscales ni tickets impresos de panaderia.
+- **Pendiente despliegue:** aplicar migracion en Neon y publicar API/web solo
+  despues de validar una copia de los datos y el flujo fiscal. Este cambio
+  aun no se ha subido a produccion.

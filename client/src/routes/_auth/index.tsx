@@ -9,6 +9,9 @@ export const Route = createFileRoute('/_auth/')({
     if (useAuthStore.getState().usuario?.rolNombre === 'MESERO') {
       throw redirect({ to: '/mesas' })
     }
+    if (useAuthStore.getState().usuario?.rolNombre === 'CAJERO' && useAuthStore.getState().usuario?.area === 'PANADERIA') {
+      throw redirect({ to: '/panaderia' })
+    }
   },
   component: PaginaInicio,
 })

@@ -8,6 +8,7 @@ export interface SesionUsuario {
   id: number
   idRol: number
   rolNombre: string
+  area: 'RESTAURANTE' | 'PANADERIA'
 }
 
 interface AuthState {
@@ -25,7 +26,7 @@ function decodificarBase64Url(token: string): Record<string, unknown> {
 function decodificarPayload(token: string): SesionUsuario | null {
   try {
     const payload = decodificarBase64Url(token) as unknown as SesionUsuario
-    return { id: payload.id, idRol: payload.idRol, rolNombre: payload.rolNombre }
+    return { id: payload.id, idRol: payload.idRol, rolNombre: payload.rolNombre, area: payload.area ?? 'RESTAURANTE' }
   } catch {
     return null
   }
