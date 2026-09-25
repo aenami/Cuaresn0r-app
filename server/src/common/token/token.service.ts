@@ -1,10 +1,12 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import jwt from 'jsonwebtoken'
+import { AreaNegocio } from '../../generated/prisma/client';
 
 export interface AuthTokenPayload {
   id: number;
   idRol: number;
   rolNombre: string;
+  area: AreaNegocio;
   iat?: number;
   exp?: number;
 }
@@ -12,7 +14,7 @@ export interface AuthTokenPayload {
 @Injectable()
 export class TokenService {
 
-  generateToken(idUser: number, idRol: number, rolNombre: string){
+  generateToken(idUser: number, idRol: number, rolNombre: string, area: AreaNegocio = 'RESTAURANTE'){
     // Payload base que viaja dentro del JWT para identificar al usuario autenticado.
     // idRol/rolNombre son solo informativos para el cliente: la autoridad es la DB,
     // que JwtAuthGuard consulta en cada request (un cambio de rol o el retiro del
@@ -21,6 +23,7 @@ export class TokenService {
       id: idUser,
       idRol,
       rolNombre,
+      area,
     };
 
     const token = jwt.sign(

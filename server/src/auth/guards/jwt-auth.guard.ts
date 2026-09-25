@@ -39,7 +39,7 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('El usuario esta inactivo');
     }
 
-    request.user = { id: usuario.id_usuario, idRol: usuario.id_rol, rolNombre: usuario.rol.nombre_rol };
+    request.user = { id: usuario.id_usuario, idRol: usuario.id_rol, rolNombre: usuario.rol.nombre_rol, area: usuario.area };
     return true;
   }
 

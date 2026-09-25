@@ -15,6 +15,7 @@ export class CajasService {
 
   async findAll() {
     return this.prisma.caja.findMany({
+      where: { area: 'RESTAURANTE' },
       orderBy: { id_caja: 'asc' },
       include: { turnos: { where: { estado_turno: 'ABIERTO' }, include: { usuario: { select: { id_usuario: true, email_usuario: true } } } } },
     });

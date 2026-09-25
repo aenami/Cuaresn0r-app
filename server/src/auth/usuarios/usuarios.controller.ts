@@ -5,6 +5,7 @@ import { UpdateUsuarioDto } from './dto/update-usuario.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { Roles } from '../decorators/roles.decorator';
+import { Area } from '../decorators/area.decorator';
 import { AuthenticatedRequest } from '../types/authenticated-request';
 
 @Controller('/auth/usuarios')
@@ -26,11 +27,13 @@ export class UsuariosController {
   // Declarado antes de ':id' para que Nest no intente matchear "me" como :id.
   // Sin @Roles(): cualquier usuario autenticado puede ver su propio perfil.
   @Get('me')
+  @Area('AMBAS')
   findMe(@Req() req: AuthenticatedRequest) {
     return this.usuariosService.findOne(req.user.id);
   }
 
   @Patch('me/password')
+  @Area('AMBAS')
   changeOwnPassword(@Req() req: AuthenticatedRequest, @Body() changePasswordDto: ChangePasswordDto) {
     return this.usuariosService.changeOwnPassword(req.user.id, changePasswordDto);
   }

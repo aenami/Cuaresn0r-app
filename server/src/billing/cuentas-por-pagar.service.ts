@@ -160,6 +160,11 @@ export class CuentasPorPagarService {
       });
       if (!cuenta)
         throw new NotFoundException('Cuenta por pagar no encontrada');
+      const transferencia = await tx.transferenciaPanaderia.findUnique({
+        where: { cuentaPorPagarId: idCuenta },
+      });
+      if (transferencia)
+        throw new ConflictException('Recibe este traslado desde Panaderia > Transferencias');
       if (cuenta.estado_cuentaPorPagar === 'ANULADA')
         throw new ConflictException('La cuenta esta anulada');
       if (cuenta.fecha_recepcion_mercancia !== null)
@@ -226,6 +231,14 @@ export class CuentasPorPagarService {
         throw new ConflictException(
           'Debes tener un turno abierto para registrar el pago',
         );
+      const caja = await tx.caja.findUniqueOrThrow({ where: { id_caja: turno.id_caja_turno } });
+      if (caja.area !== 'RESTAURANTE')
+        throw new ConflictException('Esta cuenta por pagar pertenece a restaurante');
+      const transferencia = await tx.transferenciaPanaderia.findUnique({
+        where: { cuentaPorPagarId: idCuenta },
+      });
+      if (transferencia && !transferencia.fechaRecepcion)
+        throw new ConflictException('Confirma la recepcion del traslado antes de pagarlo');
 
       const pagado = cuenta.pagos.reduce(
         (total, pago) => total.plus(pago.monto_pagoCuentaPorPagar),

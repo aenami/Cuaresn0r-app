@@ -30,10 +30,11 @@ interface FacturaMock {
 
 function setup(
   facturaOverrides: Partial<FacturaMock> = {},
-  turno: unknown = { id_turno: 3 },
+  turno: unknown = { id_turno: 3, id_caja_turno: 1 },
 ) {
   const spies = {
     turnoFindFirst: jest.fn().mockResolvedValue(turno),
+    cajaFind: jest.fn().mockResolvedValue({ area: 'RESTAURANTE' }),
     facturaFind: jest.fn().mockResolvedValue({
       estado_factura: 'PENDIENTE',
       monto_total_factura: new Prisma.Decimal(119),
@@ -65,6 +66,7 @@ function setup(
   };
   const tx = {
     turno: { findFirst: spies.turnoFindFirst, update: spies.turnoUpdate },
+    caja: { findUniqueOrThrow: spies.cajaFind },
     factura: {
       findUniqueOrThrow: spies.facturaFind,
       update: spies.facturaUpdate,
@@ -89,6 +91,11 @@ function setup(
 }
 
 describe('PagosService.registrar (guardas)', () => {
+  it('impide cobrar restaurante con una caja de panaderia', async () => {
+    const { svc, spies } = setup();
+    spies.cajaFind.mockResolvedValue({ area: 'PANADERIA' });
+    await expect(svc.registrar(1, 5, dto(50))).rejects.toThrow(/restaurante/);
+  });
   it('exige un turno abierto', async () => {
     const { svc } = setup({}, null);
     await expect(svc.registrar(1, 5, dto(50))).rejects.toBeInstanceOf(

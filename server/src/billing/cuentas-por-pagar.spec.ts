@@ -16,7 +16,9 @@ function setup() {
       proveedor: { nombre_proveedor: 'Proveedor prueba' },
       concepto_cuentaPorPagar: 'Compra semanal',
     }),
-    turnoFind: jest.fn().mockResolvedValue({ id_turno: 9 }),
+    turnoFind: jest.fn().mockResolvedValue({ id_turno: 9, id_caja_turno: 1 }),
+    cajaFind: jest.fn().mockResolvedValue({ area: 'RESTAURANTE' }),
+    transferenciaFind: jest.fn().mockResolvedValue(null),
     pagoCreate: jest.fn((args: { data: Record<string, unknown> }) =>
       Promise.resolve(args.data),
     ),
@@ -32,6 +34,8 @@ function setup() {
       update: spies.cuentaUpdate,
     },
     turno: { findFirst: spies.turnoFind, update: spies.turnoUpdate },
+    caja: { findUniqueOrThrow: spies.cajaFind },
+    transferenciaPanaderia: { findUnique: spies.transferenciaFind },
     pagoCuentaPorPagar: { create: spies.pagoCreate },
     movimientoCaja: { create: spies.movimientoCreate },
   };
@@ -129,6 +133,7 @@ describe('CuentasPorPagarService.mercancia', () => {
       },
       movimientoInventario: { create: movimiento },
       ingrediente: { update: actualizarIngrediente },
+      transferenciaPanaderia: { findUnique: jest.fn().mockResolvedValue(null) },
     };
     const prisma = {
       $transaction: (callback: (cliente: typeof tx) => unknown) => callback(tx),

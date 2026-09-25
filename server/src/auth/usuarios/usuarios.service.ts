@@ -16,6 +16,7 @@ import { Prisma } from '../../generated/prisma/client';
 const SAFE_SELECT = {
   id_usuario: true,
   email_usuario: true,
+  area: true,
   fecha_creacion_usuario: true,
   empleado: {
     select: {
@@ -62,6 +63,7 @@ export class UsuariosService {
           id_empleado_usuario: dto.idEmpleado,
           id_rol: dto.idRol,
           email_usuario: dto.email,
+          area: dto.area ?? 'RESTAURANTE',
           password_usuario: hashedPassword,
         },
         select: SAFE_SELECT,
@@ -166,6 +168,7 @@ export class UsuariosService {
           data: {
             ...(dto.email !== undefined && { email_usuario: dto.email }),
             ...(dto.idRol !== undefined && { id_rol: dto.idRol }),
+            ...(dto.area !== undefined && { area: dto.area }),
           },
           select: SAFE_SELECT,
         });

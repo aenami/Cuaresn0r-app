@@ -27,10 +27,12 @@ function setup(
   detalles: unknown[] = [],
   conteos: unknown[] = [conteo()],
   elementos: unknown[] = [],
+  traslados: unknown[] = [],
 ) {
   const buscar = jest.fn().mockResolvedValue(detalles);
   const db = {
     detalleComanda: { findMany: buscar },
+    transferenciaRestaurantePanaderia: { findMany: jest.fn().mockResolvedValue(traslados) },
     conteoInventarioDiario: { findMany: jest.fn().mockResolvedValue(conteos) },
     elementoConteoDiario: { findMany: jest.fn().mockResolvedValue(elementos) },
   } as unknown as Prisma.TransactionClient;
@@ -38,6 +40,22 @@ function setup(
 }
 
 describe('Conciliación por entregas', () => {
+  it('descuenta los traslados a panaderia del faltante del ingrediente', async () => {
+    const { db } = setup([], [], [], [{
+      ingredienteId: 8,
+      cantidad: new Prisma.Decimal('2.5'),
+      fechaSalida: new Date('2026-09-22T16:00:00Z'),
+    }]);
+    const salidas = await salidasEntregadas(db, fecha);
+    const resultado = compararConteo(conteo({
+      tipo_objetivo_conteoInventario: 'INGREDIENTE',
+      id_producto_conteoInventario: null,
+      id_ingrediente_conteoInventario: 8,
+      cantidad_salida_conteoInventario: new Prisma.Decimal('2.5'),
+    }), salidas);
+    expect(resultado.diferencia).toBe('0');
+  });
+
   it('usa el día colombiano, no UTC ni la zona del servidor', () => {
     expect(fechaColombia(new Date('2026-09-23T03:00:00Z'))).toEqual(fecha);
     expect(rangoDia(fecha)).toEqual({

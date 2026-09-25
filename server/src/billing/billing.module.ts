@@ -17,11 +17,13 @@ import { ProveedoresController } from './proveedores.controller';
 import { ProveedoresService } from './proveedores.service';
 import { CuentasPorPagarController } from './cuentas-por-pagar.controller';
 import { CuentasPorPagarService } from './cuentas-por-pagar.service';
+import { BakeryModule } from '../bakery/bakery.module';
 
 // Prefijos de ruta disjuntos (/billing/config|cajas|turnos|movimientos|
 // facturas), asi que el orden de registro no genera colisiones
 // literal-vs-:param entre controllers (el bug que hubo en recipes).
 @Module({
+  imports: [BakeryModule],
   controllers: [
     BillingConfigController,
     NegocioConfigController,

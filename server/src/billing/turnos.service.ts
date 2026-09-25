@@ -6,13 +6,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma, EstadoTurno, Turno } from '../generated/prisma/client';
+import { Prisma, AreaNegocio, EstadoTurno, Turno } from '../generated/prisma/client';
 import { AbrirTurnoDto } from './dto/abrir-turno.dto';
 import { CerrarTurnoDto } from './dto/cerrar-turno.dto';
 import {
   estadoConteoCierre,
   fechaColombia,
 } from '../recipes/inventory-reconciliation';
+import { BakeryService } from '../bakery/bakery.service';
 
 const BASE_CAJA_COP = new Prisma.Decimal(300_000);
 
@@ -49,16 +50,25 @@ function leerFacturasCongeladas(
 
 @Injectable()
 export class TurnosService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly bakery: BakeryService,
+  ) {}
 
-  async abrir(idUsuario: number, dto: AbrirTurnoDto) {
+  private verificarArea(area: AreaNegocio, areaUsuario?: AreaNegocio, rolNombre?: string) {
+    if (rolNombre === 'CAJERO' && areaUsuario !== undefined && areaUsuario !== area)
+      throw new ForbiddenException('El cajero solo puede operar su area asignada');
+  }
+
+  async abrir(idUsuario: number, dto: AbrirTurnoDto, areaUsuario?: AreaNegocio, rolNombre?: string) {
     return this.prisma.$transaction(async (tx) => {
       // Bloqueo de la caja: dos aperturas simultaneas sobre la misma caja
       // pasarian ambas los findFirst de abajo sin esto (mismo patron que Mesa).
-      const filas = await tx.$queryRaw<{ id_caja: number }[]>`
-        SELECT id_caja FROM "Caja" WHERE id_caja = ${dto.idCaja} FOR UPDATE
+      const filas = await tx.$queryRaw<{ id_caja: number; area: AreaNegocio }[]>`
+        SELECT id_caja, area FROM "Caja" WHERE id_caja = ${dto.idCaja} FOR UPDATE
       `;
       if (!filas[0]) throw new NotFoundException('Caja no encontrada');
+      this.verificarArea(filas[0].area, areaUsuario, rolNombre);
 
       const turnoUsuario = await tx.turno.findFirst({
         where: { id_usuario_turno: idUsuario, estado_turno: 'ABIERTO' },
@@ -74,6 +84,14 @@ export class TurnosService {
       });
       if (turnoCaja)
         throw new ConflictException('Esta caja ya tiene un turno abierto');
+      if (filas[0].area === 'PANADERIA') {
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(924091) IS NULL AS "bloqueado"`;
+        const otroTurno = await tx.turno.findFirst({
+          where: { estado_turno: 'ABIERTO', caja: { area: 'PANADERIA' } },
+        });
+        if (otroTurno)
+          throw new ConflictException('Panaderia ya tiene un turno abierto');
+      }
 
       // Todo turno recibe y debe dejar exactamente la base fija del local.
       // monto_cierre_esperado arranca igual a la base: es el cache que cada
@@ -96,6 +114,7 @@ export class TurnosService {
     idUsuario: number,
     rolNombre: string,
     dto: CerrarTurnoDto,
+    areaUsuario?: AreaNegocio,
   ) {
     return this.prisma.$transaction(async (tx) => {
       // Bloqueo del turno: que no entre un pago/movimiento a mitad del cierre.
@@ -106,7 +125,9 @@ export class TurnosService {
 
       const turno = await tx.turno.findUniqueOrThrow({
         where: { id_turno: idTurno },
+        include: { caja: true },
       });
+      this.verificarArea(turno.caja.area, areaUsuario, rolNombre);
       if (turno.estado_turno === 'CERRADO')
         throw new ConflictException('Este turno ya esta cerrado');
       if (turno.id_usuario_turno !== idUsuario && rolNombre !== 'ADMIN') {
@@ -120,34 +141,39 @@ export class TurnosService {
         throw new BadRequestException(
           'Selecciona el tipo de este turno antes de cerrarlo',
         );
-      if (tipo !== 'MANANA') {
+      if (tipo !== 'MANANA' && turno.caja.area === 'RESTAURANTE') {
         // Solo durante el cierre: estabiliza lista, conteos y entregas hasta
         // guardar el cuadre. Evita cerrar con un conteo reabierto en paralelo
         // o con una entrega que llegó entre la verificación y la confirmación.
         await tx.$executeRaw`LOCK TABLE "ElementoConteoDiario", "ConteoInventarioDiario", "DetalleComanda" IN SHARE MODE`;
       }
-      const inventario =
-        tipo === 'MANANA'
-          ? null
-          : await estadoConteoCierre(
-              tx,
-              fechaColombia(turno.fecha_apertura_turno),
-            );
-      if (inventario && !inventario.completo) {
+      if (tipo !== 'MANANA' && turno.caja.area === 'PANADERIA') {
+        await tx.$executeRaw`LOCK TABLE "ConteoPanaderia", "MovimientoPanaderia" IN SHARE MODE`;
+      }
+      const fechaConteo = fechaColombia(turno.fecha_apertura_turno);
+      const inventarioRestaurante =
+        tipo !== 'MANANA' && turno.caja.area === 'RESTAURANTE'
+          ? await estadoConteoCierre(tx, fechaConteo)
+          : null;
+      if (inventarioRestaurante && !inventarioRestaurante.completo) {
         throw new ConflictException(
-          `Completa el conteo diario del ${inventario.fecha} antes de cerrar caja. ` +
-            (inventario.total === 0
+          `Completa el conteo diario del ${inventarioRestaurante.fecha} antes de cerrar caja. ` +
+            (inventarioRestaurante.total === 0
               ? 'El administrador debe configurar la lista fija.'
-              : `Pendientes: ${[...inventario.faltantes, ...inventario.pendientes, ...inventario.recontar].join(', ')}. Si hubo entregas después del conteo, solicita reabrirlo y cuenta nuevamente.`),
+              : `Pendientes: ${[...inventarioRestaurante.faltantes, ...inventarioRestaurante.pendientes, ...inventarioRestaurante.recontar].join(', ')}. Si hubo entregas después del conteo, solicita reabrirlo y cuenta nuevamente.`),
         );
       }
+      const inventarioPanaderia =
+        tipo !== 'MANANA' && turno.caja.area === 'PANADERIA'
+          ? await this.bakery.aplicarConteoCierre(tx, idUsuario, fechaConteo)
+          : null;
 
       // Al cerrar se congela el esperado recalculado desde la fuente de
       // verdad (apertura + pagos EFECTIVO + INGRESO - EGRESO), no el cache:
       // asi un descuadre del cache nunca queda congelado en el historico.
       const [esperado, facturasPendientes] = await Promise.all([
         this.calcularCierreEsperado(tx, turno),
-        this.obtenerFacturasPendientes(tx),
+        this.obtenerFacturasPendientes(tx, turno.caja.area),
       ]);
 
       return tx.turno.update({
@@ -155,9 +181,13 @@ export class TurnosService {
         data: {
           estado_turno: 'CERRADO',
           tipo_turno: tipo,
-          ...(inventario && {
+          ...(inventarioRestaurante && {
             conteo_inventario_cierre_turno:
-              inventario as unknown as Prisma.InputJsonValue,
+              inventarioRestaurante as unknown as Prisma.InputJsonValue,
+          }),
+          ...(inventarioPanaderia && {
+            conteo_panaderia_cierre_turno:
+              inventarioPanaderia as unknown as Prisma.InputJsonValue,
           }),
           fecha_cierre_turno: new Date(),
           monto_cierre_esperado: esperado,
@@ -181,6 +211,10 @@ export class TurnosService {
       where: { id_turno_pago: turno.id_turno, metodo_pago: 'EFECTIVO' },
       _sum: { monto_total_pago: true, monto_excedente_pago: true },
     });
+    const ventasPanaderia = await tx.pagoVentaPanaderia.aggregate({
+      where: { venta: { turnoId: turno.id_turno }, metodo: 'EFECTIVO' },
+      _sum: { monto: true },
+    });
     const ingresos = await tx.movimientoCaja.aggregate({
       where: { id_turno_mc: turno.id_turno, tipo_mc: 'INGRESO' },
       _sum: { monto_mc: true },
@@ -193,13 +227,33 @@ export class TurnosService {
     return turno.monto_apertura_turno
       .plus(pagosEfectivo._sum.monto_total_pago ?? 0)
       .plus(pagosEfectivo._sum.monto_excedente_pago ?? 0)
+      .plus(ventasPanaderia._sum.monto ?? 0)
       .plus(ingresos._sum.monto_mc ?? 0)
       .minus(egresos._sum.monto_mc ?? 0);
   }
 
   private async obtenerFacturasPendientes(
     cliente: Prisma.TransactionClient | PrismaService,
+    area: AreaNegocio = 'RESTAURANTE',
   ): Promise<FacturasPendientesCuadre> {
+    if (area === 'PANADERIA') {
+      const transferencias = await cliente.transferenciaRestaurantePanaderia.findMany({
+        where: { fechaPago: null },
+        include: { ingrediente: true },
+        orderBy: { fechaSalida: 'asc' },
+      });
+      const cuentas = transferencias.map((t) => ({
+        idCuenta: t.id,
+        proveedor: 'Restaurante / cafeteria',
+        concepto: t.concepto,
+        documento: `TR-RES-${t.id}`,
+        fechaVencimiento: null,
+        montoTotal: t.montoTotal.toString(),
+        saldoPendiente: t.montoTotal.toString(),
+      }));
+      return { total: transferencias.reduce((total, t) => total.plus(t.montoTotal), new Prisma.Decimal(0)).toString(),
+        cuentas, historicoDisponible: true };
+    }
     const cuentas = await cliente.cuentaPorPagar.findMany({
       where: { estado_cuentaPorPagar: { in: ['PENDIENTE', 'PARCIAL'] } },
       select: {
@@ -247,18 +301,24 @@ export class TurnosService {
   }
 
   // El turno abierto del usuario autenticado (el que usan pagos/movimientos).
-  async findActual(idUsuario: number) {
+  async findActual(idUsuario: number, area: AreaNegocio = 'RESTAURANTE', areaUsuario?: AreaNegocio, rolNombre?: string) {
+    if (!['RESTAURANTE', 'PANADERIA'].includes(area))
+      throw new BadRequestException('Area de negocio no valida');
+    this.verificarArea(area, areaUsuario, rolNombre);
     const turno = await this.prisma.turno.findFirst({
-      where: { id_usuario_turno: idUsuario, estado_turno: 'ABIERTO' },
+      where: { id_usuario_turno: idUsuario, estado_turno: 'ABIERTO', caja: { area } },
       include: { caja: true },
     });
     if (!turno) throw new NotFoundException('No tienes un turno abierto');
     return this.conResumen(turno.id_turno);
   }
 
-  async findAll(estado?: EstadoTurno) {
+  async findAll(estado?: EstadoTurno, area: AreaNegocio = 'RESTAURANTE', areaUsuario?: AreaNegocio, rolNombre?: string) {
+    if (!['RESTAURANTE', 'PANADERIA'].includes(area))
+      throw new BadRequestException('Area de negocio no valida');
+    this.verificarArea(area, areaUsuario, rolNombre);
     return this.prisma.turno.findMany({
-      where: { ...(estado !== undefined && { estado_turno: estado }) },
+      where: { ...(estado !== undefined && { estado_turno: estado }), caja: { area } },
       include: {
         caja: true,
         usuario: { select: { id_usuario: true, email_usuario: true } },
@@ -267,19 +327,24 @@ export class TurnosService {
     });
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, areaUsuario?: AreaNegocio, rolNombre?: string) {
     const turno = await this.prisma.turno.findUnique({
-      where: { id_turno: id },
+      where: { id_turno: id }, include: { caja: true },
     });
     if (!turno) throw new NotFoundException('Turno no encontrado');
+    this.verificarArea(turno.caja.area, areaUsuario, rolNombre);
     return this.conResumen(id);
   }
 
-  async estadoInventario(id: number) {
+  async estadoInventario(id: number, areaUsuario?: AreaNegocio, rolNombre?: string) {
     const turno = await this.prisma.turno.findUnique({
       where: { id_turno: id },
+      include: { caja: true },
     });
     if (!turno) throw new NotFoundException('Turno no encontrado');
+    this.verificarArea(turno.caja.area, areaUsuario, rolNombre);
+    if (turno.caja.area === 'PANADERIA')
+      return this.bakery.estadoConteo(fechaColombia(turno.fecha_apertura_turno));
     return estadoConteoCierre(
       this.prisma,
       fechaColombia(turno.fecha_apertura_turno),
@@ -300,7 +365,7 @@ export class TurnosService {
 
     const facturasPendientesPromise =
       turno.estado_turno === 'ABIERTO'
-        ? this.obtenerFacturasPendientes(this.prisma)
+        ? this.obtenerFacturasPendientes(this.prisma, turno.caja.area)
         : Promise.resolve(
             leerFacturasCongeladas(turno.facturas_pendientes_cierre_turno) ?? {
               total: '0',
@@ -310,6 +375,10 @@ export class TurnosService {
           );
     const [
       porMetodo,
+      porMetodoPanaderia,
+      cobrosInternosPanaderia,
+      trasladosPagadosPanaderia,
+      trasladosCobradosRestaurante,
       nominaPorMetodo,
       cuentasPorMetodo,
       pagos,
@@ -322,6 +391,25 @@ export class TurnosService {
         where: { id_turno_pago: idTurno },
         _sum: { monto_total_pago: true },
         _count: { id_pago: true },
+      }),
+      this.prisma.pagoVentaPanaderia.groupBy({
+        by: ['metodo'],
+        where: { venta: { turnoId: idTurno } },
+        _sum: { monto: true },
+        _count: { id: true },
+      }),
+      this.prisma.pagoTransferenciaPanaderia.groupBy({
+        by: ['metodo'],
+        where: { turnoId: idTurno },
+        _sum: { monto: true },
+      }),
+      this.prisma.transferenciaRestaurantePanaderia.findMany({
+        where: { turnoPagoId: idTurno },
+        select: { id: true, concepto: true, montoTotal: true, metodoPago: true, fechaPago: true },
+      }),
+      this.prisma.transferenciaRestaurantePanaderia.findMany({
+        where: { turnoIngresoId: idTurno },
+        select: { montoTotal: true, metodoPago: true },
       }),
       this.prisma.pagoNomina.groupBy({
         by: ['metodo_pagoNomina'],
@@ -395,8 +483,10 @@ export class TurnosService {
     ]);
 
     const totalVentas = (metodo: string) =>
-      porMetodo.find((fila) => fila.metodo_pago === metodo)?._sum
-        .monto_total_pago ?? new Prisma.Decimal(0);
+      (porMetodo.find((fila) => fila.metodo_pago === metodo)?._sum
+        .monto_total_pago ?? new Prisma.Decimal(0)).plus(
+        porMetodoPanaderia.find((fila) => fila.metodo === metodo)?._sum.monto ?? 0,
+      );
     const totalNomina = (metodo: string) =>
       nominaPorMetodo.find((fila) => fila.metodo_pagoNomina === metodo)?._sum
         .monto_pagoNomina ?? new Prisma.Decimal(0);
@@ -406,10 +496,22 @@ export class TurnosService {
     const ventaEfectivo = totalVentas('EFECTIVO');
     const ventaNequi = totalVentas('TRANSFERENCIA');
     const ventaTarjeta = totalVentas('TARJETA');
+    const cobroInternoDigital = cobrosInternosPanaderia
+      .filter((fila) => fila.metodo === 'TRANSFERENCIA')
+      .reduce((total, fila) => total.plus(fila._sum.monto ?? 0), new Prisma.Decimal(0));
+    const pagoInternoDigital = trasladosPagadosPanaderia
+      .filter((t) => t.metodoPago === 'TRANSFERENCIA')
+      .reduce((total, t) => total.plus(t.montoTotal), new Prisma.Decimal(0));
+    const ingresoInternoDigital = trasladosCobradosRestaurante
+      .filter((t) => t.metodoPago === 'TRANSFERENCIA')
+      .reduce((total, t) => total.plus(t.montoTotal), new Prisma.Decimal(0));
     const nominaEfectivo = totalNomina('EFECTIVO');
     const nominaTransferencia = totalNomina('TRANSFERENCIA');
-    const cuentasEfectivo = totalCuentas('EFECTIVO');
-    const cuentasTransferencia = totalCuentas('TRANSFERENCIA');
+    const cuentasEfectivo = totalCuentas('EFECTIVO').plus(
+      trasladosPagadosPanaderia.filter((t) => t.metodoPago === 'EFECTIVO')
+        .reduce((total, t) => total.plus(t.montoTotal), new Prisma.Decimal(0)),
+    );
+    const cuentasTransferencia = totalCuentas('TRANSFERENCIA').plus(pagoInternoDigital);
     const efectivoEsperado =
       turno.monto_cierre_esperado ?? turno.monto_apertura_turno;
     const efectivoReal = turno.monto_cierre_real_turno;
@@ -429,7 +531,7 @@ export class TurnosService {
           cuentasEfectivo,
           cuentasTransferencia,
         },
-        netoTransferencias: ventaNequi
+        netoTransferencias: ventaNequi.plus(cobroInternoDigital).plus(ingresoInternoDigital)
           .minus(nominaTransferencia)
           .minus(cuentasTransferencia),
         efectivoEsperadoSinBase: efectivoEsperado.minus(BASE_CAJA_COP),
@@ -470,12 +572,24 @@ export class TurnosService {
         metodo: pago.metodo_pagoCuentaPorPagar,
         monto: pago.monto_pagoCuentaPorPagar,
         fecha: pago.fecha_pagoCuentaPorPagar,
-      })),
+      })).concat(trasladosPagadosPanaderia.map((t) => ({
+        id: t.id,
+        proveedor: 'Restaurante / cafeteria',
+        concepto: t.concepto,
+        documento: `TR-RES-${t.id}`,
+        metodo: t.metodoPago === 'TRANSFERENCIA' ? 'TRANSFERENCIA' as const : 'EFECTIVO' as const,
+        monto: t.montoTotal,
+        fecha: t.fechaPago ?? new Date(),
+      }))),
       pagosPorMetodo: porMetodo.map((m) => ({
         metodo: m.metodo_pago,
         cantidad: m._count.id_pago,
         total: m._sum.monto_total_pago,
-      })),
+      })).concat(porMetodoPanaderia.map((m) => ({
+        metodo: m.metodo,
+        cantidad: m._count.id,
+        total: m._sum.monto,
+      }))),
       pagos: pagos.map((p) => ({
         id_pago: p.id_pago,
         metodo: p.metodo_pago,

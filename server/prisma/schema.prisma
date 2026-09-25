@@ -94,6 +94,26 @@ enum TipoTurno {
   UNICO
 }
 
+enum AreaNegocio {
+  RESTAURANTE
+  PANADERIA
+}
+
+enum TipoArticuloPanaderia {
+  PANADERIA
+  EXTERNO
+  INSUMO
+}
+
+enum TipoMovimientoPanaderia {
+  PRODUCCION
+  RECEPCION
+  VENTA
+  TRANSFERENCIA
+  MERMA
+  AJUSTE_CONTEO
+}
+
 enum TipoMovimientoCaja {
   INGRESO
   EGRESO
@@ -112,6 +132,7 @@ enum UnidadIngrediente {
 enum TipoMovimientoInventario {
   ENTRADA
   SALIDA_RECETA
+  TRANSFERENCIA
   MERMA
   AJUSTE_POSITIVO
   AJUSTE_NEGATIVO
@@ -218,6 +239,7 @@ model Usuario {
   email_usuario          String   @unique @db.VarChar(100)
   fecha_creacion_usuario DateTime @default(now()) @db.Date
   password_usuario       String   @db.VarChar(100)
+  area                   AreaNegocio @default(RESTAURANTE)
 
   empleado Empleado @relation(fields: [id_empleado_usuario], references: [id_empleado])
   rol      Rol      @relation(fields: [id_rol], references: [id_rol])
@@ -235,6 +257,12 @@ model Usuario {
   metasProduccionResueltas  PlanProduccionDiaria[]   @relation("PlanProduccionResueltoPor")
   conteosInventarioCreados  ConteoInventarioDiario[] @relation("ConteoInventarioCreador")
   conteosInventarioCerrados ConteoInventarioDiario[] @relation("ConteoInventarioCerradoPor")
+  movimientosPanaderia     MovimientoPanaderia[]
+  conteosPanaderia         ConteoPanaderia[]
+  transferenciasRestauranteEnviadas TransferenciaRestaurantePanaderia[] @relation("TrasladoRestauranteEnvio")
+  transferenciasRestauranteRecibidas TransferenciaRestaurantePanaderia[] @relation("TrasladoRestauranteRecepcion")
+  transferenciasRestaurantePagadas TransferenciaRestaurantePanaderia[] @relation("TrasladoRestaurantePago")
+  transferenciasRestauranteConfirmadas TransferenciaRestaurantePanaderia[] @relation("TrasladoRestauranteConfirmacion")
 
   @@index([id_empleado_usuario])
   @@index([id_rol])
@@ -481,6 +509,7 @@ model Pago {
 model Caja {
   id_caja     Int    @id @default(autoincrement())
   nombre_caja String @db.VarChar(30)
+  area        AreaNegocio @default(RESTAURANTE)
 
   turnos Turno[]
 }
@@ -503,6 +532,7 @@ model Turno {
   // Null identifica turnos históricos, sin inventar su clasificación.
   tipo_turno                       TipoTurno?
   conteo_inventario_cierre_turno    Json?       @db.JsonB
+  conteo_panaderia_cierre_turno     Json?       @db.JsonB
 
   caja    Caja    @relation(fields: [id_caja_turno], references: [id_caja])
   usuario Usuario @relation(fields: [id_usuario_turno], references: [id_usuario])
@@ -511,6 +541,10 @@ model Turno {
   movimientosCaja      MovimientoCaja[]
   pagosNomina          PagoNomina[]
   pagosCuentasPorPagar PagoCuentaPorPagar[]
+  ventasPanaderia       VentaPanaderia[]
+  pagosTransferenciasPanaderia PagoTransferenciaPanaderia[]
+  transferenciasRestaurantePagadas TransferenciaRestaurantePanaderia[] @relation("TrasladoRestauranteTurnoPago")
+  transferenciasRestauranteIngresadas TransferenciaRestaurantePanaderia[] @relation("TrasladoRestauranteTurnoIngreso")
 
   @@index([id_caja_turno])
   @@index([id_usuario_turno])
@@ -569,6 +603,7 @@ model Producto {
   detallesCuentaPorPagar DetalleCuentaPorPagar[]
   conteosInventario      ConteoInventarioDiario[]
   elementosConteo       ElementoConteoDiario[]
+  transferenciasRecibidas TransferenciaPanaderia[]
 
   @@index([categoria_producto])
 }
@@ -617,6 +652,8 @@ model Ingrediente {
   metasProduccion            PlanProduccionDiaria[]
   conteosInventario          ConteoInventarioDiario[]
   elementosConteo           ElementoConteoDiario[]
+  transferenciasRecibidas    TransferenciaPanaderia[]
+  transferenciasEnviadasPanaderia TransferenciaRestaurantePanaderia[]
 }
 
 // Seleccion permanente administrada por el restaurante para cada nueva jornada.
@@ -820,6 +857,7 @@ model CuentaPorPagar {
   detalles        DetalleCuentaPorPagar[]
   pagos           PagoCuentaPorPagar[]
   movimientosCaja MovimientoCaja[]
+  transferenciaPanaderia TransferenciaPanaderia?
 
   @@index([id_proveedor_cuentaPorPagar])
   @@index([estado_cuentaPorPagar])
@@ -857,6 +895,7 @@ model PagoCuentaPorPagar {
   fecha_pagoCuentaPorPagar      DateTime                 @default(now()) @db.Timestamp(6)
 
   cuentaPorPagar CuentaPorPagar @relation(fields: [id_cuentaPorPagar_pago], references: [id_cuentaPorPagar])
+  ingresoPanaderia PagoTransferenciaPanaderia?
   turno          Turno?         @relation(fields: [id_turno_pagoCuentaPorPagar], references: [id_turno])
   usuario        Usuario        @relation(fields: [id_usuario_pagoCuentaPorPagar], references: [id_usuario])
 
@@ -1151,4 +1190,200 @@ model TrabajoImpresion {
   @@index([id_impresora_trabajo])
   @@index([id_impresionComanda_trabajo])
   @@index([id_factura_trabajo])
+}
+
+// La panaderia conserva su propio catalogo y existencias. Sus movimientos
+// permiten reconstruir el dia sin alterar el inventario del restaurante.
+model ArticuloPanaderia {
+  id              Int                   @id @default(autoincrement())
+  nombre          String                @db.VarChar(80)
+  tipo            TipoArticuloPanaderia
+  unidad          UnidadIngrediente      @default(UNIDADES)
+  precioVenta     Decimal               @db.Decimal(20, 4)
+  existencia      Decimal               @default(0) @db.Decimal(20, 4)
+  activo          Boolean               @default(true)
+  fechaCreacion   DateTime              @default(now()) @db.Timestamp(6)
+
+  movimientos MovimientoPanaderia[]
+  conteos     ConteoPanaderia[]
+  ventas      DetalleVentaPanaderia[]
+  transferencias TransferenciaPanaderia[]
+  transferenciasRecibidas TransferenciaRestaurantePanaderia[]
+}
+
+model MovimientoPanaderia {
+  id              Int                    @id @default(autoincrement())
+  articuloId      Int
+  usuarioId       Int
+  tipo            TipoMovimientoPanaderia
+  cantidad        Decimal                @db.Decimal(20, 4)
+  existenciaAntes Decimal                @db.Decimal(20, 4)
+  existenciaDespues Decimal              @db.Decimal(20, 4)
+  concepto        String?                @db.VarChar(200)
+  ventaId         Int?
+  transferenciaId Int?
+  transferenciaRestauranteId Int?
+  fecha           DateTime               @default(now()) @db.Timestamp(6)
+
+  articulo      ArticuloPanaderia        @relation(fields: [articuloId], references: [id])
+  usuario       Usuario                  @relation(fields: [usuarioId], references: [id_usuario])
+  venta         VentaPanaderia?          @relation(fields: [ventaId], references: [id])
+  transferencia TransferenciaPanaderia?  @relation(fields: [transferenciaId], references: [id])
+  transferenciaRestaurante TransferenciaRestaurantePanaderia? @relation(fields: [transferenciaRestauranteId], references: [id])
+
+  @@index([articuloId, fecha])
+  @@index([ventaId])
+  @@index([transferenciaId])
+  @@index([transferenciaRestauranteId])
+}
+
+model VentaPanaderia {
+  id          Int      @id @default(autoincrement())
+  claveOperacion String @unique @db.VarChar(50)
+  turnoId     Int
+  fecha       DateTime @default(now()) @db.Timestamp(6)
+  total       Decimal  @db.Decimal(20, 4)
+  concepto    String?  @db.VarChar(150)
+
+  turno        Turno                    @relation(fields: [turnoId], references: [id_turno])
+  detalles     DetalleVentaPanaderia[]
+  pagos        PagoVentaPanaderia[]
+  movimientos  MovimientoPanaderia[]
+
+  @@index([turnoId, fecha])
+}
+
+model DetalleVentaPanaderia {
+  id             Int     @id @default(autoincrement())
+  ventaId        Int
+  articuloId     Int
+  cantidad       Decimal @db.Decimal(20, 4)
+  precioUnitario Decimal @db.Decimal(20, 4)
+  subtotal       Decimal @db.Decimal(20, 4)
+  nombreSnapshot String  @db.VarChar(80)
+
+  venta    VentaPanaderia    @relation(fields: [ventaId], references: [id])
+  articulo ArticuloPanaderia @relation(fields: [articuloId], references: [id])
+
+  @@index([articuloId])
+}
+
+model PagoVentaPanaderia {
+  id      Int        @id @default(autoincrement())
+  ventaId Int
+  metodo  MetodoPago
+  monto   Decimal    @db.Decimal(20, 4)
+
+  venta VentaPanaderia @relation(fields: [ventaId], references: [id])
+
+  @@index([ventaId])
+}
+
+// Foto del conteo por articulo. El faltante inferido tiene valor estimado,
+// pero no genera ventas ni pagos por si mismo.
+model ConteoPanaderia {
+  id               Int      @id @default(autoincrement())
+  fecha            DateTime @db.Date
+  articuloId       Int
+  usuarioId        Int
+  cantidadInicial  Decimal  @db.Decimal(20, 4)
+  entradas         Decimal  @db.Decimal(20, 4)
+  ventasRegistradas Decimal @db.Decimal(20, 4)
+  transferencias   Decimal  @db.Decimal(20, 4)
+  mermas           Decimal  @db.Decimal(20, 4)
+  cantidadFisica   Decimal  @db.Decimal(20, 4)
+  precioReferencia Decimal  @db.Decimal(20, 4)
+  fechaRegistro    DateTime @default(now()) @db.Timestamp(6)
+
+  articulo ArticuloPanaderia @relation(fields: [articuloId], references: [id])
+  usuario  Usuario           @relation(fields: [usuarioId], references: [id_usuario])
+
+  @@unique([fecha, articuloId])
+  @@index([articuloId, fecha])
+}
+
+// Documento interno de traslado: cantidad y precio pactado al registrar.
+// La recepcion en restaurante y el pago requieren confirmacion por separado.
+model TransferenciaPanaderia {
+  id               Int      @id @default(autoincrement())
+  claveOperacion   String   @unique @db.VarChar(50)
+  articuloId       Int
+  cuentaPorPagarId Int? @unique
+  cantidad         Decimal  @db.Decimal(20, 4)
+  precioUnitario   Decimal  @db.Decimal(20, 4)
+  montoTotal       Decimal  @db.Decimal(20, 4)
+  productoDestinoId Int?
+  ingredienteDestinoId Int?
+  concepto         String   @db.VarChar(150)
+  fechaSalida      DateTime @default(now()) @db.Timestamp(6)
+  fechaRecepcion   DateTime? @db.Timestamp(6)
+  fechaPago        DateTime? @db.Timestamp(6)
+
+  articulo    ArticuloPanaderia   @relation(fields: [articuloId], references: [id])
+  cuentaPorPagar CuentaPorPagar? @relation(fields: [cuentaPorPagarId], references: [id_cuentaPorPagar])
+  producto    Producto?           @relation(fields: [productoDestinoId], references: [id_producto])
+  ingrediente Ingrediente?        @relation(fields: [ingredienteDestinoId], references: [id_ingrediente])
+  movimientos MovimientoPanaderia[]
+  pagos       PagoTransferenciaPanaderia[]
+
+  @@index([articuloId, fechaSalida])
+  @@index([productoDestinoId])
+  @@index([ingredienteDestinoId])
+}
+
+model PagoTransferenciaPanaderia {
+  id              Int        @id @default(autoincrement())
+  transferenciaId Int
+  turnoId         Int
+  pagoCuentaPorPagarId Int @unique
+  metodo          MetodoPago
+  monto           Decimal    @db.Decimal(20, 4)
+  concepto        String     @db.VarChar(150)
+  fecha           DateTime   @default(now()) @db.Timestamp(6)
+
+  transferencia TransferenciaPanaderia @relation(fields: [transferenciaId], references: [id])
+  turno         Turno                  @relation(fields: [turnoId], references: [id_turno])
+  pagoCuentaPorPagar PagoCuentaPorPagar @relation(fields: [pagoCuentaPorPagarId], references: [id_pagoCuentaPorPagar])
+
+  @@index([transferenciaId])
+  @@index([turnoId])
+}
+
+// Documento interno en sentido inverso. La panaderia recibe un insumo del
+// restaurante, queda debiendo el valor pactado y paga desde su propio turno.
+model TransferenciaRestaurantePanaderia {
+  id                  Int       @id @default(autoincrement())
+  claveOperacion      String    @unique @db.VarChar(50)
+  ingredienteId       Int
+  articuloDestinoId   Int
+  cantidad            Decimal   @db.Decimal(20, 4)
+  precioUnitario      Decimal   @db.Decimal(20, 4)
+  montoTotal          Decimal   @db.Decimal(20, 4)
+  concepto            String    @db.VarChar(150)
+  fechaSalida         DateTime  @default(now()) @db.Timestamp(6)
+  usuarioSalidaId     Int
+  fechaRecepcion      DateTime? @db.Timestamp(6)
+  usuarioRecibeId     Int?
+  fechaPago           DateTime? @db.Timestamp(6)
+  usuarioPagoId       Int?
+  turnoPagoId         Int?
+  metodoPago          MetodoPago?
+  fechaConfirmacionIngreso DateTime? @db.Timestamp(6)
+  usuarioConfirmaId   Int?
+  turnoIngresoId      Int?
+
+  ingrediente         Ingrediente @relation(fields: [ingredienteId], references: [id_ingrediente])
+  articuloDestino     ArticuloPanaderia @relation(fields: [articuloDestinoId], references: [id])
+  usuarioSalida       Usuario @relation("TrasladoRestauranteEnvio", fields: [usuarioSalidaId], references: [id_usuario])
+  usuarioRecibe       Usuario? @relation("TrasladoRestauranteRecepcion", fields: [usuarioRecibeId], references: [id_usuario])
+  usuarioPago         Usuario? @relation("TrasladoRestaurantePago", fields: [usuarioPagoId], references: [id_usuario])
+  usuarioConfirma     Usuario? @relation("TrasladoRestauranteConfirmacion", fields: [usuarioConfirmaId], references: [id_usuario])
+  turnoPago           Turno? @relation("TrasladoRestauranteTurnoPago", fields: [turnoPagoId], references: [id_turno])
+  turnoIngreso        Turno? @relation("TrasladoRestauranteTurnoIngreso", fields: [turnoIngresoId], references: [id_turno])
+  movimientosDestino  MovimientoPanaderia[]
+
+  @@index([ingredienteId, fechaSalida])
+  @@index([articuloDestinoId])
+  @@index([turnoPagoId])
+  @@index([turnoIngresoId])
 }

@@ -38,7 +38,7 @@ export class AuthController {
     if(!passwordValid) throw new UnauthorizedException('Credenciales invalidas')
 
     // 4. Generamos token de login exitoso
-    const token = this.tokenService.generateToken(result.id, result.idRol, result.rolNombre)
+    const token = this.tokenService.generateToken(result.id, result.idRol, result.rolNombre, result.area)
     // 5. Devolvemos el token de inicio de sesion
     return {token}
   }

@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AbrirTurnoDto } from './dto/abrir-turno.dto';
 import { CerrarTurnoDto } from './dto/cerrar-turno.dto';
 import { Prisma } from '../generated/prisma/client';
+import { BakeryService } from '../bakery/bakery.service';
 
 // TurnosService gobierna la caja: una sola caja/usuario con turno abierto a la
 // vez (apertura), y al cerrar recalcula el efectivo esperado desde la fuente de
@@ -21,7 +22,7 @@ const abrirDto = (idCaja = 1) => ({ idCaja, tipo: 'MANANA' }) as AbrirTurnoDto;
 function setupAbrir(
   opts: { caja?: unknown; turnoUsuario?: unknown; turnoCaja?: unknown } = {},
 ) {
-  const { caja = { id_caja: 1 }, turnoUsuario = null, turnoCaja = null } = opts;
+  const { caja = { id_caja: 1, area: 'RESTAURANTE' }, turnoUsuario = null, turnoCaja = null } = opts;
   const spies = {
     queryRaw: jest.fn().mockResolvedValue(caja ? [caja] : []),
     // Los dos findFirst comparten metodo; se distinguen por el filtro.
@@ -45,7 +46,7 @@ function setupAbrir(
   const prisma = {
     $transaction: (cb: (t: typeof tx) => unknown) => cb(tx),
   } as unknown as PrismaService;
-  return { svc: new TurnosService(prisma), spies };
+  return { svc: new TurnosService(prisma, {} as BakeryService), spies };
 }
 
 describe('TurnosService.abrir (guardas)', () => {
@@ -118,13 +119,14 @@ function setupCerrar(
   } = opts;
   const spies = {
     queryRaw: jest.fn().mockResolvedValue(encontrado ? [{ id_turno: 3 }] : []),
-    turnoFind: jest.fn().mockResolvedValue(turno),
+    turnoFind: jest.fn().mockResolvedValue(turno && { caja: { area: 'RESTAURANTE' }, ...turno }),
     turnoUpdate: jest.fn((args: { data: Record<string, unknown> }) =>
       Promise.resolve({ id_turno: 3, ...args.data }),
     ),
     pagoAggregate: jest.fn().mockResolvedValue({
       _sum: { monto_total_pago: efectivo, monto_excedente_pago: excedente },
     }),
+    pagoPanaderiaAggregate: jest.fn().mockResolvedValue({ _sum: { monto: null } }),
     movimientoAggregate: jest.fn((args: { where: { tipo_mc: string } }) =>
       Promise.resolve({
         _sum: {
@@ -141,6 +143,7 @@ function setupCerrar(
     $executeRaw: spies.estabilizarInventario,
     turno: { findUniqueOrThrow: spies.turnoFind, update: spies.turnoUpdate },
     pago: { aggregate: spies.pagoAggregate },
+    pagoVentaPanaderia: { aggregate: spies.pagoPanaderiaAggregate },
     movimientoCaja: { aggregate: spies.movimientoAggregate },
     cuentaPorPagar: { findMany: spies.cuentasFindMany },
     conteoInventarioDiario: { findMany: spies.conteos },
@@ -150,11 +153,15 @@ function setupCerrar(
     detalleComanda: {
       findMany: jest.fn().mockResolvedValue(opts.entregados ?? []),
     },
+    transferenciaRestaurantePanaderia: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
   };
   const prisma = {
     $transaction: (cb: (t: typeof tx) => unknown) => cb(tx),
   } as unknown as PrismaService;
-  return { svc: new TurnosService(prisma), spies };
+  const bakery = { aplicarConteoCierre: jest.fn().mockResolvedValue({ completo: true, fecha: '2026-09-22', valorDiferencia: '3000', detalle: [] }) };
+  return { svc: new TurnosService(prisma, bakery as unknown as BakeryService), spies, bakery };
 }
 
 describe('TurnosService.cerrar (guardas)', () => {
@@ -337,5 +344,25 @@ describe('TurnosService.cerrar (cuadre)', () => {
         saldoPendiente: '100000',
       }),
     ]);
+  });
+
+  it('separa cierre de panaderia y suma sus cobros en efectivo', async () => {
+    const { svc, spies, bakery } = setupCerrar({
+      turno: {
+        id_turno: 3,
+        tipo_turno: 'TARDE_NOCHE',
+        fecha_apertura_turno: new Date('2026-09-22T15:00:00Z'),
+        estado_turno: 'ABIERTO',
+        id_usuario_turno: 1,
+        monto_apertura_turno: new Prisma.Decimal(300000),
+        caja: { area: 'PANADERIA' },
+      },
+      efectivo: new Prisma.Decimal(0), ingresos: new Prisma.Decimal(0), egresos: new Prisma.Decimal(0),
+    });
+    spies.pagoPanaderiaAggregate.mockResolvedValue({ _sum: { monto: new Prisma.Decimal(12000) } });
+    await svc.cerrar(3, 1, 'CAJERO', cerrarDto(312000));
+    expect(bakery.aplicarConteoCierre).toHaveBeenCalledTimes(1);
+    expect(spies.turnoUpdate.mock.calls[0][0].data.conteo_panaderia_cierre_turno).toMatchObject({ valorDiferencia: '3000' });
+    expect(spies.turnoUpdate.mock.calls[0][0].data.monto_cierre_esperado.toString()).toBe('312000');
   });
 });

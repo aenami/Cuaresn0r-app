@@ -11,6 +11,7 @@ import { PrintingModule } from './printing/printing.module';
 import { ReportsModule } from './reports/reports.module';
 import { HealthController } from './health.controller';
 import { FichasModule } from './fichas/fichas.module';
+import { BakeryModule } from './bakery/bakery.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { FichasModule } from './fichas/fichas.module';
     SalonModule,
     FichasModule,
     BillingModule,
+    BakeryModule,
     PayrollModule,
     PrintingModule,
     ReportsModule,

@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { CreateAuthDto } from './dto/create-auth.dto';
 import { PrismaService } from '../prisma/prisma.service'
+import { AreaNegocio } from '../generated/prisma/client';
 
 interface AuthenticatedUserData {
   id: number;
   password: string;
   idRol: number;
   rolNombre: string;
+  area: AreaNegocio;
   empleadoActivo: boolean;
 }
 
@@ -31,6 +33,7 @@ export class AuthService {
       password: user.password_usuario,
       idRol: user.id_rol,
       rolNombre: user.rol.nombre_rol,
+      area: user.area,
       empleadoActivo: user.empleado.estado_empleado === 'ACTIVO',
     }
   }

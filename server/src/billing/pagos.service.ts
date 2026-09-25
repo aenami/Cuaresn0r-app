@@ -16,6 +16,9 @@ export class PagosService {
         where: { id_usuario_turno: idUsuario, estado_turno: 'ABIERTO' },
       });
       if (!turno) throw new ConflictException('No tienes un turno abierto; abre uno antes de registrar pagos');
+      const caja = await tx.caja.findUniqueOrThrow({ where: { id_caja: turno.id_caja_turno } });
+      if (caja.area !== 'RESTAURANTE')
+        throw new ConflictException('Las facturas de restaurante se cobran en su propia caja');
 
       // Bloqueo de la factura: dos pagos concurrentes leerian el mismo saldo
       // y la sobrepagarian.

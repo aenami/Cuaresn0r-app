@@ -81,6 +81,12 @@ export async function salidasEntregadas(
         detalle.fecha_entrega_dc,
       );
   }
+  const traslados = await db.transferenciaRestaurantePanaderia.findMany({
+    where: { fechaSalida: { gte: inicio, lt: fin } },
+    select: { ingredienteId: true, cantidad: true, fechaSalida: true },
+  });
+  for (const traslado of traslados)
+    agregar(`INGREDIENTE:${traslado.ingredienteId}`, traslado.cantidad, traslado.fechaSalida);
   return salidas;
 }
 
