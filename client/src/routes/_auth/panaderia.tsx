@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { ArrowUpRight, Croissant, Lock } from 'lucide-react'
 import { useAuthStore, useEsAdmin, useEsCaja } from '@/stores/auth.store'
 import { cn } from '@/lib/utils'
 import { turnoPanaderiaQuery } from '@/features/panaderia/api'
+import { errorApi } from '@/features/billing/caja-comun'
 import { VentaPanaderia } from '@/features/panaderia/venta'
-import { InventarioPanaderia } from '@/features/panaderia/inventario'
 import { CajaPanaderia } from '@/features/panaderia/caja'
 import { TrasladosPanaderia } from '@/features/panaderia/traslados'
 
@@ -27,8 +27,9 @@ function PaginaPanaderia() {
   const esCaja = useEsCaja()
   const area = useAuthStore((s) => s.usuario?.area)
   const [vista, setVista] = useState<Vista>('venta')
+  const navigate = useNavigate()
   const acceso = esCaja && (esAdmin || area === 'PANADERIA')
-  const { data: turno, isPending: turnoCargando } = useQuery({ ...turnoPanaderiaQuery, enabled: acceso })
+  const { data: turno, isPending: turnoCargando, error: turnoError, refetch: recargarTurno } = useQuery({ ...turnoPanaderiaQuery, enabled: acceso })
 
   if (!acceso) return (
     <div className="grid min-h-full place-items-center p-10 text-center">
@@ -58,7 +59,7 @@ function PaginaPanaderia() {
       <nav aria-label="Secciones de panaderia" className="flex gap-1 overflow-x-auto rounded-lg bg-surface-lowest p-1">
         {vistas.map((item) => (
           <button key={item.id} type="button" aria-current={vista === item.id ? 'page' : undefined}
-            onClick={() => setVista(item.id)}
+            onClick={() => item.id === 'inventario' ? void navigate({ to: '/inventario', search: { area: 'PANADERIA' } }) : setVista(item.id)}
             className={cn('shrink-0 rounded-md px-4 py-2 text-sm font-semibold transition-colors',
               vista === item.id ? 'bg-surface-high text-primary' : 'text-muted-foreground hover:bg-surface-high/60 hover:text-foreground')}>
             {item.texto}
@@ -68,8 +69,7 @@ function PaginaPanaderia() {
       <p className="text-right text-xs text-muted-foreground sm:hidden">Desliza las pestañas para ver más →</p>
 
       {vista === 'venta' ? <VentaPanaderia turno={turno ?? null} onIrCaja={() => setVista('caja')} />
-        : vista === 'inventario' ? <InventarioPanaderia esAdmin={esAdmin} />
-          : vista === 'caja' ? <CajaPanaderia turno={turno ?? null} cargando={turnoCargando} esAdmin={esAdmin} onIrInventario={() => setVista('inventario')} />
+        : vista === 'caja' ? <CajaPanaderia turno={turno ?? null} cargando={turnoCargando} errorTurno={turnoError ? errorApi(turnoError) : null} onReintentar={() => void recargarTurno()} esAdmin={esAdmin} onIrInventario={() => void navigate({ to: '/inventario', search: { area: 'PANADERIA' } })} />
             : <TrasladosPanaderia esAdmin={esAdmin} />}
     </div>
   )

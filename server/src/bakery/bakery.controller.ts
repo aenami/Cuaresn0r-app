@@ -15,6 +15,7 @@ import { AuthenticatedRequest } from '../auth/types/authenticated-request';
 import { BakeryService } from './bakery.service';
 import {
   CrearArticuloPanaderiaDto,
+  CrearRecetaPanaderiaDto,
   ActualizarArticuloPanaderiaDto,
   CrearTransferenciaPanaderiaDto,
   ConfirmarIngresoTransferenciaDto,
@@ -32,6 +33,17 @@ export class BakeryController {
 
   @Get('articulos')
   listarArticulos() { return this.bakery.listarArticulos(); }
+
+  @Get('recetas')
+  listarRecetas() { return this.bakery.listarRecetas(); }
+
+  @Roles('ADMIN')
+  @Post('recetas')
+  crearReceta(@Body() dto: CrearRecetaPanaderiaDto) { return this.bakery.crearReceta(dto); }
+
+  @Roles('ADMIN')
+  @Patch('recetas/:id/desactivar')
+  desactivarReceta(@Param('id', ParseIntPipe) id: number) { return this.bakery.desactivarReceta(id); }
 
   @Roles('ADMIN')
   @Post('articulos')

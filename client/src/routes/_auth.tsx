@@ -64,7 +64,7 @@ const NAVEGACION: ItemNav[] = [
   { etiqueta: 'Nomina', to: '/nomina', icono: Users, soloCaja: true, area: 'RESTAURANTE' },
   { etiqueta: 'Mi nomina', to: '/mi-nomina', icono: CircleDollarSign },
   { etiqueta: 'Catalogo', to: '/catalogo', icono: BookOpen, area: 'RESTAURANTE' },
-  { etiqueta: 'Inventario', to: '/inventario', icono: Boxes, area: 'RESTAURANTE' },
+  { etiqueta: 'Inventario', to: '/inventario', icono: Boxes },
   { etiqueta: 'Impresoras', to: '/impresoras', icono: Printer, soloAdmin: true },
   { etiqueta: 'Usuarios', to: '/usuarios', icono: UserCog, soloAdmin: true },
 ]

@@ -83,7 +83,7 @@ function deltaPct(actual: number, previo: number): number | null {
 export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async resumen(desdeStr?: string, hastaStr?: string) {
+  async resumen(desdeStr?: string, hastaStr?: string, area = 'RESTAURANTE') {
     const ahora = new Date();
     const hasta = hastaStr ? new Date(hastaStr) : ahora;
     const desde = desdeStr ? new Date(desdeStr) : new Date(ahora.getTime() - 30 * 24 * 3600 * 1000);
@@ -92,6 +92,9 @@ export class ReportsService {
     if (desde.getTime() > hasta.getTime()) {
       throw new BadRequestException('El rango de fechas es invalido (desde posterior a hasta)');
     }
+    if (area !== 'RESTAURANTE' && area !== 'PANADERIA')
+      throw new BadRequestException('Area de negocio no valida');
+    if (area === 'PANADERIA') return this.resumenPanaderia(desde, hasta);
 
     const rango: Rango = { gte: desde, lte: hasta };
     // Periodo anterior de igual duracion, para los deltas de los KPIs.
@@ -202,6 +205,78 @@ export class ReportsService {
       },
       select: DETALLE_FACTURADO_SELECT,
     });
+  }
+
+  private async resumenPanaderia(desde: Date, hasta: Date) {
+    const duracion = hasta.getTime() - desde.getTime();
+    const inicioPrevio = new Date(desde.getTime() - duracion);
+    const [ventas, previas] = await Promise.all([
+      this.prisma.ventaPanaderia.findMany({
+        where: { fecha: { gte: desde, lte: hasta }, turno: { caja: { area: 'PANADERIA' } } },
+        include: { detalles: { include: { articulo: { select: { tipo: true } } } }, pagos: true },
+      }),
+      this.prisma.ventaPanaderia.findMany({
+        where: { fecha: { gte: inicioPrevio, lt: desde }, turno: { caja: { area: 'PANADERIA' } } },
+        select: { total: true, detalles: { select: { cantidad: true } } },
+      }),
+    ]);
+    const netas = round2(ventas.reduce((s, v) => s + num(v.total), 0));
+    const netasPrevias = round2(previas.reduce((s, v) => s + num(v.total), 0));
+    const items = ventas.reduce((s, v) => s + v.detalles.reduce((n, d) => n + Number(d.cantidad), 0), 0);
+    const itemsPrevios = previas.reduce((s, v) => s + v.detalles.reduce((n, d) => n + Number(d.cantidad), 0), 0);
+    const porDia = new Map<string, { fecha: string; total: number; cuentas: number; domicilios: number }>();
+    const cursor = new Date(desde.getFullYear(), desde.getMonth(), desde.getDate());
+    const fin = new Date(hasta.getFullYear(), hasta.getMonth(), hasta.getDate());
+    for (let dias = 0; cursor <= fin && dias < 400; dias++, cursor.setDate(cursor.getDate() + 1)) {
+      const fecha = claveDiaLocal(cursor);
+      porDia.set(fecha, { fecha, total: 0, cuentas: 0, domicilios: 0 });
+    }
+    const porHora = Array.from({ length: 24 }, (_, hora) => ({ hora, total: 0, cuentas: 0 }));
+    const metodos = new Map<string, { metodo: string; monto: number; cuenta: number }>();
+    const articulos = new Map<number, { nombre: string; unidades: number; ingresos: number }>();
+    const categorias = new Map<string, { categoria: string; unidades: number; ingresos: number }>();
+    const nombresCategoria = { PANADERIA: 'Panaderia', EXTERNO: 'Bebidas y externos', INSUMO: 'Insumos' };
+    for (const venta of ventas) {
+      const dia = porDia.get(claveDiaLocal(venta.fecha));
+      if (dia) { dia.total += num(venta.total); dia.cuentas += 1; }
+      const hora = porHora[venta.fecha.getHours()];
+      hora.total += num(venta.total); hora.cuentas += 1;
+      for (const pago of venta.pagos) {
+        const actual = metodos.get(pago.metodo) ?? { metodo: pago.metodo, monto: 0, cuenta: 0 };
+        actual.monto += num(pago.monto); actual.cuenta += 1;
+        metodos.set(pago.metodo, actual);
+      }
+      for (const detalle of venta.detalles) {
+        const unidades = Number(detalle.cantidad);
+        const ingresos = num(detalle.subtotal);
+        const articulo = articulos.get(detalle.articuloId) ?? { nombre: detalle.nombreSnapshot, unidades: 0, ingresos: 0 };
+        articulo.unidades += unidades; articulo.ingresos += ingresos;
+        articulos.set(detalle.articuloId, articulo);
+        const nombreCategoria = nombresCategoria[detalle.articulo.tipo];
+        const categoria = categorias.get(nombreCategoria) ?? { categoria: nombreCategoria, unidades: 0, ingresos: 0 };
+        categoria.unidades += unidades; categoria.ingresos += ingresos;
+        categorias.set(nombreCategoria, categoria);
+      }
+    }
+    const promedio = ventas.length ? round2(netas / ventas.length) : 0;
+    const promedioPrevio = previas.length ? round2(netasPrevias / previas.length) : 0;
+    return {
+      rango: { desde: desde.toISOString(), hasta: hasta.toISOString() },
+      ventas: {
+        netas, propina: 0, cuentas: ventas.length, items, domicilios: 0, ticketPromedio: promedio,
+        delta: {
+          netas: deltaPct(netas, netasPrevias), propina: null,
+          cuentas: deltaPct(ventas.length, previas.length), items: deltaPct(items, itemsPrevios),
+          domicilios: null, ticketPromedio: deltaPct(promedio, promedioPrevio),
+        },
+      },
+      porDia: [...porDia.values()].map((d) => ({ ...d, total: round2(d.total) })),
+      porHora: porHora.map((h) => ({ ...h, total: round2(h.total) })),
+      metodosPago: [...metodos.values()].map((m) => ({ ...m, monto: round2(m.monto) })).sort((a, b) => b.monto - a.monto),
+      topProductos: [...articulos.values()].map((a) => ({ ...a, ingresos: round2(a.ingresos) })).sort((a, b) => b.ingresos - a.ingresos).slice(0, 10),
+      porCategoria: [...categorias.values()].map((c) => ({ ...c, ingresos: round2(c.ingresos) })).sort((a, b) => b.ingresos - a.ingresos),
+      porMesero: [], porFicha: [], ocupacionFichas: { DISPONIBLES: 0, OCUPADAS: 0, DESACTIVADAS: 0 },
+    };
   }
 
   private async ocupacionFichas() {

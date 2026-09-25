@@ -23,6 +23,7 @@ export interface ConteoPanaderia {
   ventasRegistradas: string
   transferencias: string
   mermas: string
+  consumoReceta: string
   cantidadFisica: string
   precioReferencia: string
   fechaRegistro: string
@@ -50,6 +51,7 @@ export interface EstadoConteoPanaderia {
     ventasRegistradas: string
     transferencias: string
     mermas: string
+    consumoReceta: string
   }[]
   detalle: ConteoPanaderia[]
 }
@@ -99,6 +101,16 @@ export interface CajaPanaderia {
   turnos: { id_turno: number }[]
 }
 
+export interface RecetaPanaderia {
+  id: number
+  articuloId: number
+  nombre: string
+  activa: boolean
+  fechaCreacion: string
+  articulo: ArticuloPanaderia
+  detalles: { id: number; insumoId: number; cantidadUnidad: string; insumo: ArticuloPanaderia }[]
+}
+
 export interface TransferenciaRestaurantePanaderia {
   id: number
   ingredienteId: number
@@ -126,11 +138,16 @@ export const bakeryKeys = {
   cajas: ['bakery', 'cajas'] as const,
   turno: ['bakery', 'turno'] as const,
   historial: ['bakery', 'historial'] as const,
+  recetas: ['bakery', 'recetas'] as const,
 }
 
 export const articulosQuery = queryOptions({
   queryKey: bakeryKeys.articulos,
   queryFn: () => api.get<ArticuloPanaderia[]>('/bakery/articulos'),
+})
+export const recetasPanaderiaQuery = queryOptions({
+  queryKey: bakeryKeys.recetas,
+  queryFn: () => api.get<RecetaPanaderia[]>('/bakery/recetas'),
 })
 export const conteoQuery = queryOptions({
   queryKey: bakeryKeys.conteo,
@@ -171,6 +188,8 @@ export const historialPanaderiaQuery = queryOptions({
 
 export const bakeryApi = {
   crearArticulo: (body: { nombre: string; tipo: TipoArticulo; unidad: UnidadInventario; precioVenta: number }) => api.post<ArticuloPanaderia>('/bakery/articulos', body),
+  crearReceta: (body: { articuloId: number; nombre: string; detalles: { insumoId: number; cantidadUnidad: number }[] }) => api.post<RecetaPanaderia>('/bakery/recetas', body),
+  desactivarReceta: (id: number) => api.patch(`/bakery/recetas/${id}/desactivar`),
   actualizarArticulo: (id: number, body: { nombre?: string; precioVenta?: number; activo?: boolean }) => api.patch<ArticuloPanaderia>(`/bakery/articulos/${id}`, body),
   entrada: (id: number, body: { cantidad: number; concepto: string }) => api.post(`/bakery/articulos/${id}/entradas`, body),
   merma: (id: number, body: { cantidad: number; concepto: string }) => api.post(`/bakery/articulos/${id}/mermas`, body),

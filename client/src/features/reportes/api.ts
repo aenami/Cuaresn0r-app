@@ -2,12 +2,12 @@ import { queryOptions } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { ReporteResumen } from '@/types/api'
 
-export function reporteQuery(desde: string, hasta: string) {
+export function reporteQuery(desde: string, hasta: string, area: 'RESTAURANTE' | 'PANADERIA' = 'RESTAURANTE') {
   return queryOptions({
-    queryKey: ['reportes', 'resumen', desde, hasta],
+    queryKey: ['reportes', 'resumen', area, desde, hasta],
     queryFn: () =>
       api.get<ReporteResumen>(
-        `/reports/resumen?desde=${encodeURIComponent(desde)}&hasta=${encodeURIComponent(hasta)}`,
+        `/reports/resumen?desde=${encodeURIComponent(desde)}&hasta=${encodeURIComponent(hasta)}&area=${area}`,
       ),
     // Un poco de cache: la analitica no necesita estar al segundo.
     staleTime: 60_000,

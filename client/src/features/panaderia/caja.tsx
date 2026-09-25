@@ -12,9 +12,9 @@ import { errorApi } from '@/features/billing/caja-comun'
 import { formatearPrecio } from '@/lib/formato'
 import { bakeryApi, bakeryKeys, cajasPanaderiaQuery, conteoQuery, historialPanaderiaQuery } from './api'
 
-export function CajaPanaderia({ turno, cargando, esAdmin, onIrInventario }: { turno: TurnoResumen | null; cargando: boolean; esAdmin: boolean; onIrInventario: () => void }) {
+export function CajaPanaderia({ turno, cargando, errorTurno, onReintentar, esAdmin, onIrInventario }: { turno: TurnoResumen | null; cargando: boolean; errorTurno: string | null; onReintentar: () => void; esAdmin: boolean; onIrInventario: () => void }) {
   const queryClient = useQueryClient()
-  const { data: cajas, isPending: cajasCargando } = useQuery(cajasPanaderiaQuery)
+  const { data: cajas, isPending: cajasCargando, isError: cajasError, refetch: recargarCajas } = useQuery(cajasPanaderiaQuery)
   const { data: inventario, isPending: inventarioCargando } = useQuery(conteoQuery)
   const { data: historial } = useQuery(historialPanaderiaQuery)
   const [cajaId, setCajaId] = useState('')
@@ -37,6 +37,17 @@ export function CajaPanaderia({ turno, cargando, esAdmin, onIrInventario }: { tu
   }
 
   if (cargando || cajasCargando) return <div className="h-72 animate-pulse rounded-lg bg-surface-high" />
+  if (errorTurno) return <section role="alert" className="max-w-lg space-y-3 rounded-lg bg-surface-high p-5">
+    <h2 className="font-heading text-lg font-semibold">No se pudo consultar el turno</h2>
+    <p className="text-sm text-destructive">{errorTurno}</p>
+    <p className="text-sm text-muted-foreground">La apertura puede haberse guardado. No abras otro turno hasta comprobar el estado de la caja.</p>
+    <Button variant="secondary" onClick={onReintentar}>Volver a consultar</Button>
+  </section>
+  if (cajasError && !turno) return <section role="alert" className="max-w-lg space-y-3 rounded-lg bg-surface-high p-5">
+    <h2 className="font-heading text-lg font-semibold">No se pudo consultar la caja</h2>
+    <p className="text-sm text-muted-foreground">Comprueba el estado de la caja antes de crear o abrir un turno.</p>
+    <Button variant="secondary" onClick={() => void recargarCajas()}>Volver a consultar</Button>
+  </section>
   if (!turno) return <div className="space-y-8"><section className="mx-auto max-w-lg space-y-5 rounded-xl bg-surface-high p-6">
     <div className="flex items-center gap-2"><Wallet className="size-5 text-primary" /><h2 className="font-heading text-xl font-semibold uppercase">Abrir caja de panaderia</h2></div>
     {(cajas ?? []).length === 0 ? esAdmin ? <div className="space-y-2"><Label htmlFor="pan-nombre-caja">Nombre de la caja</Label><div className="flex gap-2"><Input id="pan-nombre-caja" maxLength={30} value={nombreCaja} onChange={(e) => setNombreCaja(e.target.value)} /><Button disabled={guardando || !nombreCaja.trim()} onClick={() => void ejecutar(() => bakeryApi.crearCaja(nombreCaja.trim()), 'Caja creada')}>Crear</Button></div></div>
@@ -44,7 +55,8 @@ export function CajaPanaderia({ turno, cargando, esAdmin, onIrInventario }: { tu
       : <div><Label htmlFor="pan-caja">Caja</Label><Select value={cajaId} onValueChange={setCajaId}><SelectTrigger id="pan-caja"><SelectValue placeholder="Selecciona una caja" /></SelectTrigger><SelectContent>{cajas?.map((caja) => <SelectItem key={caja.id_caja} value={String(caja.id_caja)} disabled={caja.turnos.length > 0}>{caja.nombre_caja}{caja.turnos.length ? ' · ocupada' : ''}</SelectItem>)}</SelectContent></Select></div>}
     <SelectorTipoTurno valor={tipo} onCambiar={setTipo} />
     <p className="rounded-lg bg-surface-low p-3 text-sm">Base de caja al abrir: <strong>{formatearPrecio(300_000)}</strong></p>
-    <Button className="btn-heat w-full" disabled={!cajaId || !tipo || guardando} onClick={() => void ejecutar(() => bakeryApi.abrirTurno(Number(cajaId), tipo as TipoTurno), 'Turno abierto')}>Abrir turno</Button>
+    {(cajas ?? []).some((caja) => caja.turnos.length > 0) ? <p className="rounded-lg bg-tertiary/10 p-3 text-sm text-tertiary">Ya hay un turno de panadería abierto en otra sesión. Solicita al cajero responsable que lo cierre antes de abrir uno nuevo.</p>
+      : <Button className="btn-heat w-full" disabled={!cajaId || !tipo || guardando} onClick={() => void ejecutar(() => bakeryApi.abrirTurno(Number(cajaId), tipo as TipoTurno), 'Turno abierto')}>Abrir turno</Button>}
   </section><HistorialPanaderia turnos={historial ?? []} /></div>
 
   const necesitaConteo = turno.tipo_turno !== 'MANANA'

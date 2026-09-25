@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { fechaColombia, rangoDia } from '../recipes/inventory-reconciliation';
 import {
   CrearArticuloPanaderiaDto,
+  CrearRecetaPanaderiaDto,
   ActualizarArticuloPanaderiaDto,
   ConfirmarIngresoTransferenciaDto,
   CrearTransferenciaPanaderiaDto,
@@ -28,6 +29,7 @@ export function resumenConteo(conteo: {
   ventasRegistradas: Prisma.Decimal;
   transferencias: Prisma.Decimal;
   mermas: Prisma.Decimal;
+  consumoReceta?: Prisma.Decimal;
   cantidadFisica: Prisma.Decimal;
   precioReferencia: Prisma.Decimal;
 }) {
@@ -36,7 +38,8 @@ export function resumenConteo(conteo: {
     .minus(conteo.cantidadFisica);
   const ventaFisicaEstimada = salidaFisica
     .minus(conteo.transferencias)
-    .minus(conteo.mermas);
+    .minus(conteo.mermas)
+    .minus(conteo.consumoReceta ?? 0);
   const diferenciaUnidades = ventaFisicaEstimada.minus(
     conteo.ventasRegistradas,
   );
@@ -56,6 +59,52 @@ export class BakeryService {
 
   listarArticulos() {
     return this.prisma.articuloPanaderia.findMany({ orderBy: { nombre: 'asc' } });
+  }
+
+  listarRecetas() {
+    return this.prisma.recetaPanaderia.findMany({
+      where: { activa: true },
+      include: { articulo: true, detalles: { include: { insumo: true } } },
+      orderBy: { id: 'desc' },
+    });
+  }
+
+  async crearReceta(dto: CrearRecetaPanaderiaDto) {
+    if (new Set(dto.detalles.map((detalle) => detalle.insumoId)).size !== dto.detalles.length)
+      throw new UnprocessableEntityException('Cada insumo debe aparecer una sola vez en la receta');
+    return this.prisma.$transaction(async (tx) => {
+      const articulo = await this.bloquearArticulo(tx, dto.articuloId);
+      if (articulo.tipo !== 'PANADERIA' || !articulo.activo)
+        throw new UnprocessableEntityException('La receta debe pertenecer a un articulo activo de panaderia');
+      const insumos = await tx.articuloPanaderia.findMany({
+        where: { id: { in: dto.detalles.map((detalle) => detalle.insumoId) } },
+      });
+      if (insumos.length !== dto.detalles.length || insumos.some((insumo) => insumo.tipo !== 'INSUMO' || !insumo.activo))
+        throw new UnprocessableEntityException('La receta solo puede usar insumos activos de panaderia');
+      for (const detalle of dto.detalles) {
+        const insumo = insumos.find((item) => item.id === detalle.insumoId)!;
+        if (insumo.unidad === 'UNIDADES' && !Number.isInteger(detalle.cantidadUnidad))
+          throw new UnprocessableEntityException(`${insumo.nombre} se mide en unidades enteras`);
+      }
+      await tx.recetaPanaderia.updateMany({ where: { articuloId: dto.articuloId, activa: true }, data: { activa: false } });
+      return tx.recetaPanaderia.create({
+        data: {
+          articuloId: dto.articuloId,
+          nombre: dto.nombre.trim(),
+          detalles: { create: dto.detalles.map((detalle) => ({ insumoId: detalle.insumoId, cantidadUnidad: detalle.cantidadUnidad })) },
+        },
+        include: { articulo: true, detalles: { include: { insumo: true } } },
+      });
+    });
+  }
+
+  async desactivarReceta(id: number) {
+    return this.prisma.$transaction(async (tx) => {
+      const receta = await tx.recetaPanaderia.findUnique({ where: { id } });
+      if (!receta) throw new NotFoundException('Receta de panaderia no encontrada');
+      await this.bloquearArticulo(tx, receta.articuloId);
+      return tx.recetaPanaderia.update({ where: { id }, data: { activa: false } });
+    });
   }
 
   crearArticulo(dto: CrearArticuloPanaderiaDto) {
@@ -90,11 +139,32 @@ export class BakeryService {
   async registrarEntrada(id: number, usuarioId: number, dto: EntradaPanaderiaDto) {
     return this.prisma.$transaction(async (tx) => {
       const articulo = await this.bloquearArticulo(tx, id);
+      if (!articulo.activo) throw new ConflictException('El articulo esta desactivado');
+      const receta = await tx.recetaPanaderia.findFirst({
+        where: { articuloId: id, activa: true }, include: { detalles: true },
+      });
+      const articulos = new Map<number, Awaited<ReturnType<typeof this.bloquearArticulo>>>();
+      for (const insumoId of (receta?.detalles.map((detalle) => detalle.insumoId) ?? []).sort((a, b) => a - b))
+        articulos.set(insumoId, await this.bloquearArticulo(tx, insumoId));
       if (articulo.unidad === 'UNIDADES' && !Number.isInteger(dto.cantidad))
         throw new UnprocessableEntityException('Este articulo se cuenta en unidades enteras');
+      if (articulo.tipo === 'PANADERIA') {
+        if (!receta || receta.detalles.length === 0)
+          throw new ConflictException('Crea una receta activa antes de registrar una hornada');
+        for (const detalle of receta.detalles) {
+          const insumo = articulos.get(detalle.insumoId)!;
+          if (!insumo.activo || insumo.tipo !== 'INSUMO')
+            throw new ConflictException(`${insumo.nombre} ya no es un insumo activo`);
+          const consumo = detalle.cantidadUnidad.times(dto.cantidad);
+          if (insumo.unidad === 'UNIDADES' && !consumo.isInteger())
+            throw new UnprocessableEntityException(`${insumo.nombre} requiere unidades enteras para esta hornada`);
+          await this.mover(tx, insumo, consumo.negated(), usuarioId, 'CONSUMO_RECETA',
+            `Receta #${receta.id} · ${dto.concepto.trim()}`.slice(0, 200), { recetaId: receta.id });
+        }
+      }
       return this.mover(tx, articulo, dto.cantidad, usuarioId,
         articulo.tipo === 'PANADERIA' ? 'PRODUCCION' : 'RECEPCION',
-        dto.concepto.trim());
+        dto.concepto.trim(), receta ? { recetaId: receta.id } : undefined);
     });
   }
 
@@ -234,6 +304,7 @@ export class BakeryService {
         ventasRegistradas: suma('VENTA'),
         transferencias: suma('TRANSFERENCIA'),
         mermas: suma('MERMA'),
+        consumoReceta: suma('CONSUMO_RECETA'),
         cantidadFisica: new Prisma.Decimal(dto.cantidadFisica),
         precioReferencia: articulo.precioVenta,
         fechaRegistro: new Date(),
@@ -299,6 +370,7 @@ export class BakeryService {
         ventasRegistradas: suma('VENTA'),
         transferencias: suma('TRANSFERENCIA'),
         mermas: suma('MERMA'),
+        consumoReceta: suma('CONSUMO_RECETA'),
       };
     });
     return {
@@ -711,11 +783,11 @@ export class BakeryService {
   private async mover(
     tx: Prisma.TransactionClient,
     articulo: Awaited<ReturnType<BakeryService['bloquearArticulo']>>,
-    delta: number,
+    delta: number | Prisma.Decimal,
     usuarioId: number,
-    tipo: 'PRODUCCION' | 'RECEPCION' | 'VENTA' | 'TRANSFERENCIA' | 'MERMA',
+    tipo: 'PRODUCCION' | 'CONSUMO_RECETA' | 'RECEPCION' | 'VENTA' | 'TRANSFERENCIA' | 'MERMA',
     concepto: string,
-    referencias?: { ventaId?: number; transferenciaId?: number; transferenciaRestauranteId?: number },
+    referencias?: { ventaId?: number; transferenciaId?: number; transferenciaRestauranteId?: number; recetaId?: number },
   ) {
     const despues = articulo.existencia.plus(delta);
     if (despues.lessThan(0))
@@ -728,7 +800,7 @@ export class BakeryService {
         articuloId: articulo.id,
         usuarioId,
         tipo,
-        cantidad: Math.abs(delta),
+        cantidad: new Prisma.Decimal(delta).abs(),
         existenciaAntes: articulo.existencia,
         existenciaDespues: despues,
         concepto,

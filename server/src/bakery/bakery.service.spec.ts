@@ -34,6 +34,19 @@ describe('conciliacion de inventario de panaderia', () => {
     }).diferenciaUnidades).toBe('0');
   });
 
+  it('descuenta el consumo de receta de la salida física antes de estimar ventas', () => {
+    expect(resumenConteo({
+      cantidadInicial: decimal(5),
+      entradas: decimal(2.5),
+      ventasRegistradas: decimal(0),
+      transferencias: decimal(0),
+      mermas: decimal(0),
+      consumoReceta: decimal(1),
+      cantidadFisica: decimal(6.5),
+      precioReferencia: decimal(0),
+    }).diferenciaUnidades).toBe('0');
+  });
+
   it('requiere recontar si hubo una salida despues del conteo', async () => {
     const fechaRegistro = new Date('2026-09-24T22:00:00Z');
     const articulo = { id: 1, nombre: 'Pan', activo: true, existencia: decimal(10), precioVenta: decimal(2500) };

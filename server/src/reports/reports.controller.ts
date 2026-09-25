@@ -11,7 +11,7 @@ export class ReportsController {
   // Un unico endpoint con todo el dashboard, para un solo request desde el front.
   // desde/hasta: ISO datetime local (el front arma los limites del rango).
   @Get('resumen')
-  resumen(@Query('desde') desde?: string, @Query('hasta') hasta?: string) {
-    return this.reportsService.resumen(desde, hasta);
+  resumen(@Query('desde') desde?: string, @Query('hasta') hasta?: string, @Query('area') area?: string) {
+    return this.reportsService.resumen(desde, hasta, area);
   }
 }

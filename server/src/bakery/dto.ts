@@ -46,6 +46,33 @@ export class EntradaPanaderiaDto {
   concepto!: string;
 }
 
+export class InsumoRecetaPanaderiaDto {
+  @IsInt()
+  @Min(1)
+  insumoId!: number;
+
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0.0001)
+  cantidadUnidad!: number;
+}
+
+export class CrearRecetaPanaderiaDto {
+  @IsInt()
+  @Min(1)
+  articuloId!: number;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(80)
+  nombre!: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => InsumoRecetaPanaderiaDto)
+  detalles!: InsumoRecetaPanaderiaDto[];
+}
+
 export class ActualizarArticuloPanaderiaDto {
   @IsOptional()
   @IsString()

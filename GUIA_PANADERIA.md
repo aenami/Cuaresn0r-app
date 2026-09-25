@@ -8,32 +8,43 @@ iniciar sesion si se les cambia el area.
 
 ## Preparacion
 
-1. La migracion `20260924190000_panaderia_separada` ya se aplico en la base
+1. Las migraciones `20260924190000_panaderia_separada` y
+   `20260925130000_recetas_panaderia` ya se aplicaron en la base
    local `POS` tras un respaldo en `server/backups/`. Para otro ambiente,
    respaldar primero y ejecutar `pnpm exec prisma migrate deploy` desde
    `server/`. No usar `migrate reset` ni `migrate dev` sobre `POS`: conserva
    cuatro migraciones historicas ausentes en el repositorio.
 2. Crear la caja de panaderia desde **Panaderia → Caja y cuadre**.
-3. Crear los panes y bebidas en **Inventario y conteo** con su precio de
-   venta. La existencia inicial se registra como entrada, con concepto.
-4. Crear `INSUMO` para ingredientes que panaderia recibe de restaurante.
+3. Entrar a **Inventario**, elegir **Panaderia** y crear los panes y bebidas
+   en **Conteo diario** con su precio de venta.
+4. Crear los `INSUMO` en **Ingredientes**; pueden recibirse de restaurante.
    Debe tener la misma unidad del ingrediente origen (`kg`, `g`, `L`, etc.).
    Un insumo no aparece en el mostrador ni se vende.
-5. Asignar el area `PANADERIA` a los cajeros correspondientes.
+5. Crear una receta activa para cada pan en **Recetas**. La cantidad de cada
+   insumo es por unidad de pan producido. Si se cambia la receta, el sistema
+   guarda una version nueva y conserva la anterior para trazabilidad.
+6. Asignar el area `PANADERIA` a los cajeros correspondientes.
 
 ## Jornada
 
 - Abrir turno de panaderia. La base de caja es 300.000 COP y se mantiene
   separada de la caja de restaurante.
-- Registrar hornadas y recepciones como entradas. Las ventas de mostrador
+- Registrar hornadas y recepciones como entradas. No se puede registrar una
+  hornada sin receta activa o sin insumos suficientes. Una hornada descuenta
+  sus insumos automaticamente y deja movimientos vinculados a la version de
+  receta utilizada. Las ventas de mostrador
   descuentan existencia, guardan el precio al momento de la venta y aceptan
   efectivo, transferencia y tarjeta en combinacion.
 - En el cierre contar fisicamente todos los articulos activos. La tabla
   compara lo que habia al inicio mas entradas, las ventas registradas, las
-  salidas justificadas y el saldo fisico. Una diferencia se valora para
+  salidas justificadas (incluido el consumo de recetas) y el saldo fisico.
+  Una diferencia se valora para
   investigacion; **no se registra automaticamente como venta ni cobro**.
 - Los turnos `TARDE_NOCHE` y `UNICO` no se pueden cerrar hasta terminar el
   conteo. Si hay un movimiento posterior, se debe recontar.
+- En **Inicio → Reportes** el administrador elige Restaurante o Panaderia;
+  las cifras y productos vendidos se filtran por area. Las metricas de
+  fichas, domicilios y meseros solo aplican a restaurante.
 
 ## Traslados entre areas
 

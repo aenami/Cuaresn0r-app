@@ -107,6 +107,7 @@ enum TipoArticuloPanaderia {
 
 enum TipoMovimientoPanaderia {
   PRODUCCION
+  CONSUMO_RECETA
   RECEPCION
   VENTA
   TRANSFERENCIA
@@ -1209,6 +1210,35 @@ model ArticuloPanaderia {
   ventas      DetalleVentaPanaderia[]
   transferencias TransferenciaPanaderia[]
   transferenciasRecibidas TransferenciaRestaurantePanaderia[]
+  recetasPanaderia RecetaPanaderia[] @relation("ProductoRecetaPanaderia")
+  usosRecetaPanaderia DetalleRecetaPanaderia[] @relation("InsumoRecetaPanaderia")
+}
+
+model RecetaPanaderia {
+  id            Int      @id @default(autoincrement())
+  articuloId    Int
+  nombre        String   @db.VarChar(80)
+  activa        Boolean  @default(true)
+  fechaCreacion DateTime @default(now()) @db.Timestamp(6)
+
+  articulo   ArticuloPanaderia @relation("ProductoRecetaPanaderia", fields: [articuloId], references: [id])
+  detalles   DetalleRecetaPanaderia[]
+  movimientos MovimientoPanaderia[]
+
+  @@index([articuloId])
+}
+
+model DetalleRecetaPanaderia {
+  id             Int     @id @default(autoincrement())
+  recetaId       Int
+  insumoId       Int
+  cantidadUnidad Decimal @db.Decimal(20, 4)
+
+  receta RecetaPanaderia @relation(fields: [recetaId], references: [id])
+  insumo ArticuloPanaderia @relation("InsumoRecetaPanaderia", fields: [insumoId], references: [id])
+
+  @@unique([recetaId, insumoId])
+  @@index([insumoId])
 }
 
 model MovimientoPanaderia {
@@ -1223,6 +1253,7 @@ model MovimientoPanaderia {
   ventaId         Int?
   transferenciaId Int?
   transferenciaRestauranteId Int?
+  recetaId        Int?
   fecha           DateTime               @default(now()) @db.Timestamp(6)
 
   articulo      ArticuloPanaderia        @relation(fields: [articuloId], references: [id])
@@ -1230,11 +1261,13 @@ model MovimientoPanaderia {
   venta         VentaPanaderia?          @relation(fields: [ventaId], references: [id])
   transferencia TransferenciaPanaderia?  @relation(fields: [transferenciaId], references: [id])
   transferenciaRestaurante TransferenciaRestaurantePanaderia? @relation(fields: [transferenciaRestauranteId], references: [id])
+  receta        RecetaPanaderia?       @relation(fields: [recetaId], references: [id])
 
   @@index([articuloId, fecha])
   @@index([ventaId])
   @@index([transferenciaId])
   @@index([transferenciaRestauranteId])
+  @@index([recetaId])
 }
 
 model VentaPanaderia {
@@ -1291,6 +1324,7 @@ model ConteoPanaderia {
   ventasRegistradas Decimal @db.Decimal(20, 4)
   transferencias   Decimal  @db.Decimal(20, 4)
   mermas           Decimal  @db.Decimal(20, 4)
+  consumoReceta    Decimal  @default(0) @db.Decimal(20, 4)
   cantidadFisica   Decimal  @db.Decimal(20, 4)
   precioReferencia Decimal  @db.Decimal(20, 4)
   fechaRegistro    DateTime @default(now()) @db.Timestamp(6)

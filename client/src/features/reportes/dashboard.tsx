@@ -26,6 +26,7 @@ import { formatearFecha, formatearPrecio } from '@/lib/formato'
 import { cn } from '@/lib/utils'
 
 export function DashboardReportes() {
+  const [area, setArea] = useState<'RESTAURANTE' | 'PANADERIA'>('RESTAURANTE')
   const [preset, setPreset] = useState<PresetRango | 'personalizado'>('7dias')
   const [custom, setCustom] = useState<{ desde: string; hasta: string }>({ desde: '', hasta: '' })
 
@@ -37,7 +38,7 @@ export function DashboardReportes() {
     return rangoDePreset(preset)
   }, [preset, custom])
 
-  const { data, isPending, isError } = useQuery(reporteQuery(rango.desde, rango.hasta))
+  const { data, isPending, isError } = useQuery(reporteQuery(rango.desde, rango.hasta, area))
 
   return (
     <div className="p-6 md:p-10">
@@ -55,6 +56,12 @@ export function DashboardReportes() {
         </div>
 
         <div>
+          <div role="group" aria-label="Área de los reportes" className="mb-3 flex gap-1 rounded-lg bg-surface-lowest p-1">
+            {(['RESTAURANTE', 'PANADERIA'] as const).map((opcion) => <button key={opcion} type="button" aria-pressed={area === opcion} onClick={() => setArea(opcion)}
+              className={cn('min-h-10 flex-1 rounded-md px-3 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-primary', area === opcion ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-surface-high hover:text-foreground')}>
+              {opcion === 'RESTAURANTE' ? 'Restaurante' : 'Panadería'}
+            </button>)}
+          </div>
           <div className="flex flex-wrap items-center gap-1.5">
             {PRESETS.map((p) => (
               <BotonPreset key={p.id} activo={preset === p.id} onClick={() => setPreset(p.id)}>
@@ -95,22 +102,22 @@ export function DashboardReportes() {
       ) : isPending || !data ? (
         <p className="mt-10 text-sm text-muted-foreground">Cargando reportes…</p>
       ) : (
-        <Contenido data={data} />
+        <Contenido data={data} area={area} />
       )}
     </div>
   )
 }
 
-function Contenido({ data }: { data: ReporteResumen }) {
+function Contenido({ data, area }: { data: ReporteResumen; area: 'RESTAURANTE' | 'PANADERIA' }) {
   const { ventas } = data
   const sinVentas = ventas.cuentas === 0
 
   return (
     <>
       {/* KPIs */}
-      <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className={cn('mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3', area === 'RESTAURANTE' ? 'lg:grid-cols-6' : 'lg:grid-cols-4')}>
         <Kpi etiqueta="Ventas netas" valor={formatearPrecio(ventas.netas)} delta={ventas.delta.netas} icono={Coins} />
-        <Kpi etiqueta="Cuentas pagadas" valor={String(ventas.cuentas)} delta={ventas.delta.cuentas} icono={Receipt} />
+        <Kpi etiqueta={area === 'PANADERIA' ? 'Ventas cobradas' : 'Cuentas pagadas'} valor={String(ventas.cuentas)} delta={ventas.delta.cuentas} icono={Receipt} />
         <Kpi
           etiqueta="Ticket promedio"
           valor={formatearPrecio(ventas.ticketPromedio)}
@@ -118,15 +125,15 @@ function Contenido({ data }: { data: ReporteResumen }) {
           icono={BarChart3}
         />
         <Kpi etiqueta="Items vendidos" valor={String(ventas.items)} delta={ventas.delta.items} icono={Utensils} />
-        <Kpi etiqueta="Domicilios" valor={String(ventas.domicilios)} delta={ventas.delta.domicilios} icono={Bike} />
-        <Kpi etiqueta="Propina/servicio" valor={formatearPrecio(ventas.propina)} delta={ventas.delta.propina} icono={CreditCard} />
+        {area === 'RESTAURANTE' && <><Kpi etiqueta="Domicilios" valor={String(ventas.domicilios)} delta={ventas.delta.domicilios} icono={Bike} />
+        <Kpi etiqueta="Propina/servicio" valor={formatearPrecio(ventas.propina)} delta={ventas.delta.propina} icono={CreditCard} /></>}
       </div>
 
       {sinVentas ? (
         <div className="mt-6 rounded-xl border border-dashed border-border bg-surface-low p-10 text-center">
           <p className="font-heading text-lg font-semibold">Sin ventas en este periodo</p>
           <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-            No hay cuentas pagadas en el rango seleccionado. Prueba otro periodo.
+            {area === 'PANADERIA' ? 'No hay ventas de panadería en el rango seleccionado. Prueba otro periodo.' : 'No hay cuentas pagadas en el rango seleccionado. Prueba otro periodo.'}
           </p>
         </div>
       ) : (
@@ -175,16 +182,16 @@ function Contenido({ data }: { data: ReporteResumen }) {
           </div>
 
           {/* Fila: domicilios por dia */}
-          <div className="mt-4">
+          {area === 'RESTAURANTE' && <div className="mt-4">
             <TarjetaGrafica titulo="Domicilios por dia">
               <div className="h-56">
                 <BarrasDomiciliosDia datos={data.porDia} />
               </div>
             </TarjetaGrafica>
-          </div>
+          </div>}
 
           {/* Fila: top productos + meseros */}
-          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className={cn('mt-4 grid grid-cols-1 gap-4', area === 'RESTAURANTE' && 'lg:grid-cols-2')}>
             <TarjetaGrafica titulo="Top productos">
               {data.topProductos.length === 0 ? (
                 <SinDatos />
@@ -206,7 +213,7 @@ function Contenido({ data }: { data: ReporteResumen }) {
               )}
             </TarjetaGrafica>
 
-            <TarjetaGrafica titulo="Ventas por mesero">
+            {area === 'RESTAURANTE' && <TarjetaGrafica titulo="Ventas por mesero">
               {data.porMesero.length === 0 ? (
                 <SinDatos />
               ) : (
@@ -235,11 +242,11 @@ function Contenido({ data }: { data: ReporteResumen }) {
                   </table>
                 </div>
               )}
-            </TarjetaGrafica>
+            </TarjetaGrafica>}
           </div>
 
           {/* Fila: ventas por ficha + disponibilidad actual */}
-          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {area === 'RESTAURANTE' && <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <TarjetaGrafica titulo="Ventas por ficha">
               {data.porFicha.length === 0 ? (
                 <SinDatos />
@@ -259,7 +266,7 @@ function Contenido({ data }: { data: ReporteResumen }) {
                 <TileFicha etiqueta="Inactivas" valor={data.ocupacionFichas.DESACTIVADAS} acento="tertiary" />
               </div>
             </TarjetaGrafica>
-          </div>
+          </div>}
         </>
       )}
     </>

@@ -458,3 +458,33 @@ alcance o feature terminada.
 - **Pendiente despliegue:** aplicar migracion en Neon y publicar API/web solo
   despues de validar una copia de los datos y el flujo fiscal. Este cambio
   aun no se ha subido a produccion.
+
+### 2026-09-25 — Inventario y reportes por area; recetas de panaderia
+
+- Se unifico la navegacion de **Inventario**: el administrador elige primero
+  Restaurante o Panaderia; los cajeros ven solamente su area. Conteo diario,
+  ingredientes y recetas consultan y muestran los datos del area seleccionada.
+  La produccion diaria existente sigue siendo exclusiva de restaurante.
+- Los ingredientes de panaderia son insumos propios, independientes de los
+  del restaurante. Cada pan puede tener una receta versionada que indica
+  insumos y cantidades por unidad. Registrar una hornada exige receta activa
+  y existencia suficiente; descuenta los insumos en la misma transaccion.
+  El conteo separa ese consumo de ventas y mermas para no crear diferencias
+  falsas.
+- El panel de analisis permite elegir Restaurante o Panaderia. Las ventas,
+  metodos, horarios, categorias y productos de panaderia proceden de sus
+  ventas cobradas; no se mezclan con facturas de restaurante. Se ocultan
+  fichas, domicilios, meseros y propinas cuando no aplican.
+- La caja de panaderia ya no presenta el formulario de apertura cuando falla
+  la consulta del turno o de las cajas. Ofrece reintento, y avisa si existe
+  un turno abierto por otra sesion. La lectura del turno despues de abrir se
+  comprobo en una base temporal; no se reprodujo un fallo del servicio de
+  lectura con los datos locales disponibles.
+- `20260925130000_recetas_panaderia` se aplico en la base temporal y en `POS`
+  local, despues de crear y verificar el respaldo privado
+  `server/backups/pos-before-bakery-recipes-1790354081794.dump`. No se
+  modifico Neon ni se publico una nueva version.
+- Verificacion: esquema Prisma, compilaciones, lint, pruebas automatizadas,
+  flujo funcional PostgreSQL temporal (turno, receta, hornada, venta, conteo,
+  reporte y cierre), y revision de inventario y reportes en escritorio/movil
+  con API simulada. Pendiente probar el flujo con usuarios y saldos reales.
