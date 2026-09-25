@@ -438,10 +438,14 @@ alcance o feature terminada.
 - Los reintentos de venta y de creacion de traslados usan una clave unica
   de operacion para evitar duplicados tras una respuesta de red incierta.
 - La migracion aditiva `20260924190000_panaderia_separada` se verifico
-  aplicando toda la historia sobre una base PostgreSQL temporal local. La
-  base de datos de trabajo `POS` no fue modificada: Prisma detecta un drift
-  **anterior** de migraciones en ese ambiente y su sugerencia de reinicio
-  borraria datos. No ejecutar `migrate reset` alli.
+  aplicando toda la historia sobre una base PostgreSQL temporal local.
+  Despues se respaldo `POS` en
+  `server/backups/pos-before-bakery-1790352034821.dump` (formato custom,
+  archivo comprobado con `pg_restore --list`) y `migrate deploy` aplico la
+  migracion nueva en esa base sin reiniciar datos. El historial local conserva
+  cuatro migraciones antiguas presentes en la tabla de Prisma pero ausentes
+  en el repositorio; `migrate status` seguira advirtiendolo. No ejecutar
+  `migrate reset` ni `migrate dev` sobre `POS` sin conciliar ese historial.
 - Verificacion: esquema Prisma valido, compilacion de backend y frontend,
   lint del cliente, 23 suites/185 pruebas y revision visual desktop/movil
   con respuestas simuladas. Ademas, en una base PostgreSQL temporal se

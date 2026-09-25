@@ -8,10 +8,11 @@ iniciar sesion si se les cambia el area.
 
 ## Preparacion
 
-1. Aplicar la migracion `20260924190000_panaderia_separada` en una base
-   respaldada. En un ambiente limpio se usa `pnpm exec prisma migrate deploy`
-   desde `server/`. No usar `migrate reset` sobre la base local `POS`: tiene
-   un drift historico anterior a este modulo que se debe conciliar primero.
+1. La migracion `20260924190000_panaderia_separada` ya se aplico en la base
+   local `POS` tras un respaldo en `server/backups/`. Para otro ambiente,
+   respaldar primero y ejecutar `pnpm exec prisma migrate deploy` desde
+   `server/`. No usar `migrate reset` ni `migrate dev` sobre `POS`: conserva
+   cuatro migraciones historicas ausentes en el repositorio.
 2. Crear la caja de panaderia desde **Panaderia → Caja y cuadre**.
 3. Crear los panes y bebidas en **Inventario y conteo** con su precio de
    venta. La existencia inicial se registra como entrada, con concepto.
