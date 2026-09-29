@@ -7,6 +7,9 @@ alcance o feature terminada.
 ## Contexto actual
 
 - El repositorio parte de un template POS para restaurante.
+- Ahora contempla restaurante/cafetería y panadería con datos propios. Los
+  administradores locales y trabajadores pertenecen a una sola área; el
+  administrador global supervisa ambas, sin cobrar ni operar caja.
 - La reestructuracion hacia el restaurante especifico esta implementada en el
   codigo y pendiente de despliegue/configuracion operativa.
 - Las migraciones de la adaptación operativa son
@@ -413,7 +416,9 @@ alcance o feature terminada.
 
 ## Decisiones descartadas
 
-- Rol y pantalla exclusiva de cocina (`COCINERO`).
+- Pantalla exclusiva de cocina. El rol `COCINERO`, descartado inicialmente,
+  vuelve a incorporarse por la definición de accesos del 2026-09-29, con
+  inventario, toma de pedidos y Mi nómina del restaurante.
 
 ### 2026-09-25 — Panaderia como segunda area del POS (implementacion local)
 
@@ -488,3 +493,58 @@ alcance o feature terminada.
   flujo funcional PostgreSQL temporal (turno, receta, hornada, venta, conteo,
   reporte y cierre), y revision de inventario y reportes en escritorio/movil
   con API simulada. Pendiente probar el flujo con usuarios y saldos reales.
+
+### 2026-09-29 — Accesos por rol/área y remisiones de panadería
+
+- Roles definidos: administrador global, administrador local, cajero, mesero,
+  cocinero y panadero. Cada perfil ve los módulos correspondientes y comienza
+  en su pantalla de trabajo. El área activa y el rol tienen nombres legibles
+  también en móvil. Solo el administrador global puede cambiar de área.
+- Los permisos se comprueban en el servidor, no solo ocultando botones. Los
+  administradores locales no pueden promover usuarios a globales ni acceder
+  a empleados, usuarios, proveedores o cuentas de la otra área. Las sesiones
+  existentes pierden permisos al cambiar el rol o desactivar al empleado.
+- El administrador global conserva administración, inventario y supervisión
+  de ambos negocios, pero tiene prohibido cobrar, facturar, operar turnos y
+  registrar pagos. El antiguo rol `ADMIN` se migra a `ADMIN_GLOBAL`; para
+  operar caja se necesita un cajero o `ADMIN_LOCAL` del área correspondiente.
+  Se mantiene la protección del último administrador global activo.
+- Panadería tiene catálogo propio de Panadería (panes), Pastelería (postres)
+  y externos. El panadero recibe insumos y registra hornadas con descuento
+  de receta; el cajero recibe productos externos y trabaja con caja,
+  proveedores y remisiones. Ambos tienen acceso a Mi nómina. Restaurante
+  conserva sus propios ingredientes, recetas, fichas, pedidos e impresoras.
+- Caja de panadería utiliza el módulo compartido de turnos, movimientos,
+  pagos, cuadre y cierres históricos, con sus datos y ventas de mostrador.
+  Proveedores, cuentas y configuración de nómina quedan separados por área.
+  Las cuentas recibidas de proveedores ingresan mercancía al confirmar
+  recepción; no incrementan stock únicamente por crear la factura.
+- Remisiones: cada entrega física registra producto, cantidad, precio,
+  concepto, responsable y fecha. Sale del stock de panadería y entra al
+  ingrediente del restaurante con la misma unidad, en una transacción.
+  Se agrupa por turno o por día; no se mezclan modalidades en la misma fecha.
+  La remisión diaria acumula los turnos y se cierra solo en turno único o
+  tarde-noche. Cerrar congela las entregas y genera una cuenta por pagar del
+  restaurante, que solo admite pago completo. Panadería confirma una única
+  vez la recepción del dinero, distinguiendo efectivo de transferencia.
+  El cierre de caja comprueba que no queden remisiones que deban cerrarse.
+- Se conservan los traslados históricos y la recepción de ingredientes desde
+  restaurante hacia panadería, manteniendo unidades y cantidades fraccionarias.
+  No se recrean entradas de inventario por cerrar o pagar una remisión.
+- Migración `20260928120000_accesos_areas_remisiones` aplicada a `POS` local
+  con respaldo previo `server/backups/pos-before-bakery-recipes-1790659076084.dump`,
+  comprobado con `pg_restore --list`. No se borraron ni reiniciaron datos.
+  Continúa la advertencia sobre las cuatro migraciones antiguas ausentes del
+  repositorio: no ejecutar `migrate reset` o `migrate dev` para ocultarla.
+- Verificación: 24 suites / 208 pruebas unitarias, compilaciones del servidor
+  y cliente, lint del cliente y esquema Prisma validado. 129 comprobaciones
+  HTTP sobre PostgreSQL temporal recorren aislamiento, permisos, proveedores, hornadas,
+  apertura/lectura de turno, remisiones por turno y por día, pago completo,
+  ingreso idempotente, conciliación y cierre. Revisión de seis perfiles con
+  API simulada en navegador y capturas de escritorio/móvil; el revisor final
+  confirmó resueltas las tres correcciones de usabilidad solicitadas.
+- Guía operativa: `docs/ROLES_Y_AREAS.md`. Pendiente validar los usuarios,
+  catálogos, saldos y procedimientos con el negocio. NIT/numeración fiscal
+  de panadería y prueba física de impresoras continúan pendientes.
+- Cambios guardados en commits locales. Esta etapa no modifica Neon, Render
+  ni Vercel; publicación en producción pendiente.
