@@ -31,6 +31,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
+import { nombreRol } from '@/lib/acceso'
 
 export const Route = createFileRoute('/_auth/usuarios')({
   component: PaginaUsuarios,
@@ -50,7 +51,7 @@ function formatearFecha(iso: string): string {
 }
 
 function claseBadgeRol(nombre: string): string {
-  return nombre === 'ADMIN'
+  return nombre.startsWith('ADMIN')
     ? 'bg-primary/15 text-primary'
     : nombre === 'CAJERO'
       ? 'bg-tertiary/15 text-tertiary'
@@ -65,7 +66,7 @@ function BadgeRol({ nombre }: { nombre: string }) {
         claseBadgeRol(nombre),
       )}
     >
-      {nombre}
+      {nombreRol(nombre)}
     </span>
   )
 }
@@ -99,7 +100,7 @@ function PaginaUsuarios() {
   // Empleados activos que aun no tienen un usuario: candidatos para crear acceso.
   const idsConUsuario = new Set(lista.map((u) => u.empleado.id_empleado))
   const empleadosDisponibles = (empleadosActivos ?? []).filter((e) => !idsConUsuario.has(e.id_empleado))
-  const admins = lista.filter((u) => u.rol.nombre_rol === 'ADMIN').length
+  const admins = lista.filter((u) => u.rol.nombre_rol.startsWith('ADMIN')).length
 
   function confirmarEliminar() {
     if (!porEliminar) return

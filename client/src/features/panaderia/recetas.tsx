@@ -24,7 +24,7 @@ export function RecetasPanaderia({ esAdmin }: { esAdmin: boolean }) {
   const [nombre, setNombre] = useState('')
   const [lineas, setLineas] = useState<Linea[]>([{ insumoId: '', cantidadUnidad: '' }])
   const [guardando, setGuardando] = useState(false)
-  const productos = articulos?.filter((a) => a.tipo === 'PANADERIA' && a.activo) ?? []
+  const productos = articulos?.filter((a) => ['PANADERIA', 'PASTELERIA'].includes(a.tipo) && a.activo) ?? []
   const insumos = articulos?.filter((a) => a.tipo === 'INSUMO' && a.activo) ?? []
   const visibles = recetas?.filter((receta) => `${receta.articulo.nombre} ${receta.nombre}`.toLowerCase().includes(busqueda.trim().toLowerCase())) ?? []
 

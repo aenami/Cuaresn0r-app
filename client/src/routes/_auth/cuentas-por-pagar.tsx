@@ -13,7 +13,8 @@ import {
 } from '@/features/billing/cuentas-por-pagar-api'
 import { ingredientesQuery } from '@/features/inventario/api'
 import { productosQuery } from '@/features/catalogo/api'
-import { useEsAdmin } from '@/stores/auth.store'
+import { useAreaTrabajo, useEsAdmin, useEsCaja } from '@/stores/auth.store'
+import { articulosQuery } from '@/features/panaderia/api'
 import type { CuentaPorPagar } from '@/types/api'
 import { ApiError } from '@/lib/api'
 import { formatearPrecio } from '@/lib/formato'
@@ -55,6 +56,8 @@ function fechaDocumento(fecha: string) {
 
 function PaginaCuentasPorPagar() {
   const esAdmin = useEsAdmin()
+  const esCaja = useEsCaja()
+  const area = useAreaTrabajo()
   const { data: cuentas, isPending } = useQuery(cuentasPorPagarQuery)
   const [seleccionada, setSeleccionada] = useState<number | null>(null)
   const [crearAbierto, setCrearAbierto] = useState(false)
@@ -72,14 +75,14 @@ function PaginaCuentasPorPagar() {
     <div className="min-h-full p-6 md:p-10">
       <header className="flex flex-wrap items-end justify-between gap-5 border-b border-border pb-7">
         <div>
-          <p className="micro-label">Obligaciones del restaurante</p>
+          <p className="micro-label">Obligaciones de {area === 'PANADERIA' ? 'panadería' : 'restaurante'}</p>
           <h1 className="mt-2 font-heading text-4xl font-semibold tracking-tighter">Cuentas por pagar</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             {pendientes.length} pendientes · saldo total{' '}
             {formatearPrecio(pendientes.reduce((total, cuenta) => total + saldo(cuenta), 0))}
           </p>
         </div>
-        {esAdmin ? (
+        {esAdmin || esCaja ? (
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setProveedorAbierto(true)}>
               <Truck className="size-4" /> Proveedor
@@ -156,7 +159,7 @@ function PaginaCuentasPorPagar() {
                     <li key={detalle.id_detalleCuentaPorPagar} className="flex justify-between text-xs">
                       <span>
                         {detalle.cantidad_detalleCuenta} ×{' '}
-                        {detalle.ingrediente?.nombre_ingrediente ?? detalle.producto?.nombre_producto ?? 'Elemento'}
+                        {detalle.articuloPanaderia?.nombre ?? detalle.ingrediente?.nombre_ingrediente ?? detalle.producto?.nombre_producto ?? 'Elemento'}
                       </span>
                       <span>
                         {formatearPrecio(
@@ -174,7 +177,7 @@ function PaginaCuentasPorPagar() {
                     : 'Mercancia pendiente de confirmacion'}
                 </span>
               </div>
-              {actual.estado_cuentaPorPagar !== 'ANULADA' &&
+              {(esAdmin || esCaja) && actual.estado_cuentaPorPagar !== 'ANULADA' &&
               (actual.fecha_recepcion_mercancia === null || actual.estado_cuentaPorPagar !== 'PAGADA') ? (
                 <div className="mt-4 grid gap-2 sm:grid-cols-2">
                   {actual.fecha_recepcion_mercancia === null ? (
@@ -191,7 +194,7 @@ function PaginaCuentasPorPagar() {
                     <PackageCheck className="size-4" /> Recibir
                   </Button>
                   ) : null}
-                  {actual.estado_cuentaPorPagar !== 'PAGADA' ? (
+                  {esCaja && actual.estado_cuentaPorPagar !== 'PAGADA' ? (
                   <Button className="btn-heat" onClick={() => setPagoAbierto(true)}>
                     <Banknote className="size-4" /> Pagar
                   </Button>
@@ -341,9 +344,12 @@ function DialogProveedor({ abierto, onCerrar }: { abierto: boolean; onCerrar: ()
 }
 
 function DialogCuenta({ abierto, onCerrar }: { abierto: boolean; onCerrar: () => void }) {
+  const panaderia = useAreaTrabajo() === 'PANADERIA'
+  const esAdmin = useEsAdmin()
   const { data: proveedores } = useQuery(proveedoresQuery)
-  const { data: ingredientes } = useQuery(ingredientesQuery)
-  const { data: productos } = useQuery(productosQuery)
+  const { data: ingredientes } = useQuery({ ...ingredientesQuery, enabled: abierto && !panaderia })
+  const { data: productos } = useQuery({ ...productosQuery, enabled: abierto && !panaderia })
+  const { data: articulos } = useQuery({ ...articulosQuery, enabled: abierto && panaderia })
   const crear = useCrearCuentaPorPagar()
   const [idProveedor, setIdProveedor] = useState('')
   const [concepto, setConcepto] = useState('')
@@ -354,14 +360,14 @@ function DialogCuenta({ abierto, onCerrar }: { abierto: boolean; onCerrar: () =>
   const [observacion, setObservacion] = useState('')
   const [lineas, setLineas] = useState<
     Array<{
-      tipo: 'INGREDIENTE' | 'PRODUCTO'
+      tipo: 'INGREDIENTE' | 'PRODUCTO' | 'ARTICULO_PANADERIA'
       idObjetivo: string
       cantidad: string
       precioUnitario: string
     }>
   >([])
   const agregarLinea = () =>
-    setLineas((actuales) => [...actuales, { tipo: 'INGREDIENTE', idObjetivo: '', cantidad: '', precioUnitario: '' }])
+    setLineas((actuales) => [...actuales, { tipo: panaderia ? 'ARTICULO_PANADERIA' : 'INGREDIENTE', idObjetivo: '', cantidad: '', precioUnitario: '' }])
 
   return (
     <Dialog open={abierto} onOpenChange={(open) => !open && onCerrar()}>
@@ -389,7 +395,9 @@ function DialogCuenta({ abierto, onCerrar }: { abierto: boolean; onCerrar: () =>
                 detalles: lineas
                   .filter((linea) => linea.idObjetivo)
                   .map((linea) => ({
-                    ...(linea.tipo === 'INGREDIENTE'
+                    ...(linea.tipo === 'ARTICULO_PANADERIA'
+                      ? { articuloPanaderiaId: Number(linea.idObjetivo) }
+                      : linea.tipo === 'INGREDIENTE'
                       ? { idIngrediente: Number(linea.idObjetivo) }
                       : { idProducto: Number(linea.idObjetivo) }),
                     cantidad: Number(linea.cantidad),
@@ -459,7 +467,7 @@ function DialogCuenta({ abierto, onCerrar }: { abierto: boolean; onCerrar: () =>
                         i === indice
                           ? {
                               ...item,
-                              tipo: valor as 'INGREDIENTE' | 'PRODUCTO',
+                              tipo: valor as 'INGREDIENTE' | 'PRODUCTO' | 'ARTICULO_PANADERIA',
                               idObjetivo: '',
                             }
                           : item,
@@ -471,8 +479,7 @@ function DialogCuenta({ abierto, onCerrar }: { abierto: boolean; onCerrar: () =>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="INGREDIENTE">Ingrediente</SelectItem>
-                    <SelectItem value="PRODUCTO">Producto</SelectItem>
+                    {panaderia ? <SelectItem value="ARTICULO_PANADERIA">Artículo</SelectItem> : <><SelectItem value="INGREDIENTE">Ingrediente</SelectItem><SelectItem value="PRODUCTO">Producto</SelectItem></>}
                   </SelectContent>
                 </Select>
                 <Select
@@ -487,7 +494,9 @@ function DialogCuenta({ abierto, onCerrar }: { abierto: boolean; onCerrar: () =>
                     <SelectValue placeholder="Selecciona" />
                   </SelectTrigger>
                   <SelectContent>
-                    {linea.tipo === 'INGREDIENTE'
+                    {linea.tipo === 'ARTICULO_PANADERIA'
+                      ? (articulos ?? []).filter((articulo) => articulo.activo && (esAdmin || articulo.tipo === 'EXTERNO')).map((articulo) => <SelectItem key={articulo.id} value={String(articulo.id)}>{articulo.nombre} · {articulo.unidad}</SelectItem>)
+                      : linea.tipo === 'INGREDIENTE'
                       ? (ingredientes ?? []).map((ingrediente) => (
                           <SelectItem key={ingrediente.id_ingrediente} value={String(ingrediente.id_ingrediente)}>
                             {ingrediente.nombre_ingrediente} · {ingrediente.unidades_ingrediente}

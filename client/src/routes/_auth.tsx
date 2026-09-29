@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState } from "react";
 import {
   Link,
   Outlet,
   createFileRoute,
   redirect,
   useNavigate,
-} from '@tanstack/react-router'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+} from "@tanstack/react-router";
+import { Dialog as DialogPrimitive } from "radix-ui";
 import {
   BookOpen,
   Croissant,
@@ -15,6 +15,7 @@ import {
   Flame,
   Hash,
   KeyRound,
+  FileText,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -24,50 +25,132 @@ import {
   Users,
   Wallet,
   ArrowRightLeft,
-} from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
-import type { SesionUsuario } from '@/stores/auth.store'
-import { useAuthStore, useEsAdmin, useEsCaja, tokenVigente } from '@/stores/auth.store'
-import { CambiarPasswordDialog } from '@/features/usuarios/cambiar-password-dialog'
-import { Button } from '@/components/ui/button'
-import type { LinkProps } from '@tanstack/react-router'
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import type { SesionUsuario } from "@/stores/auth.store";
+import {
+  useAuthStore,
+  useEsGlobal,
+  useAreaTrabajo,
+  areaTrabajoActual,
+  tokenVigente,
+} from "@/stores/auth.store";
+import {
+  esAdministrador,
+  nombreArea,
+  nombreRol,
+  puedeRuta,
+  rutaInicial,
+} from "@/lib/acceso";
+import { useQueryClient } from "@tanstack/react-query";
+import { CambiarPasswordDialog } from "@/features/usuarios/cambiar-password-dialog";
+import { Button } from "@/components/ui/button";
+import type { LinkProps } from "@tanstack/react-router";
+import { api } from "@/lib/api";
+import type { Usuario } from "@/types/api";
 
-export const Route = createFileRoute('/_auth')({
-  beforeLoad: ({ location }) => {
+export const Route = createFileRoute("/_auth")({
+  beforeLoad: async ({ location, context }) => {
     if (!tokenVigente(useAuthStore.getState().token)) {
-      useAuthStore.getState().logout()
-      throw redirect({ to: '/login', search: { redirect: location.href } })
+      useAuthStore.getState().logout();
+      throw redirect({ to: "/login", search: { redirect: location.href } });
+    }
+    const anterior = useAuthStore.getState().usuario;
+    const perfil = await context.queryClient.fetchQuery({
+      queryKey: ["auth", "perfil", anterior?.id],
+      queryFn: () => api.get<Usuario>("/auth/usuarios/me"),
+      staleTime: 30_000,
+    });
+    const vigente: SesionUsuario = {
+      id: perfil.id_usuario,
+      idRol: perfil.rol.id_rol,
+      rolNombre: perfil.rol.nombre_rol,
+      area: perfil.area,
+    };
+    if (anterior?.idRol !== vigente.idRol || anterior?.area !== vigente.area) {
+      context.queryClient.clear();
+    }
+    useAuthStore.getState().actualizarUsuario(vigente);
+    if (!puedeRuta(location.pathname, vigente, areaTrabajoActual())) {
+      throw redirect({ to: rutaInicial(useAuthStore.getState().usuario) });
     }
   },
   component: AppShell,
-})
+});
 
 type ItemNav = {
-  etiqueta: string
-  to: LinkProps['to']
-  icono: LucideIcon
-  soloAdmin?: boolean
-  soloCaja?: boolean
-  area?: 'RESTAURANTE' | 'PANADERIA'
-  ocultarMesero?: boolean
-}
+  etiqueta: string;
+  to: LinkProps["to"];
+  icono: LucideIcon;
+  soloAdmin?: boolean;
+  soloCaja?: boolean;
+  area?: "RESTAURANTE" | "PANADERIA";
+  ocultarMesero?: boolean;
+};
 
 const NAVEGACION: ItemNav[] = [
   // Inicio no aplica al MESERO: su `/` redirige a /mesas, asi que el enlace
   // seria un rebote inutil. Lo ocultamos de su barra.
-  { etiqueta: 'Inicio', to: '/', icono: LayoutDashboard, ocultarMesero: true, area: 'RESTAURANTE' },
-  { etiqueta: 'Pedidos', to: '/mesas', icono: Hash, area: 'RESTAURANTE' },
-  { etiqueta: 'Panaderia', to: '/panaderia', icono: Croissant, soloCaja: true, area: 'PANADERIA' },
-  { etiqueta: 'Traslados', to: '/traslados', icono: ArrowRightLeft, soloCaja: true, area: 'RESTAURANTE' },
-  { etiqueta: 'Caja', to: '/caja', icono: Wallet, soloCaja: true, area: 'RESTAURANTE' },
-  { etiqueta: 'Cuentas por pagar', to: '/cuentas-por-pagar', icono: ReceiptText, soloCaja: true, area: 'RESTAURANTE' },
-  { etiqueta: 'Nomina', to: '/nomina', icono: Users, soloCaja: true, area: 'RESTAURANTE' },
-  { etiqueta: 'Mi nomina', to: '/mi-nomina', icono: CircleDollarSign },
-  { etiqueta: 'Catalogo', to: '/catalogo', icono: BookOpen, area: 'RESTAURANTE' },
-  { etiqueta: 'Inventario', to: '/inventario', icono: Boxes },
-  { etiqueta: 'Impresoras', to: '/impresoras', icono: Printer, soloAdmin: true },
-  { etiqueta: 'Usuarios', to: '/usuarios', icono: UserCog, soloAdmin: true },
-]
+  {
+    etiqueta: "Inicio",
+    to: "/",
+    icono: LayoutDashboard,
+    ocultarMesero: true,
+    area: "RESTAURANTE",
+  },
+  { etiqueta: "Pedidos", to: "/mesas", icono: Hash, area: "RESTAURANTE" },
+  {
+    etiqueta: "Panaderia",
+    to: "/panaderia",
+    icono: Croissant,
+    soloCaja: true,
+    area: "PANADERIA",
+  },
+  {
+    etiqueta: "Traslados",
+    to: "/traslados",
+    icono: ArrowRightLeft,
+    soloCaja: true,
+    area: "RESTAURANTE",
+  },
+  {
+    etiqueta: "Caja",
+    to: "/caja",
+    icono: Wallet,
+    soloCaja: true,
+    area: "RESTAURANTE",
+  },
+  {
+    etiqueta: "Cuentas por pagar",
+    to: "/cuentas-por-pagar",
+    icono: ReceiptText,
+    soloCaja: true,
+    area: "RESTAURANTE",
+  },
+  {
+    etiqueta: "Nomina",
+    to: "/nomina",
+    icono: Users,
+    soloCaja: true,
+    area: "RESTAURANTE",
+  },
+  { etiqueta: "Mi nomina", to: "/mi-nomina", icono: CircleDollarSign },
+  {
+    etiqueta: "Catalogo",
+    to: "/catalogo",
+    icono: BookOpen,
+    area: "RESTAURANTE",
+  },
+  { etiqueta: "Inventario", to: "/inventario", icono: Boxes },
+  {
+    etiqueta: "Impresoras",
+    to: "/impresoras",
+    icono: Printer,
+    soloAdmin: true,
+  },
+  { etiqueta: "Usuarios", to: "/usuarios", icono: UserCog, soloAdmin: true },
+  { etiqueta: "Remisiones", to: "/remisiones", icono: FileText },
+];
 
 // Contenido de la barra lateral, compartido entre el aside fijo (desktop) y
 // el drawer deslizable (telefono). `onNavegar` cierra el drawer al tocar un
@@ -78,12 +161,16 @@ function ContenidoSidebar({
   onLogout,
   onNavegar,
   onCambiarPassword,
+  area,
+  selectorArea,
 }: {
-  navegacion: ItemNav[]
-  usuario: SesionUsuario | null
-  onLogout: () => void
-  onNavegar?: () => void
-  onCambiarPassword: () => void
+  navegacion: ItemNav[];
+  usuario: SesionUsuario | null;
+  onLogout: () => void;
+  onNavegar?: () => void;
+  onCambiarPassword: () => void;
+  area: "RESTAURANTE" | "PANADERIA";
+  selectorArea?: React.ReactNode;
 }) {
   return (
     <>
@@ -96,9 +183,12 @@ function ContenidoSidebar({
           <p className="font-heading text-lg font-semibold leading-none tracking-tighter text-primary">
             CorePOS
           </p>
-          <p className="micro-label mt-1.5">Terminal 01</p>
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {nombreArea(area)}
+          </p>
         </div>
       </div>
+      {selectorArea}
 
       <nav className="flex flex-1 flex-col gap-0.5 py-2" aria-label="Principal">
         {navegacion.map((item) => (
@@ -107,8 +197,11 @@ function ContenidoSidebar({
             to={item.to}
             onClick={onNavegar}
             className="flex items-center gap-3 border-l-2 border-transparent px-5 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-surface-high/50 hover:text-foreground"
-            activeProps={{ className: 'border-primary bg-primary/10 font-semibold text-primary' }}
-            activeOptions={{ exact: item.to === '/' }}
+            activeProps={{
+              className:
+                "border-primary bg-primary/10 font-semibold text-primary",
+            }}
+            activeOptions={{ exact: item.to === "/" }}
           >
             <item.icono className="size-[18px]" />
             {item.etiqueta}
@@ -119,7 +212,9 @@ function ContenidoSidebar({
       {/* Usuario / cambiar clave / cerrar sesion */}
       <div className="flex items-center justify-between gap-2 bg-surface-lowest px-5 py-3">
         <div className="min-w-0">
-          <p className="micro-label">{usuario?.rolNombre ?? 'SIN ROL'}</p>
+          <p className="text-xs font-semibold">
+            {nombreRol(usuario?.rolNombre ?? "Sin rol")}
+          </p>
           <p className="text-xs text-muted-foreground">Sesion activa</p>
         </div>
         <div className="flex items-center gap-1">
@@ -146,31 +241,76 @@ function ContenidoSidebar({
         </div>
       </div>
     </>
-  )
+  );
 }
 
 function AppShell() {
-  const usuario = useAuthStore((s) => s.usuario)
-  const token = useAuthStore((s) => s.token)
-  const logout = useAuthStore((s) => s.logout)
-  const esAdmin = useEsAdmin()
-  const esCaja = useEsCaja()
-  const esMesero = usuario?.rolNombre === 'MESERO'
+  const usuario = useAuthStore((s) => s.usuario);
+  const token = useAuthStore((s) => s.token);
+  const logout = useAuthStore((s) => s.logout);
+  const esGlobal = useEsGlobal();
+  const area = useAreaTrabajo();
+  const queryClient = useQueryClient();
   const navegacion = NAVEGACION.filter(
     (item) =>
-      (!item.soloAdmin || esAdmin) &&
-      (!item.soloCaja || esCaja) &&
-      (!item.ocultarMesero || !esMesero) &&
-      (!item.area || esAdmin || item.area === usuario?.area),
-  )
-  const navigate = useNavigate()
-  const [menuAbierto, setMenuAbierto] = useState(false)
-  const [cambiarPassAbierto, setCambiarPassAbierto] = useState(false)
+      (item.to !== "/" || esAdministrador(usuario?.rolNombre)) &&
+      puedeRuta(item.to ?? "/", usuario, area),
+  ).map((item) =>
+    item.to === "/"
+      ? { ...item, etiqueta: "Reportes" }
+      : item.to === "/panaderia"
+        ? { ...item, etiqueta: "Venta de mostrador" }
+        : item.to === "/caja" && esGlobal
+          ? { ...item, etiqueta: "Cierres de caja" }
+          : item.to === "/cuentas-por-pagar"
+            ? { ...item, etiqueta: "Proveedores y cuentas" }
+            : item,
+  );
+  const seleccionarArea = useAuthStore((s) => s.seleccionarArea);
+  const navigate = useNavigate();
+  const [menuAbierto, setMenuAbierto] = useState(false);
+  const [cambiarPassAbierto, setCambiarPassAbierto] = useState(false);
+  const [cambiandoArea, setCambiandoArea] = useState(false);
+  async function cambiarArea(nuevaArea: "RESTAURANTE" | "PANADERIA") {
+    if (nuevaArea === area) return;
+    setCambiandoArea(true);
+    await queryClient.cancelQueries();
+    queryClient.clear();
+    seleccionarArea(nuevaArea);
+    await navigate({ to: "/" });
+    setCambiandoArea(false);
+  }
+  function cerrarSesion() {
+    queryClient.clear();
+    logout();
+  }
+  const selectorArea = esGlobal ? (
+    <div className="space-y-2 px-5 pb-4">
+      <label htmlFor="area-operacion" className="text-xs font-semibold">
+        Área que estás consultando
+      </label>
+      <select
+        id="area-operacion"
+        value={area}
+        disabled={cambiandoArea}
+        onChange={(e) =>
+          void cambiarArea(e.target.value as "RESTAURANTE" | "PANADERIA")
+        }
+        className="h-10 w-full rounded-md bg-surface-high px-2 text-sm focus-visible:outline-2 focus-visible:outline-primary"
+      >
+        <option value="RESTAURANTE">Restaurante / cafetería</option>
+        <option value="PANADERIA">Panadería</option>
+      </select>
+      <p className="text-xs text-muted-foreground">
+        Supervisión · sin cobros ni facturación
+      </p>
+    </div>
+  ) : null;
 
   // Si la sesion muere en caliente (401 del api client), se expulsa al login.
   useEffect(() => {
-    if (!token) navigate({ to: '/login' })
-  }, [token, navigate])
+    if (!token) navigate({ to: "/login" });
+  }, [token, navigate]);
 
   return (
     <div className="flex min-h-svh bg-background">
@@ -179,7 +319,9 @@ function AppShell() {
         <ContenidoSidebar
           navegacion={navegacion}
           usuario={usuario}
-          onLogout={logout}
+          onLogout={cerrarSesion}
+          area={area}
+          selectorArea={selectorArea}
           onCambiarPassword={() => setCambiarPassAbierto(true)}
         />
       </aside>
@@ -204,11 +346,26 @@ function AppShell() {
               CorePOS
             </span>
           </div>
-          <span className="micro-label">{usuario?.rolNombre}</span>
+          <div className="min-w-0 text-right">
+            <p className="text-xs font-semibold">
+              {nombreRol(usuario?.rolNombre ?? "Sin rol")}
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              {nombreArea(area)}
+            </p>
+          </div>
         </header>
 
         <main className="min-w-0 flex-1">
-          <Outlet />
+          {cambiandoArea ? (
+            <div role="status" className="p-10 text-muted-foreground">
+              Cambiando de área…
+            </div>
+          ) : (
+            <div key={`${usuario?.id}-${area}`}>
+              <Outlet />
+            </div>
+          )}
         </main>
       </div>
 
@@ -220,18 +377,22 @@ function AppShell() {
             aria-describedby={undefined}
             className="fixed inset-y-0 left-0 z-50 flex h-svh w-64 flex-col overflow-y-auto bg-surface-low shadow-xl outline-none duration-200 data-open:animate-in data-open:slide-in-from-left data-closed:animate-out data-closed:slide-out-to-left md:hidden"
           >
-            <DialogPrimitive.Title className="sr-only">Navegacion</DialogPrimitive.Title>
+            <DialogPrimitive.Title className="sr-only">
+              Navegacion
+            </DialogPrimitive.Title>
             <ContenidoSidebar
               navegacion={navegacion}
               usuario={usuario}
+              area={area}
+              selectorArea={selectorArea}
               onLogout={() => {
-                setMenuAbierto(false)
-                logout()
+                setMenuAbierto(false);
+                cerrarSesion();
               }}
               onNavegar={() => setMenuAbierto(false)}
               onCambiarPassword={() => {
-                setMenuAbierto(false)
-                setCambiarPassAbierto(true)
+                setMenuAbierto(false);
+                setCambiarPassAbierto(true);
               }}
             />
           </DialogPrimitive.Content>
@@ -243,5 +404,5 @@ function AppShell() {
         onCerrar={() => setCambiarPassAbierto(false)}
       />
     </div>
-  )
+  );
 }

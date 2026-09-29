@@ -3,7 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Lock } from 'lucide-react'
 import type { TurnoResumen } from '@/types/api'
-import { useEsAdmin, useEsCaja } from '@/stores/auth.store'
+import { useEsAdmin, useEsCaja, useEsGlobal, useAreaTrabajo } from '@/stores/auth.store'
 import { turnoActualQuery } from '@/features/billing/api'
 import { cn } from '@/lib/utils'
 import { horaCorta } from '@/features/billing/caja-comun'
@@ -11,6 +11,10 @@ import { AbrirTurnoForm, FlujoEfectivo } from '@/features/billing/flujo-efectivo
 import { CuadreCaja } from '@/features/billing/cuadre-caja'
 import { CuentasPagadas } from '@/features/billing/cuentas-pagadas'
 import { Ajustes } from '@/features/billing/ajustes-caja'
+import { Directorio } from '@/features/nomina/directorio'
+import { HistorialVentasPanaderia } from '@/features/panaderia/historial-ventas'
+import { errorApi } from '@/features/billing/caja-comun'
+import { Button } from '@/components/ui/button'
 
 export const Route = createFileRoute('/_auth/caja')({
   component: PaginaCaja,
@@ -18,14 +22,17 @@ export const Route = createFileRoute('/_auth/caja')({
 
 // Vistas del modulo. 'flujo' y 'cuentas' las ven cajero y admin; 'ajustes'
 // (configuracion + cajas) es solo admin.
-type Vista = 'flujo' | 'cuadre' | 'cuentas' | 'ajustes'
+type Vista = 'flujo' | 'cuadre' | 'cuentas' | 'ajustes' | 'personal'
 
 function PaginaCaja() {
   const esAdmin = useEsAdmin()
   const esCaja = useEsCaja()
-  const { data: turno, isPending } = useQuery(turnoActualQuery)
+  const esGlobal = useEsGlobal()
+  const area = useAreaTrabajo()
+  const { data: turno, isPending, error, refetch } = useQuery({ ...turnoActualQuery, enabled: esCaja })
   const [vista, setVista] = useState<Vista>('flujo')
 
+  if (esGlobal) return <div className="p-6 md:p-10"><p className="mb-5 text-sm text-muted-foreground">Cierres de {area === 'PANADERIA' ? 'panadería' : 'restaurante'} · vista de supervisión</p><CuadreCaja turno={null} /></div>
   if (!esCaja) {
     return (
       <div className="grid min-h-full place-items-center p-10 text-center">
@@ -39,9 +46,9 @@ function PaginaCaja() {
 
   return (
     <div className="mx-auto max-w-6xl p-6 md:p-10">
-      <div className="mb-6 flex items-center justify-between gap-3">
-        <p className="micro-label tracking-[0.22em]">Caja_Control</p>
-        <div className="flex items-center gap-3">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm font-semibold">Caja · {area === 'PANADERIA' ? 'Panadería' : 'Restaurante'}</p>
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-3">
           <ToggleModo vista={vista} onCambiar={setVista} esAdmin={esAdmin} />
           {turno && (vista === 'flujo' || vista === 'cuadre') && <PillTurno turno={turno} />}
         </div>
@@ -50,7 +57,11 @@ function PaginaCaja() {
       {vista === 'ajustes' && esAdmin ? (
         <Ajustes />
       ) : vista === 'cuentas' ? (
-        <CuentasPagadas />
+        area === 'PANADERIA' ? <HistorialVentasPanaderia /> : <CuentasPagadas />
+      ) : vista === 'personal' ? (
+        <Directorio esAdmin={false} />
+      ) : error ? (
+        <div role="alert" className="space-y-3 text-sm"><p className="text-destructive">{errorApi(error)}</p><Button variant="secondary" onClick={() => void refetch()}>Reintentar consulta del turno</Button></div>
       ) : vista === 'cuadre' ? (
         isPending ? <div className="h-72 animate-pulse rounded-2xl bg-surface-high" /> : <CuadreCaja turno={turno ?? null} />
       ) : isPending ? (
@@ -69,10 +80,11 @@ function ToggleModo({ vista, onCambiar, esAdmin }: { vista: Vista; onCambiar: (v
     { valor: 'flujo', texto: 'Flujo de caja' },
     { valor: 'cuadre', texto: 'Cuadre' },
     { valor: 'cuentas', texto: 'Cuentas' },
+    { valor: 'personal', texto: 'Pagos a personal' },
     ...(esAdmin ? [{ valor: 'ajustes' as const, texto: 'Ajustes' }] : []),
   ]
   return (
-    <div className="inline-flex rounded-lg bg-surface-lowest p-0.5">
+    <div className="inline-flex max-w-full flex-wrap gap-1 rounded-lg bg-surface-lowest p-0.5">
       {opciones.map((o) => (
         <button
           key={o.valor}

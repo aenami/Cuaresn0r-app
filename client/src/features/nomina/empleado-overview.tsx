@@ -36,6 +36,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { errorApi } from './comun'
+import { useEsCaja } from '@/stores/auth.store'
 
 export function Overview({
   idEmpleado,
@@ -50,6 +51,7 @@ export function Overview({
   activo: boolean
   onPagar: () => void
 }) {
+  const esCaja = useEsCaja()
   // Tarifas y config son solo-ADMIN en el backend: el cajero no las consulta.
   const { data: tarifas } = useQuery({ ...tarifasEmpleadoQuery(idEmpleado), enabled: esAdmin })
   const { data: pagos } = useQuery(pagosEmpleadoQuery(idEmpleado))
@@ -121,9 +123,9 @@ export function Overview({
         <section className="rounded-xl bg-surface-high p-5">
           <h2 className="micro-label">Acciones rapidas</h2>
           <div className="mt-3 space-y-2">
-            <Button variant="outline" className="w-full justify-start gap-2" onClick={onPagar}>
+            {esCaja && <Button variant="outline" className="w-full justify-start gap-2" onClick={onPagar}>
               <Wallet className="size-4" /> Registrar pago
-            </Button>
+            </Button>}
             {esAdmin ? (
               <Button variant="outline" className="w-full justify-start gap-2" disabled={!activo} onClick={() => setAplicarConcepto(true)}>
                 <BadgePlus className="size-4" /> Aplicar concepto

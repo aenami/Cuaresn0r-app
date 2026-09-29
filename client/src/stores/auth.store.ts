@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { esAdministrador, esGlobal, puedeCobrar } from '@/lib/acceso'
 
 // Espejo del payload que genera TokenService en el backend.
 // idRol/rolNombre son informativos para la UI: la autoridad real es la DB,
@@ -14,6 +15,9 @@ export interface SesionUsuario {
 interface AuthState {
   token: string | null
   usuario: SesionUsuario | null
+  areaSeleccionada: 'RESTAURANTE' | 'PANADERIA'
+  seleccionarArea: (area: 'RESTAURANTE' | 'PANADERIA') => void
+  actualizarUsuario: (usuario: SesionUsuario) => void
   iniciarSesion: (token: string) => void
   logout: () => void
 }
@@ -46,20 +50,27 @@ export function tokenVigente(token: string | null): boolean {
 
 // Solo para decidir que UI mostrar: la autorizacion real la hace el backend.
 export function useEsAdmin(): boolean {
-  return useAuthStore((s) => s.usuario?.rolNombre === 'ADMIN')
+  return useAuthStore((s) => esAdministrador(s.usuario?.rolNombre))
 }
 
 // Roles con acceso a caja/facturacion (MESERO no entra a /billing).
 export function useEsCaja(): boolean {
-  return useAuthStore((s) => s.usuario?.rolNombre === 'ADMIN' || s.usuario?.rolNombre === 'CAJERO')
+  return useAuthStore((s) => puedeCobrar(s.usuario?.rolNombre))
 }
+
+export function useEsGlobal(): boolean { return useAuthStore((s) => esGlobal(s.usuario?.rolNombre)) }
+export function useAreaTrabajo() { return useAuthStore((s) => esGlobal(s.usuario?.rolNombre) ? s.areaSeleccionada : s.usuario?.area ?? 'RESTAURANTE') }
+export function areaTrabajoActual() { const s = useAuthStore.getState(); return esGlobal(s.usuario?.rolNombre) ? s.areaSeleccionada : s.usuario?.area ?? 'RESTAURANTE' }
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       token: null,
       usuario: null,
-      iniciarSesion: (token) => set({ token, usuario: decodificarPayload(token) }),
+      areaSeleccionada: 'RESTAURANTE',
+      seleccionarArea: (areaSeleccionada) => set({ areaSeleccionada }),
+      actualizarUsuario: (usuario) => set({ usuario }),
+      iniciarSesion: (token) => { const usuario = decodificarPayload(token); set({ token, usuario, areaSeleccionada: usuario?.area ?? 'RESTAURANTE' }) },
       logout: () => set({ token: null, usuario: null }),
     }),
     { name: 'pos-auth' },

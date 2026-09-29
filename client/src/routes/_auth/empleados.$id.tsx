@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Pencil, Wallet } from 'lucide-react'
 import { ApiError } from '@/lib/api'
 import { formatearFecha, formatearPrecio } from '@/lib/formato'
-import { useEsAdmin } from '@/stores/auth.store'
+import { useEsAdmin, useEsCaja } from '@/stores/auth.store'
 import { empleadoQuery, saldoEmpleadoQuery } from '@/features/nomina/api'
 import { EmpleadoDialog } from '@/features/nomina/empleado-form-dialog'
 import { Overview } from '@/features/nomina/empleado-overview'
@@ -25,6 +25,7 @@ function PaginaEmpleado() {
   const { id } = Route.useParams()
   const idEmpleado = Number(id)
   const esAdmin = useEsAdmin()
+  const esCaja = useEsCaja()
   const { data: empleado, isPending, error } = useQuery(empleadoQuery(idEmpleado))
   const { data: saldo } = useQuery(saldoEmpleadoQuery(idEmpleado))
   const [tab, setTab] = useState<Tab>('overview')
@@ -38,8 +39,8 @@ function PaginaEmpleado() {
     return (
       <div className="mx-auto max-w-6xl p-6 md:p-10">
         <p className="text-sm text-destructive">{error instanceof ApiError ? error.message : 'No se pudo cargar el empleado'}</p>
-        <Link to="/nomina" className="mt-4 inline-block text-sm text-primary underline-offset-4 hover:underline">
-          Volver a nomina
+        <Link to={esAdmin ? '/nomina' : '/caja'} className="mt-4 inline-block text-sm text-primary underline-offset-4 hover:underline">
+          Volver
         </Link>
       </div>
     )
@@ -49,8 +50,8 @@ function PaginaEmpleado() {
 
   return (
     <div className="mx-auto max-w-6xl p-6 md:p-10">
-      <Link to="/nomina" className="micro-label inline-flex items-center gap-1.5 hover:text-foreground">
-        <ArrowLeft className="size-3.5" /> Nomina
+      <Link to={esAdmin ? '/nomina' : '/caja'} className="micro-label inline-flex items-center gap-1.5 hover:text-foreground">
+        <ArrowLeft className="size-3.5" /> {esAdmin ? 'Nómina' : 'Caja'}
       </Link>
 
       {/* Cabecera */}
@@ -87,12 +88,12 @@ function PaginaEmpleado() {
               <Pencil className="size-4" /> Editar
             </Button>
           ) : null}
-          <Button
+          {esCaja && <Button
             className="btn-heat h-10 gap-2 font-heading text-sm font-semibold uppercase tracking-wide"
             onClick={() => setPagar(true)}
           >
             <Wallet className="size-4" /> Registrar pago
-          </Button>
+          </Button>}
         </div>
       </header>
 
@@ -115,7 +116,7 @@ function PaginaEmpleado() {
           { id: 'overview', t: 'Resumen' },
           ...(esAdmin ? [{ id: 'tarifas' as const, t: 'Tarifas' }] : []),
           { id: 'ledger', t: 'Movimientos' },
-          { id: 'asistencia', t: 'Asistencia' },
+          ...(esAdmin ? [{ id: 'asistencia' as const, t: 'Asistencia' }] : []),
         ] as { id: Tab; t: string }[]).map((x) => (
           <button
             key={x.id}

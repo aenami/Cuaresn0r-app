@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
-import { useAuthStore, useEsAdmin } from '@/stores/auth.store'
+import { useAreaTrabajo, useEsAdmin } from '@/stores/auth.store'
 import { SeccionIngredientes } from '@/features/inventario/seccion-ingredientes'
 import { SeccionRecetas } from '@/features/inventario/seccion-recetas'
 import { SeccionProduccion } from '@/features/inventario/seccion-produccion'
@@ -26,10 +26,7 @@ const PESTANAS: { id: Pestana; etiqueta: string }[] = [
 
 function PaginaInventario() {
   const esAdmin = useEsAdmin()
-  const areaUsuario = useAuthStore((s) => s.usuario?.area)
-  const { area: areaSolicitada } = Route.useSearch()
-  const navigate = useNavigate()
-  const area = esAdmin ? areaSolicitada ?? 'RESTAURANTE' : areaUsuario ?? 'RESTAURANTE'
+  const area = useAreaTrabajo()
   const [pestana, setPestana] = useState<Pestana>('produccion')
   const pestanaVisible = area === 'PANADERIA' && pestana === 'produccion' ? 'conteo' : pestana
   const pestanas = area === 'PANADERIA' ? PESTANAS.filter((p) => p.id !== 'produccion') : PESTANAS
@@ -37,13 +34,7 @@ function PaginaInventario() {
   return (
     <div className="p-6 md:p-10">
       <h1 className="font-heading text-3xl font-semibold uppercase tracking-tighter">Inventario</h1>
-      {esAdmin ? <div role="group" aria-label="Área del inventario" className="mt-5 inline-flex gap-1 rounded-lg bg-surface-lowest p-1">
-        {(['RESTAURANTE', 'PANADERIA'] as const).map((opcion) => <button key={opcion} type="button" aria-pressed={area === opcion}
-          onClick={() => { setPestana(opcion === 'PANADERIA' ? 'conteo' : 'produccion'); void navigate({ to: '/inventario', search: { area: opcion } }) }}
-          className={cn('min-h-10 rounded-md px-4 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-primary', area === opcion ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-surface-high hover:text-foreground')}>
-          {opcion === 'RESTAURANTE' ? 'Restaurante' : 'Panadería'}
-        </button>)}
-      </div> : <p className="mt-3 text-sm font-semibold text-primary">{area === 'PANADERIA' ? 'Panadería' : 'Restaurante'}</p>}
+      <p className="mt-3 text-sm font-semibold text-primary">{area === 'PANADERIA' ? 'Panadería' : 'Restaurante'}</p>
       {!esAdmin ? (
         <p className="mt-2 text-sm text-muted-foreground">
           {area === 'PANADERIA' ? 'Puedes registrar entradas y realizar el conteo físico de cierre.' : 'Puedes confirmar las metas de producción y realizar el conteo físico de cierre.'}

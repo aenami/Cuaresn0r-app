@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { Clock, Coins, Lock, Settings2, Users } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { useEsAdmin, useEsCaja } from '@/stores/auth.store'
+import { useEsAdmin, useAreaTrabajo } from '@/stores/auth.store'
 import { cn } from '@/lib/utils'
 import { Directorio } from '@/features/nomina/directorio'
 import { Asistencia } from '@/features/nomina/asistencia'
@@ -16,11 +16,11 @@ export const Route = createFileRoute('/_auth/nomina')({
 type Seccion = 'directorio' | 'asistencia' | 'propinas' | 'configuracion'
 
 function PaginaNomina() {
-  const esCaja = useEsCaja()
+  const area = useAreaTrabajo()
   const esAdmin = useEsAdmin()
   const [seccion, setSeccion] = useState<Seccion>('directorio')
 
-  if (!esCaja) {
+  if (!esAdmin) {
     return (
       <div className="grid min-h-full place-items-center p-10 text-center">
         <div>
@@ -36,7 +36,7 @@ function PaginaNomina() {
     { id: 'asistencia', etiqueta: 'Asistencia', icono: Clock },
     ...(esAdmin
       ? [
-          { id: 'propinas' as const, etiqueta: 'Propinas', icono: Coins },
+          ...(area === 'RESTAURANTE' ? [{ id: 'propinas' as const, etiqueta: 'Propinas', icono: Coins }] : []),
           { id: 'configuracion' as const, etiqueta: 'Configuracion', icono: Settings2 },
         ]
       : []),

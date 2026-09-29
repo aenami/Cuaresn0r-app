@@ -13,7 +13,7 @@ import { productosQuery } from '@/features/catalogo/api'
 import { ingredientesQuery } from '@/features/inventario/api'
 import { articulosQuery, bakeryApi, bakeryKeys, transferenciasQuery, transferenciasRestauranteQuery } from './api'
 
-export function TrasladosPanaderia({ esAdmin }: { esAdmin: boolean }) {
+export function TrasladosPanaderia({ esAdmin, puedeRecibir = true }: { esAdmin: boolean; puedeRecibir?: boolean }) {
   const queryClient = useQueryClient()
   const { data: articulos } = useQuery({ ...articulosQuery, enabled: esAdmin })
   const { data: productos } = useQuery({ ...productosQuery, enabled: esAdmin })
@@ -94,7 +94,7 @@ export function TrasladosPanaderia({ esAdmin }: { esAdmin: boolean }) {
         : trasladosRestaurante.map((t) => <article key={t.id} className="rounded-lg bg-surface-high p-4 text-sm">
           <div className="flex flex-wrap justify-between gap-2"><div><strong>TR-RES-{t.id} · {t.ingrediente.nombre_ingrediente} → {t.articuloDestino.nombre}</strong><p className="mt-1 text-muted-foreground">{t.concepto} · {t.cantidad} {t.articuloDestino.unidad}</p></div><strong>{formatearPrecio(t.montoTotal)}</strong></div>
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3"><span>{t.fechaRecepcion ? 'Recibido' : 'Pendiente de recibir'}</span><span>·</span><span>{t.fechaPago ? 'Pagado' : 'Pendiente de pago'}</span>
-            {!t.fechaRecepcion && <Button size="sm" variant="secondary" disabled={guardando} onClick={() => void ejecutar(() => bakeryApi.recibirTransferenciaRestaurante(t.id), 'Insumo recibido')}>Confirmar recepcion</Button>}
+            {puedeRecibir && !t.fechaRecepcion && <Button size="sm" variant="secondary" disabled={guardando} onClick={() => void ejecutar(() => bakeryApi.recibirTransferenciaRestaurante(t.id), 'Insumo recibido')}>Confirmar recepcion</Button>}
             {t.fechaRecepcion && !t.fechaPago && <><Button size="sm" disabled={guardando} onClick={() => void ejecutar(() => bakeryApi.pagarTransferenciaRestaurante(t.id, 'EFECTIVO'), 'Pago en efectivo registrado')}>Pagar en efectivo</Button><Button size="sm" variant="secondary" disabled={guardando} onClick={() => void ejecutar(() => bakeryApi.pagarTransferenciaRestaurante(t.id, 'TRANSFERENCIA'), 'Transferencia registrada')}>Pagar por transferencia</Button></>}
           </div>
         </article>)}

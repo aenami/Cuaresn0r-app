@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { Search } from 'lucide-react'
-import { useEsAdmin } from '@/stores/auth.store'
+import { useEsAdmin, useAreaTrabajo } from '@/stores/auth.store'
+import { CatalogoPanaderia } from '@/features/panaderia/catalogo'
 import { SeccionProductos } from '@/features/catalogo/seccion-productos'
 import { SeccionCombos } from '@/features/catalogo/seccion-combos'
 import { SeccionCategorias } from '@/features/catalogo/seccion-categorias'
@@ -22,8 +23,10 @@ const PESTANAS: { id: Pestana; etiqueta: string }[] = [
 
 function PaginaCatalogo() {
   const esAdmin = useEsAdmin()
+  const area = useAreaTrabajo()
   const [pestana, setPestana] = useState<Pestana>('productos')
   const [busqueda, setBusqueda] = useState('')
+  if (area === 'PANADERIA') return <div className="p-6 md:p-10"><CatalogoPanaderia /></div>
 
   return (
     <div className="p-6 md:p-10">

@@ -6,6 +6,8 @@ import { toast } from 'sonner'
 import { ApiError } from '@/lib/api'
 import { useCrearUsuario, useEditarUsuario } from '@/features/usuarios/api'
 import type { Empleado, Rol, Usuario } from '@/types/api'
+import { useAreaTrabajo, useEsGlobal } from '@/stores/auth.store'
+import { nombreRol } from '@/lib/acceso'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -61,6 +63,8 @@ export function UsuarioFormDialog({
   onCerrar: () => void
 }) {
   const esEdicion = !!usuario
+  const areaTrabajo = useAreaTrabajo()
+  const esGlobal = useEsGlobal()
   const crear = useCrearUsuario()
   const editar = useEditarUsuario()
   const mutacion = esEdicion ? editar : crear
@@ -76,12 +80,14 @@ export function UsuarioFormDialog({
       form.reset({
         idEmpleado: usuario ? String(usuario.empleado.id_empleado) : '',
         idRol: usuario ? String(usuario.rol.id_rol) : '',
-        area: usuario?.area ?? 'RESTAURANTE',
+        area: usuario?.area ?? areaTrabajo,
         email: usuario?.email_usuario ?? '',
         password: '',
       })
     }
-  }, [abierto, usuario, form])
+  }, [abierto, usuario, form, areaTrabajo])
+  const areaFormulario = form.watch('area')
+  const rolesDisponibles = roles.filter((r) => (esGlobal || r.nombre_rol !== 'ADMIN_GLOBAL') && r.nombre_rol !== 'ADMIN' && (r.nombre_rol !== 'PANADERO' || areaFormulario === 'PANADERIA') && (!['MESERO', 'COCINERO'].includes(r.nombre_rol) || areaFormulario === 'RESTAURANTE'))
 
   function enviar(valores: Valores) {
     const promesa = usuario
@@ -183,9 +189,9 @@ export function UsuarioFormDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {roles.map((r) => (
+                      {rolesDisponibles.map((r) => (
                         <SelectItem key={r.id_rol} value={String(r.id_rol)}>
-                          {r.nombre_rol}
+                          {nombreRol(r.nombre_rol)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -198,7 +204,7 @@ export function UsuarioFormDialog({
             <FormField control={form.control} name="area" render={({ field }) => (
               <FormItem>
                 <FormLabel>Area asignada</FormLabel>
-                <Select value={field.value} onValueChange={field.onChange}>
+                <Select disabled value={field.value} onValueChange={field.onChange}>
                   <FormControl><SelectTrigger className="w-full"><SelectValue /></SelectTrigger></FormControl>
                   <SelectContent><SelectItem value="RESTAURANTE">Restaurante / cafeteria</SelectItem><SelectItem value="PANADERIA">Panaderia</SelectItem></SelectContent>
                 </Select>

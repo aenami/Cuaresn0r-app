@@ -272,6 +272,7 @@ function InformeCuadre({ turno }: { turno: TurnoResumen }) {
       </section>
 
       <TablaNomina pagos={turno.detallePagosNomina} />
+      {turno.conteo_panaderia_cierre_turno ? <section className="rounded-lg bg-surface-high p-4 text-sm"><h2 className="font-semibold">Inventario de panadería al cerrar</h2><p className="mt-1">Diferencia valorizada: {formatearPrecio(turno.conteo_panaderia_cierre_turno.valorDiferencia)}. Se conserva para revisión; no crea ventas ni pagos automáticos.</p></section> : null}
       {turno.conteo_inventario_cierre_turno ? <section className="rounded-lg bg-surface-high p-4 text-sm">
         <h2 className="font-semibold">Inventario verificado al cerrar</h2>
         <p className="mt-1">{turno.conteo_inventario_cierre_turno.fecha} · {turno.conteo_inventario_cierre_turno.total} elementos contados · {turno.conteo_inventario_cierre_turno.inconsistencias} diferencias registradas.</p>

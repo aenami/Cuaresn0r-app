@@ -18,6 +18,8 @@ function useInvalidar() {
   return () => {
     void queryClient.invalidateQueries({ queryKey: ['billing'] })
     void queryClient.invalidateQueries({ queryKey: ['inventario'] })
+    void queryClient.invalidateQueries({ queryKey: ['bakery'] })
+    void queryClient.invalidateQueries({ queryKey: ['remisiones'] })
   }
 }
 
@@ -44,6 +46,7 @@ export function useCrearCuentaPorPagar() {
       detalles?: {
         idIngrediente?: number
         idProducto?: number
+        articuloPanaderiaId?: number
         cantidad: number
         precioUnitario: number
       }[]

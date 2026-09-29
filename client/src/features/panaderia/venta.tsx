@@ -61,6 +61,7 @@ export function VentaPanaderia({ turno, onIrCaja }: { turno: TurnoResumen | null
       setTransferencia('')
       setTarjeta('')
       await queryClient.invalidateQueries({ queryKey: bakeryKeys.all })
+      await queryClient.invalidateQueries({ queryKey: ['billing'] })
     } catch (error) { toast.error(errorApi(error)) }
     finally { setGuardando(false) }
   }
@@ -82,7 +83,7 @@ export function VentaPanaderia({ turno, onIrCaja }: { turno: TurnoResumen | null
               : <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {filtrados.map((articulo) => <button key={articulo.id} type="button" onClick={() => cambiarCantidad(articulo.id, 1)} disabled={!turno || Number(articulo.existencia) < 1}
                   className="min-h-28 rounded-lg bg-surface-high p-4 text-left transition-colors hover:bg-surface-high/70 focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-tertiary">{articulo.tipo === 'PANADERIA' ? 'Horneado' : 'Externo'}</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-tertiary">{articulo.tipo === 'PANADERIA' ? 'Panadería' : articulo.tipo === 'PASTELERIA' ? 'Pastelería' : 'Externo'}</span>
                   <span className="mt-2 block font-heading text-base font-semibold">{articulo.nombre}</span>
                   <span className="mt-3 flex justify-between gap-3 text-sm"><strong className="tabular-nums">{formatearPrecio(articulo.precioVenta)}</strong><span className="text-muted-foreground">{articulo.existencia} disponibles</span></span>
                 </button>)}

@@ -9,12 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { formatearPrecio } from '@/lib/formato'
 import { errorApi } from '@/features/billing/caja-comun'
 import { ingredientesQuery } from '@/features/inventario/api'
-import { articulosQuery, bakeryApi, bakeryKeys, transferenciasQuery, transferenciasRestauranteQuery } from './api'
+import { bakeryApi, bakeryKeys, transferenciasQuery, transferenciasRestauranteQuery, type ArticuloPanaderia } from './api'
+import { api } from '@/lib/api'
 
 export function TrasladosRestaurante({ esAdmin }: { esAdmin: boolean }) {
   const queryClient = useQueryClient()
   const { data: ingredientes } = useQuery({ ...ingredientesQuery, enabled: esAdmin })
-  const { data: articulos } = useQuery({ ...articulosQuery, enabled: esAdmin })
+  const { data: articulos } = useQuery({ queryKey: ['bakery', 'destinos-insumos'], queryFn: () => api.get<Pick<ArticuloPanaderia, 'id' | 'nombre' | 'unidad' | 'activo' | 'tipo'>[]>('/interarea/restaurante-panaderia/destinos'), enabled: esAdmin })
   const { data: salidas, isPending, isError } = useQuery(transferenciasRestauranteQuery)
   const { data: entradas } = useQuery(transferenciasQuery)
   const [ingredienteId, setIngredienteId] = useState('')

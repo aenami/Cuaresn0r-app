@@ -1,4 +1,4 @@
-import { useAuthStore } from '@/stores/auth.store'
+import { useAuthStore, areaTrabajoActual } from '@/stores/auth.store'
 
 const BASE_URL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 
@@ -60,6 +60,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      'X-Area-Negocio': areaTrabajoActual(),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
@@ -75,7 +76,7 @@ async function requestForm<T>(path: string, formData: FormData): Promise<T> {
 
   const res = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    headers: { 'X-Area-Negocio': areaTrabajoActual(), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: formData,
   })
 

@@ -24,9 +24,10 @@ import { COLOR_METODO, NOMBRE_METODO } from '@/features/reportes/paleta'
 import type { ReporteResumen } from '@/types/api'
 import { formatearFecha, formatearPrecio } from '@/lib/formato'
 import { cn } from '@/lib/utils'
+import { useAreaTrabajo } from '@/stores/auth.store'
 
 export function DashboardReportes() {
-  const [area, setArea] = useState<'RESTAURANTE' | 'PANADERIA'>('RESTAURANTE')
+  const area = useAreaTrabajo()
   const [preset, setPreset] = useState<PresetRango | 'personalizado'>('7dias')
   const [custom, setCustom] = useState<{ desde: string; hasta: string }>({ desde: '', hasta: '' })
 
@@ -56,12 +57,7 @@ export function DashboardReportes() {
         </div>
 
         <div>
-          <div role="group" aria-label="Área de los reportes" className="mb-3 flex gap-1 rounded-lg bg-surface-lowest p-1">
-            {(['RESTAURANTE', 'PANADERIA'] as const).map((opcion) => <button key={opcion} type="button" aria-pressed={area === opcion} onClick={() => setArea(opcion)}
-              className={cn('min-h-10 flex-1 rounded-md px-3 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-primary', area === opcion ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-surface-high hover:text-foreground')}>
-              {opcion === 'RESTAURANTE' ? 'Restaurante' : 'Panadería'}
-            </button>)}
-          </div>
+          <p className="mb-3 text-sm font-semibold text-primary">{area === 'PANADERIA' ? 'Panadería' : 'Restaurante / cafetería'}</p>
           <div className="flex flex-wrap items-center gap-1.5">
             {PRESETS.map((p) => (
               <BotonPreset key={p.id} activo={preset === p.id} onClick={() => setPreset(p.id)}>

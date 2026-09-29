@@ -2,16 +2,12 @@ import { Link, createFileRoute, redirect } from '@tanstack/react-router'
 import { ArrowRight, Grid2x2 } from 'lucide-react'
 import { useAuthStore, useEsAdmin } from '@/stores/auth.store'
 import { DashboardReportes } from '@/features/reportes/dashboard'
+import { rutaInicial } from '@/lib/acceso'
 
 export const Route = createFileRoute('/_auth/')({
   beforeLoad: () => {
-    // El mesero opera desde el salon: su vista inicial son los pedidos y fichas.
-    if (useAuthStore.getState().usuario?.rolNombre === 'MESERO') {
-      throw redirect({ to: '/mesas' })
-    }
-    if (useAuthStore.getState().usuario?.rolNombre === 'CAJERO' && useAuthStore.getState().usuario?.area === 'PANADERIA') {
-      throw redirect({ to: '/panaderia' })
-    }
+    const to = rutaInicial(useAuthStore.getState().usuario)
+    if (to !== '/') throw redirect({ to })
   },
   component: PaginaInicio,
 })

@@ -531,6 +531,7 @@ export interface Proveedor {
 }
 
 export interface DetalleCuentaPorPagar {
+  articuloPanaderia?: { id: number; nombre: string; unidad: string; tipo: string } | null
   id_detalleCuentaPorPagar: number
   cantidad_detalleCuenta: string
   precio_unitario_detalleCuenta: string

@@ -16,10 +16,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { errorApi } from './caja-comun'
+import { useAreaTrabajo } from '@/stores/auth.store'
 
 // ---- Ajustes (ADMIN): datos del negocio + configuracion de facturacion + cajas ----
 
 export function Ajustes() {
+  const area = useAreaTrabajo()
+  if (area === 'PANADERIA') return <div className="space-y-5"><p className="text-sm text-muted-foreground">Caja exclusiva de panadería. Sus datos y numeración fiscal continúan pendientes de confirmación.</p><PanelCajas /></div>
   return (
     <div className="space-y-8">
       <PanelNegocio />

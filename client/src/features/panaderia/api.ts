@@ -2,7 +2,7 @@ import { queryOptions } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { MetodoPago, TurnoResumen, Turno, TipoTurno, Producto, Ingrediente } from '@/types/api'
 
-export type TipoArticulo = 'PANADERIA' | 'EXTERNO' | 'INSUMO'
+export type TipoArticulo = 'PANADERIA' | 'PASTELERIA' | 'EXTERNO' | 'INSUMO'
 export type UnidadInventario = 'UNIDADES' | 'kg' | 'g' | 'dg' | 'mg' | 'ml' | 'L'
 
 export interface ArticuloPanaderia {

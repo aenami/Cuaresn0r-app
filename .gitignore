@@ -16,6 +16,7 @@ server/dist
 # =========================
 server/uploads/
 server/backups/
+.impeccable/review/
 
 # =========================
 # ENV FILES

@@ -10,10 +10,14 @@ import { formatearPrecio } from '@/lib/formato'
 import { errorApi } from '@/features/billing/caja-comun'
 import { articulosQuery, bakeryApi, bakeryKeys, conteoQuery } from './api'
 import type { ArticuloPanaderia, TipoArticulo, UnidadInventario } from './api'
+import { useAuthStore } from '@/stores/auth.store'
+import { puedeEntradaPanaderia } from '@/lib/acceso'
+import { RecepcionesPanaderia } from './recepciones'
 
 type Operacion = 'entrada' | 'conteo' | 'merma' | 'editar'
 
-export function InventarioPanaderia({ esAdmin, vista }: { esAdmin: boolean; vista: 'conteo' | 'ingredientes' }) {
+export function InventarioPanaderia({ esAdmin, vista }: { esAdmin: boolean; vista: 'conteo' | 'ingredientes' | 'catalogo' }) {
+  const rol = useAuthStore((s) => s.usuario?.rolNombre)
   const queryClient = useQueryClient()
   const { data: articulos, isPending, isError } = useQuery(articulosQuery)
   const { data: estado, isPending: conteoCargando } = useQuery(conteoQuery)
@@ -29,7 +33,7 @@ export function InventarioPanaderia({ esAdmin, vista }: { esAdmin: boolean; vist
   const [guardando, setGuardando] = useState(false)
   const conteos = new Map((estado?.detalle ?? []).map((conteo) => [conteo.articuloId, conteo]))
   const proyeccion = new Map((estado?.proyeccion ?? []).map((fila) => [fila.articuloId, fila]))
-  const visibles = vista === 'ingredientes' ? articulos?.filter((articulo) => articulo.tipo === 'INSUMO') : articulos
+  const visibles = vista === 'ingredientes' ? articulos?.filter((articulo) => articulo.tipo === 'INSUMO') : vista === 'catalogo' ? articulos?.filter((a) => a.tipo !== 'INSUMO') : articulos
 
   function elegir(articulo: ArticuloPanaderia, accion: Operacion) {
     setSeleccion(articulo)
@@ -82,6 +86,7 @@ export function InventarioPanaderia({ esAdmin, vista }: { esAdmin: boolean; vist
   const puedeGuardar = operacion === 'editar' ? editarValido : cantidadValida && (operacion === 'conteo' || concepto.trim() !== '')
 
   return <div className="space-y-6">
+    {vista === 'ingredientes' && <RecepcionesPanaderia />}
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div><h2 className="font-heading text-xl font-semibold uppercase">{vista === 'ingredientes' ? 'Ingredientes de panadería' : 'Conteo diario de panadería'}</h2>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{vista === 'ingredientes' ? 'Insumos exclusivos de panadería. Las hornadas descuentan automáticamente las cantidades de sus recetas.' : 'Las hornadas y recepciones suman. El conteo compara la salida física con ventas, consumo de recetas, traslados y mermas.'}</p></div>
@@ -98,7 +103,7 @@ export function InventarioPanaderia({ esAdmin, vista }: { esAdmin: boolean; vist
 
     {creando && esAdmin && <form className="grid gap-3 rounded-lg bg-surface-high p-4 sm:grid-cols-2 lg:grid-cols-[1fr_11rem_8rem_9rem_auto] lg:items-end" onSubmit={(e) => { e.preventDefault(); void crear() }}>
       <div><Label htmlFor="pan-nombre-nuevo">Nombre</Label><Input id="pan-nombre-nuevo" value={nombre} onChange={(e) => setNombre(e.target.value)} maxLength={80} autoFocus /></div>
-      {vista === 'conteo' ? <div><Label htmlFor="pan-tipo-nuevo">Tipo</Label><Select value={tipo} onValueChange={(valor) => setTipo(valor as TipoArticulo)}><SelectTrigger id="pan-tipo-nuevo"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PANADERIA">Panadería</SelectItem><SelectItem value="EXTERNO">Bebida / externo</SelectItem></SelectContent></Select></div> : <p className="self-end pb-2 text-sm text-muted-foreground">Insumo no vendible</p>}
+      {vista === 'conteo' ? <div><Label htmlFor="pan-tipo-nuevo">Tipo</Label><Select value={tipo} onValueChange={(valor) => setTipo(valor as TipoArticulo)}><SelectTrigger id="pan-tipo-nuevo"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PANADERIA">Panadería</SelectItem><SelectItem value="PASTELERIA">Pastelería</SelectItem><SelectItem value="EXTERNO">Bebida / externo</SelectItem></SelectContent></Select></div> : <p className="self-end pb-2 text-sm text-muted-foreground">Insumo no vendible</p>}
       {vista === 'ingredientes' ? <div><Label htmlFor="pan-unidad-nuevo">Unidad</Label><Select value={unidad} onValueChange={(valor) => setUnidad(valor as UnidadInventario)}><SelectTrigger id="pan-unidad-nuevo"><SelectValue /></SelectTrigger><SelectContent>{(['UNIDADES', 'kg', 'g', 'dg', 'mg', 'ml', 'L'] as const).map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent></Select></div> : null}
       {vista === 'conteo' ? <div><Label htmlFor="pan-precio-nuevo">Precio COP</Label><Input id="pan-precio-nuevo" type="number" min="0" step="1" inputMode="numeric" value={precio} onChange={(e) => setPrecio(e.target.value)} /></div> : null}
       <div className="flex gap-2"><Button type="submit" disabled={guardando || !nombre.trim() || (vista === 'conteo' && precio === '')}>Crear</Button><Button type="button" variant="ghost" onClick={() => setCreando(false)}>Cancelar</Button></div>
@@ -113,7 +118,7 @@ export function InventarioPanaderia({ esAdmin, vista }: { esAdmin: boolean; vist
               const dia = proyeccion.get(articulo.id)
               const diferencia = Number(conteo?.conciliacion.diferenciaUnidades ?? 0)
               return <tr key={articulo.id} className="border-b border-border/40 last:border-0">
-                <td className="px-4 py-3"><strong>{articulo.nombre}</strong><span className="ml-2 text-xs text-muted-foreground">{articulo.tipo === 'PANADERIA' ? 'Horneado' : articulo.tipo === 'INSUMO' ? 'Insumo' : 'Externo'} · {articulo.unidad}</span>{!articulo.activo && <span className="ml-2 text-xs text-tertiary">Inactivo</span>}</td>
+                <td className="px-4 py-3"><strong>{articulo.nombre}</strong><span className="ml-2 text-xs text-muted-foreground">{articulo.tipo === 'PANADERIA' ? 'Panadería' : articulo.tipo === 'PASTELERIA' ? 'Pastelería' : articulo.tipo === 'INSUMO' ? 'Insumo' : 'Externo'} · {articulo.unidad}</span>{!articulo.activo && <span className="ml-2 text-xs text-tertiary">Inactivo</span>}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{dia?.cantidadInicial ?? '—'}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{dia?.entradas ?? '—'}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{dia?.ventasRegistradas ?? '—'}</td>
@@ -121,7 +126,7 @@ export function InventarioPanaderia({ esAdmin, vista }: { esAdmin: boolean; vist
                 <td className="px-4 py-3 text-right tabular-nums">{articulo.existencia}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{conteo ? conteo.cantidadFisica : 'Pendiente'}{conteo?.requiereReconteo && <span className="block text-xs text-tertiary">Recontar</span>}</td>
                 <td className={`px-4 py-3 text-right tabular-nums ${diferencia > 0 ? 'text-destructive' : diferencia < 0 ? 'text-tertiary' : 'text-emerald-400'}`}>{conteo ? `${diferencia > 0 ? 'Faltan ' : diferencia < 0 ? 'Sobran ' : ''}${Math.abs(diferencia)}` : '—'}</td>
-                <td className="whitespace-nowrap px-4 py-3 text-right"><button className="mr-3 text-primary hover:underline" onClick={() => elegir(articulo, 'entrada')}>Entrada</button>{vista === 'conteo' && <button className="mr-3 text-primary hover:underline" onClick={() => elegir(articulo, 'conteo')}>Contar</button>}<button className="mr-3 text-muted-foreground hover:text-foreground" onClick={() => elegir(articulo, 'merma')}>Merma</button>{esAdmin && <button className="text-muted-foreground hover:text-foreground" onClick={() => elegir(articulo, 'editar')}>Editar</button>}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-right">{puedeEntradaPanaderia(rol, articulo.tipo) && <button className="mr-3 text-primary hover:underline" onClick={() => elegir(articulo, 'entrada')}>{['PANADERIA', 'PASTELERIA'].includes(articulo.tipo) ? 'Producción' : 'Recibir'}</button>}{vista === 'conteo' && <button className="mr-3 text-primary hover:underline" onClick={() => elegir(articulo, 'conteo')}>Contar</button>}{puedeEntradaPanaderia(rol, articulo.tipo) && <button className="mr-3 text-muted-foreground hover:text-foreground" onClick={() => elegir(articulo, 'merma')}>Merma</button>}{esAdmin && <button className="text-muted-foreground hover:text-foreground" onClick={() => elegir(articulo, 'editar')}>Editar</button>}</td>
               </tr>
             })}</tbody></table></div></div>}
 
