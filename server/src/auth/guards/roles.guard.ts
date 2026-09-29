@@ -59,6 +59,24 @@ export class RolesGuard implements CanActivate {
 
     const path = req.path ?? '';
     const lectura = req.method === 'GET';
+    // El perfil propio mantiene la sesión y permite cambiar la contraseña;
+    // no equivale a acceso a la administración de usuarios o a mi nómina.
+    const perfilPropio =
+      (lectura && /^\/auth\/usuarios\/me\/?$/.test(path)) ||
+      (req.method === 'PATCH' &&
+        /^\/auth\/usuarios\/me\/password\/?$/.test(path));
+    if (
+      esGlobal(user.rolNombre) &&
+      (/^\/(payroll|catalog|printing)(\/|$)/.test(path) ||
+        (/^\/auth\/(usuarios|roles|empleados)(\/|$)/.test(path) &&
+          !perfilPropio) ||
+        (req.method === 'POST' && /^\/bakery\/articulos\/?$/.test(path)) ||
+        (['PATCH', 'DELETE'].includes(req.method) &&
+          /^\/bakery\/articulos\/\d+\/?$/.test(path)))
+    )
+      throw new ForbiddenException(
+        'El administrador global no tiene acceso a este módulo',
+      );
     // El administrador global supervisa: ni una llamada directa a la API le
     // permite emitir ventas, abrir caja, pagar o preparar pedidos.
     if (

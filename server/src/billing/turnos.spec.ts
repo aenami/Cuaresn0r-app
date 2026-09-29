@@ -156,6 +156,9 @@ function setupCerrar(
     transferenciaRestaurantePanaderia: {
       findMany: jest.fn().mockResolvedValue([]),
     },
+    movimientoInventario: { findMany: jest.fn().mockResolvedValue([]) },
+    planProduccionDiaria: { findMany: jest.fn().mockResolvedValue([]) },
+    detalleCuentaPorPagar: { findMany: jest.fn().mockResolvedValue([]) },
     remisionPanaderia: { count: jest.fn().mockResolvedValue(0) },
   };
   const prisma = {

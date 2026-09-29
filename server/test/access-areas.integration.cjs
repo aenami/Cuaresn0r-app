@@ -155,7 +155,6 @@ async function main() {
       return body;
     }
     for (const u of [
-      global,
       adminPan,
       adminRest,
       cajPan,
@@ -170,9 +169,47 @@ async function main() {
       '/payroll/me/resumen',
       'GET',
       undefined,
-      200,
+      403,
       'PANADERIA',
     );
+    for (const area of ['RESTAURANTE', 'PANADERIA']) {
+      const perfilGlobal = await pedir(
+        global,
+        '/auth/usuarios/me',
+        'GET',
+        undefined,
+        200,
+        area,
+      );
+      assert.equal(perfilGlobal.rol.nombre_rol, 'ADMIN_GLOBAL');
+      for (const [ruta, metodo] of [
+        ['/auth/usuarios', 'GET'],
+        ['/auth/roles', 'GET'],
+        ['/auth/empleados', 'GET'],
+        ['/payroll/me/resumen', 'GET'],
+        ['/payroll/empleados/1/saldo', 'GET'],
+        ['/catalog/products', 'GET'],
+        ['/printing/impresoras', 'GET'],
+        ['/printing/comandas/1/reimprimir', 'POST'],
+        ['/bakery/articulos', 'POST'],
+        ['/bakery/articulos/1', 'PATCH'],
+      ])
+        await pedir(
+          global,
+          ruta,
+          metodo,
+          metodo === 'GET' ? undefined : {},
+          403,
+          area,
+        );
+      for (const ruta of [
+        '/billing/turnos',
+        '/billing/proveedores',
+        '/billing/cuentas-por-pagar',
+        '/bakery/remisiones',
+      ])
+        await pedir(global, ruta, 'GET', undefined, 200, area);
+    }
     for (const ruta of [
       '/billing/turnos',
       '/billing/facturas',
@@ -585,6 +622,165 @@ async function main() {
     const perfil = await pedir(adminPan, '/auth/usuarios/me');
     assert.equal(perfil.rol.nombre_rol, 'PANADERO');
     assert.equal(postre.tipo, 'PASTELERIA');
+    // Provisión de administradores locales solamente en esta base temporal.
+    const {
+      parseArgs,
+      connectionString,
+      provision,
+      ProvisionError,
+    } = require('../scripts/provision-local-admin.cjs');
+    const cliDb = new Client({ connectionString: scratchUrl.toString() });
+    await cliDb.connect();
+    try {
+      const candidato = await usuario(
+        'CAJERO',
+        'PANADERIA',
+        'bootstrap@test.invalid',
+      );
+      const opciones = parseArgs([
+        '--email',
+        candidato.email_usuario,
+        '--area',
+        'PANADERIA',
+      ]);
+      const simulacion = await provision(cliDb, opciones);
+      assert.equal(simulacion.aplicado, false);
+      assert.equal(
+        (
+          await prisma.usuario.findUniqueOrThrow({
+            where: { id_usuario: candidato.id_usuario },
+          })
+        ).id_rol,
+        roles.CAJERO.id_rol,
+        'La simulación no debe asignar el rol',
+      );
+      assert.throws(
+        () =>
+          parseArgs([
+            '--email',
+            candidato.email_usuario,
+            '--area',
+            'PANADERIA',
+            '--confirmar',
+            'CREAR_ADMIN_LOCAL',
+          ]),
+        ProvisionError,
+      );
+      assert.throws(
+        () =>
+          connectionString(
+            {
+              DATABASE_URL:
+                'postgresql://fixture:fixture@example.invalid/fixture',
+            },
+            opciones,
+          ),
+        ProvisionError,
+      );
+      await assert.rejects(
+        () =>
+          provision(cliDb, {
+            ...opciones,
+            area: 'RESTAURANTE',
+            confirmar: true,
+          }),
+        ProvisionError,
+      );
+      await assert.rejects(
+        () =>
+          provision(
+            cliDb,
+            parseArgs([
+              '--email',
+              global.email_usuario,
+              '--area',
+              'RESTAURANTE',
+              '--confirmar',
+              'ASIGNAR_ADMIN_LOCAL',
+            ]),
+          ),
+        ProvisionError,
+      );
+      assert.equal(
+        (
+          await prisma.usuario.findUniqueOrThrow({
+            where: { id_usuario: global.id_usuario },
+          })
+        ).id_rol,
+        roles.ADMIN_GLOBAL.id_rol,
+        'La provisión debe proteger al último global',
+      );
+      const asignacion = await provision(cliDb, {
+        ...opciones,
+        confirmar: true,
+      });
+      assert.equal(asignacion.aplicado, true);
+      const asignado = await prisma.usuario.findUniqueOrThrow({
+        where: { id_usuario: candidato.id_usuario },
+      });
+      assert.equal(asignado.id_rol, roles.ADMIN_LOCAL.id_rol);
+      assert.equal(asignado.area, candidato.area);
+      assert.equal(asignado.id_empleado_usuario, candidato.id_empleado_usuario);
+      assert.equal(asignado.password_usuario, candidato.password_usuario);
+      const empleadoNuevo = await prisma.empleado.create({
+        data: {
+          nombre_empleado: 'Bootstrap temporal',
+          apellido_empleado: 'Panadería',
+          area: 'PANADERIA',
+          fecha_ingreso_empleado: new Date(),
+        },
+      });
+      const opcionesCrear = parseArgs([
+        '--email',
+        'bootstrap-nuevo@test.invalid',
+        '--area',
+        'PANADERIA',
+        '--empleado-id',
+        String(empleadoNuevo.id_empleado),
+        '--confirmar',
+        'CREAR_ADMIN_LOCAL',
+      ]);
+      await assert.rejects(
+        () => provision(cliDb, opcionesCrear, {}),
+        ProvisionError,
+      );
+      assert.equal(
+        await prisma.usuario.count({
+          where: { email_usuario: 'bootstrap-nuevo@test.invalid' },
+        }),
+        0,
+      );
+      const passwordTemporal = crypto.randomBytes(24).toString('base64');
+      const creado = await provision(cliDb, opcionesCrear, {
+        LOCAL_ADMIN_PASSWORD: passwordTemporal,
+      });
+      assert.equal(creado.aplicado, true);
+      const usuarioNuevo = await prisma.usuario.findUniqueOrThrow({
+        where: { id_usuario: creado.usuarioId },
+      });
+      assert.equal(usuarioNuevo.id_rol, roles.ADMIN_LOCAL.id_rol);
+      assert.equal(usuarioNuevo.area, 'PANADERIA');
+      assert.equal(usuarioNuevo.id_empleado_usuario, empleadoNuevo.id_empleado);
+      assert(
+        await require('bcrypt').compare(
+          passwordTemporal,
+          usuarioNuevo.password_usuario,
+        ),
+      );
+      assert(!JSON.stringify(creado).includes(passwordTemporal));
+      await assert.rejects(
+        () =>
+          provision(cliDb, opcionesCrear, {
+            LOCAL_ADMIN_PASSWORD: passwordTemporal,
+          }),
+        ProvisionError,
+      );
+      process.stdout.write(
+        'Provisión CLI temporal: simulación, asignación, creación y protecciones correctas.\n',
+      );
+    } finally {
+      await cliDb.end();
+    }
     process.stdout.write(
       `API real ${diario ? 'DIA' : 'TURNO'}: ${checks} verificaciones de roles, áreas, proveedores, producción, remisiones y caja correctas.\n`,
     );

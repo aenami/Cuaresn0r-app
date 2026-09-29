@@ -8,6 +8,7 @@ import {
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { fechaColombia, rangoDia } from '../recipes/inventory-reconciliation';
+import { crearValoracion, presentarValoracion } from '../recipes/inventory-valuation';
 import { accessContext, esAdministrador } from '../auth/access-context';
 import {
   CrearArticuloPanaderiaDto,
@@ -120,12 +121,15 @@ export class BakeryService {
   crearArticulo(dto: CrearArticuloPanaderiaDto) {
     if (dto.tipo !== 'INSUMO' && dto.unidad && dto.unidad !== 'UNIDADES')
       throw new UnprocessableEntityException('Los articulos de mostrador se venden por unidades');
+    if (dto.tipo !== 'INSUMO' && dto.costoReferencia != null)
+      throw new UnprocessableEntityException('El costo de referencia corresponde solo a insumos');
     return this.prisma.articuloPanaderia.create({
       data: {
         nombre: dto.nombre.trim(),
         tipo: dto.tipo,
         unidad: dto.unidad ?? 'UNIDADES',
         precioVenta: dto.precioVenta,
+        costoReferencia: dto.costoReferencia,
       },
     });
   }
@@ -133,6 +137,8 @@ export class BakeryService {
   async actualizarArticulo(id: number, dto: ActualizarArticuloPanaderiaDto) {
     return this.prisma.$transaction(async (tx) => {
       const articulo = await this.bloquearArticulo(tx, id);
+      if (articulo.tipo !== 'INSUMO' && dto.costoReferencia != null)
+        throw new UnprocessableEntityException('El costo de referencia corresponde solo a insumos');
       if (dto.activo === false && articulo.existencia.greaterThan(0))
         throw new ConflictException('Cuenta o traslada las existencias antes de desactivar el articulo');
       return tx.articuloPanaderia.update({
@@ -140,6 +146,7 @@ export class BakeryService {
         data: {
           ...(dto.nombre !== undefined && { nombre: dto.nombre.trim() }),
           ...(dto.precioVenta !== undefined && { precioVenta: dto.precioVenta }),
+          ...(dto.costoReferencia !== undefined && { costoReferencia: dto.costoReferencia }),
           ...(dto.activo !== undefined && { activo: dto.activo }),
         },
       });
@@ -328,13 +335,24 @@ export class BakeryService {
         precioReferencia: articulo.precioVenta,
         fechaRegistro: new Date(),
       };
+      const esInsumo = articulo.tipo === 'INSUMO';
+      const valoracion = crearValoracion({
+        tipoReferencia: esInsumo ? 'COSTO_UNITARIO' : 'PRECIO_VENTA',
+        precioReferencia: esInsumo ? articulo.costoReferencia : articulo.precioVenta,
+        nombre: articulo.nombre,
+        unidad: articulo.unidad,
+        salidaFisica: cantidadInicial.plus(datos.entradas).minus(datos.cantidadFisica),
+        cantidadCorroborada: esInsumo ? datos.consumoReceta : datos.ventasRegistradas,
+        salidasNoValorables: datos.transferencias.plus(datos.mermas).plus(esInsumo ? 0 : datos.consumoReceta),
+        fechaValoracion: datos.fechaRegistro,
+      });
       const conteo = await tx.conteoPanaderia.upsert({
         where: { fecha_articuloId: { fecha, articuloId: id } },
-        create: { fecha, articuloId: id, ...datos },
-        update: datos,
+        create: { fecha, articuloId: id, ...datos, valoracion: valoracion as unknown as Prisma.InputJsonValue },
+        update: { ...datos, valoracion: valoracion as unknown as Prisma.InputJsonValue },
         include: { articulo: true },
       });
-      return { ...conteo, conciliacion: resumenConteo(conteo) };
+      return { ...conteo, valoracion: presentarValoracion(conteo.valoracion), conciliacion: resumenConteo(conteo) };
     });
   }
 
@@ -372,6 +390,7 @@ export class BakeryService {
       ...conteo,
       conciliacion: resumenConteo(conteo),
       requiereReconteo: recontar.includes(conteo.articulo.nombre),
+      valoracion: presentarValoracion(conteo.valoracion, recontar.includes(conteo.articulo.nombre) ? 'RECONTAR' : undefined),
     }));
     const valorDiferencia = detalle.reduce(
       (total, conteo) => total.plus(conteo.conciliacion.valorDiferencia), cero,

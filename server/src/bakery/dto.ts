@@ -12,10 +12,15 @@ import {
   IsString,
   IsUUID,
   MaxLength,
+  Max,
   Min,
   ValidateNested,
 } from 'class-validator';
-import { MetodoPago, TipoArticuloPanaderia, UnidadIngrediente } from '../generated/prisma/client';
+import {
+  MetodoPago,
+  TipoArticuloPanaderia,
+  UnidadIngrediente,
+} from '../generated/prisma/client';
 
 export class CrearArticuloPanaderiaDto {
   @IsString()
@@ -33,6 +38,12 @@ export class CrearArticuloPanaderiaDto {
   @IsInt()
   @Min(0)
   precioVenta!: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  @Max(99999999.9999)
+  costoReferencia?: number | null;
 }
 
 export class EntradaPanaderiaDto {
@@ -84,6 +95,12 @@ export class ActualizarArticuloPanaderiaDto {
   @IsInt()
   @Min(0)
   precioVenta?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  @Max(99999999.9999)
+  costoReferencia?: number | null;
 
   @IsOptional()
   @IsBoolean()

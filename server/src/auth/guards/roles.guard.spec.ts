@@ -107,6 +107,96 @@ describe('RolesGuard matriz de acceso', () => {
     }
   });
 
+  const modulosRestringidos = [
+    ['/auth/usuarios', 'GET'],
+    ['/auth/usuarios/1', 'GET'],
+    ['/auth/usuarios/1/password', 'PATCH'],
+    ['/auth/usuarios/me/password', 'GET'],
+    ['/auth/usuarios/me/otro', 'GET'],
+    ['/auth/roles', 'GET'],
+    ['/auth/empleados', 'GET'],
+    ['/auth/empleados/1', 'PATCH'],
+    ['/payroll/me/resumen', 'GET'],
+    ['/payroll/empleados/1/saldo', 'GET'],
+    ['/payroll/config', 'PATCH'],
+    ['/catalog/products', 'GET'],
+    ['/catalog/uploads', 'POST'],
+    ['/printing/impresoras', 'GET'],
+    ['/printing/impresoras/1/test', 'POST'],
+    ['/printing/comandas/1/reimprimir', 'POST'],
+    ['/printing/facturas/1', 'POST'],
+    ['/bakery/articulos', 'POST'],
+    ['/bakery/articulos/1', 'PATCH'],
+    ['/bakery/articulos/1', 'DELETE'],
+  ];
+
+  for (const rol of ['ADMIN_GLOBAL', 'ADMIN']) {
+    for (const area of ['RESTAURANTE', 'PANADERIA']) {
+      it.each(modulosRestringidos)(
+        `${rol} no accede a %s %s seleccionando ${area}`,
+        (path, method) => {
+          expect(
+            solicitud(
+              rol,
+              'RESTAURANTE',
+              path,
+              method,
+              ['ADMIN'],
+              'AMBAS',
+              area,
+            ),
+          ).toThrow(ForbiddenException);
+        },
+      );
+
+      it(`${rol} conserva su perfil, contraseña e inventario en ${area}`, () => {
+        for (const [path, method] of [
+          ['/auth/usuarios/me', 'GET'],
+          ['/auth/usuarios/me/password', 'PATCH'],
+          ['/recipes/ingredients', 'GET'],
+          ['/recipes/inventory-counts', 'GET'],
+          ['/bakery/articulos', 'GET'],
+          ['/bakery/articulos/1/entradas', 'POST'],
+          ['/bakery/articulos/1/mermas', 'POST'],
+          ['/bakery/recetas', 'GET'],
+          ['/bakery/recetas', 'POST'],
+          ['/reports', 'GET'],
+          ['/billing/turnos', 'GET'],
+          ['/billing/proveedores', 'GET'],
+          ['/bakery/remisiones', 'GET'],
+        ]) {
+          expect(
+            solicitud(
+              rol,
+              'RESTAURANTE',
+              path,
+              method,
+              ['ADMIN'],
+              'AMBAS',
+              area,
+            )(),
+          ).toBe(true);
+        }
+      });
+    }
+  }
+
+  it.each(modulosRestringidos)(
+    'el administrador local conserva %s %s en su área',
+    (path, method) => {
+      expect(
+        solicitud(
+          'ADMIN_LOCAL',
+          'PANADERIA',
+          path,
+          method,
+          ['ADMIN'],
+          'AMBAS',
+        )(),
+      ).toBe(true);
+    },
+  );
+
   it.each(['ADMIN_LOCAL', 'CAJERO', 'PANADERO'])(
     'no admite manipular el selector con rol %s',
     (rol) => {

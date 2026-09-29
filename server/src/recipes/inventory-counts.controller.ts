@@ -22,6 +22,11 @@ import { CreateCountElementDto } from './dto/create-count-element.dto';
 export class InventoryCountsController {
   constructor(private readonly counts: InventoryCountsService) {}
 
+  @Get('targets')
+  listTargets() {
+    return this.counts.listTargets();
+  }
+
   @Get('elements')
   listElements() {
     return this.counts.listElements();

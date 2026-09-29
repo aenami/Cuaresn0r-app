@@ -735,6 +735,7 @@ model ConteoInventarioDiario {
   id_usuario_cierra_conteoInventario  Int?
   fecha_creacion_conteoInventario     DateTime               @default(now()) @db.Timestamp(6)
   fecha_finalizacion_conteoInventario DateTime?              @db.Timestamp(6)
+  valoracion                          Json?                  @db.JsonB
 
   producto      Producto?    @relation(fields: [id_producto_conteoInventario], references: [id_producto], onDelete: Restrict)
   ingrediente   Ingrediente? @relation(fields: [id_ingrediente_conteoInventario], references: [id_ingrediente], onDelete: Restrict)
@@ -1257,6 +1258,7 @@ model ArticuloPanaderia {
   tipo            TipoArticuloPanaderia
   unidad          UnidadIngrediente      @default(UNIDADES)
   precioVenta     Decimal               @db.Decimal(20, 4)
+  costoReferencia Decimal?              @db.Decimal(12, 4)
   existencia      Decimal               @default(0) @db.Decimal(20, 4)
   activo          Boolean               @default(true)
   fechaCreacion   DateTime              @default(now()) @db.Timestamp(6)
@@ -1386,6 +1388,7 @@ model ConteoPanaderia {
   cantidadFisica   Decimal  @db.Decimal(20, 4)
   precioReferencia Decimal  @db.Decimal(20, 4)
   fechaRegistro    DateTime @default(now()) @db.Timestamp(6)
+  valoracion       Json?    @db.JsonB
 
   articulo ArticuloPanaderia @relation(fields: [articuloId], references: [id])
   usuario  Usuario           @relation(fields: [usuarioId], references: [id_usuario])

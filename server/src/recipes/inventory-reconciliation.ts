@@ -12,8 +12,11 @@ export function rangoDia(fecha: Date) {
   return { inicio, fin: new Date(inicio.getTime() + 86400000) };
 }
 
-type Salida = {
+export type Salida = {
   cantidad: Prisma.Decimal;
+  cantidadCorroborada?: Prisma.Decimal;
+  cantidadTrasladada?: Prisma.Decimal;
+  cantidadMerma?: Prisma.Decimal;
   ultima: Date | null;
   sinFecha: boolean;
 };
@@ -26,6 +29,18 @@ export async function salidasEntregadas(
   fecha: Date,
 ) {
   const { inicio, fin } = rangoDia(fecha);
+  const dias = await salidasEntregadasEnRango(db, inicio, fin);
+  return (
+    dias.get(fecha.toISOString().slice(0, 10)) ?? new Map<string, Salida>()
+  );
+}
+
+// Una consulta por rango, no una consulta por cada elemento/día del informe.
+export async function salidasEntregadasEnRango(
+  db: Prisma.TransactionClient,
+  inicio: Date,
+  fin: Date,
+) {
   const detalles = await db.detalleComanda.findMany({
     where: {
       estado_dc: 'ENTREGADO',
@@ -43,25 +58,43 @@ export async function salidasEntregadas(
       id_producto_dc: true,
       cantidad_producto_dc: true,
       fecha_entrega_dc: true,
+      comanda: { select: { fecha_envio_comanda: true } },
       movimientosInventario: {
         where: { tipo_movimiento: 'SALIDA_RECETA', reversos: { none: {} } },
         select: { id_ingrediente_movimiento: true, cantidad_movimiento: true },
       },
     },
   });
-  const salidas = new Map<string, Salida>();
+  const dias = new Map<string, Map<string, Salida>>();
   const agregar = (
     clave: string,
     cantidad: Prisma.Decimal | number,
     entrega: Date | null,
+    referenciaDia: Date,
+    traslado = false,
+    merma = false,
   ) => {
+    const dia = fechaColombia(referenciaDia).toISOString().slice(0, 10);
+    const salidas = dias.get(dia) ?? new Map<string, Salida>();
+    dias.set(dia, salidas);
     const anterior = salidas.get(clave) ?? {
       cantidad: new Prisma.Decimal(0),
+      cantidadCorroborada: new Prisma.Decimal(0),
+      cantidadTrasladada: new Prisma.Decimal(0),
+      cantidadMerma: new Prisma.Decimal(0),
       ultima: null,
       sinFecha: false,
     };
     if (entrega) {
       anterior.cantidad = anterior.cantidad.plus(cantidad);
+      if (traslado)
+        anterior.cantidadTrasladada =
+          anterior.cantidadTrasladada!.plus(cantidad);
+      else if (merma)
+        anterior.cantidadMerma = anterior.cantidadMerma!.plus(cantidad);
+      else
+        anterior.cantidadCorroborada =
+          anterior.cantidadCorroborada!.plus(cantidad);
       if (!anterior.ultima || entrega > anterior.ultima)
         anterior.ultima = entrega;
     } else anterior.sinFecha = true;
@@ -73,12 +106,18 @@ export async function salidasEntregadas(
         `PRODUCTO:${detalle.id_producto_dc}`,
         detalle.cantidad_producto_dc,
         detalle.fecha_entrega_dc,
+        detalle.fecha_entrega_dc ??
+          detalle.comanda?.fecha_envio_comanda ??
+          inicio,
       );
     for (const movimiento of detalle.movimientosInventario)
       agregar(
         `INGREDIENTE:${movimiento.id_ingrediente_movimiento}`,
         movimiento.cantidad_movimiento,
         detalle.fecha_entrega_dc,
+        detalle.fecha_entrega_dc ??
+          detalle.comanda?.fecha_envio_comanda ??
+          inicio,
       );
   }
   const traslados = await db.transferenciaRestaurantePanaderia.findMany({
@@ -86,19 +125,102 @@ export async function salidasEntregadas(
     select: { ingredienteId: true, cantidad: true, fechaSalida: true },
   });
   for (const traslado of traslados)
-    agregar(`INGREDIENTE:${traslado.ingredienteId}`, traslado.cantidad, traslado.fechaSalida);
-  return salidas;
+    agregar(
+      `INGREDIENTE:${traslado.ingredienteId}`,
+      traslado.cantidad,
+      traslado.fechaSalida,
+      traslado.fechaSalida,
+      true,
+    );
+  const mermas = await db.movimientoInventario.findMany({
+    where: {
+      tipo_movimiento: 'MERMA',
+      fecha_movimiento: { gte: inicio, lt: fin },
+    },
+    select: {
+      id_ingrediente_movimiento: true,
+      cantidad_movimiento: true,
+      fecha_movimiento: true,
+    },
+  });
+  for (const merma of mermas)
+    agregar(
+      `INGREDIENTE:${merma.id_ingrediente_movimiento}`,
+      merma.cantidad_movimiento,
+      merma.fecha_movimiento,
+      merma.fecha_movimiento,
+      false,
+      true,
+    );
+  return dias;
+}
+
+export async function actividadRestauranteEnRango(
+  db: Prisma.TransactionClient,
+  inicio: Date,
+  fin: Date,
+) {
+  const [movimientos, produccion, recepciones] = await Promise.all([
+    db.movimientoInventario.findMany({
+      where: { fecha_movimiento: { gte: inicio, lt: fin } },
+      select: { id_ingrediente_movimiento: true, fecha_movimiento: true },
+    }),
+    db.planProduccionDiaria.findMany({
+      where: {
+        estado_planProduccion: 'PRODUCIDO',
+        fecha_resolucion_planProduccion: { gte: inicio, lt: fin },
+      },
+      select: {
+        id_producto_planProduccion: true,
+        id_ingrediente_planProduccion: true,
+        fecha_resolucion_planProduccion: true,
+      },
+    }),
+    db.detalleCuentaPorPagar.findMany({
+      where: {
+        id_producto_detalleCuenta: { not: null },
+        cuentaPorPagar: { fecha_recepcion_mercancia: { gte: inicio, lt: fin } },
+      },
+      select: {
+        id_producto_detalleCuenta: true,
+        cuentaPorPagar: { select: { fecha_recepcion_mercancia: true } },
+      },
+    }),
+  ]);
+  const dias = new Map<string, Map<string, Date>>();
+  const agregar = (clave: string, fecha: Date | null) => {
+    if (!fecha) return;
+    const dia = fechaColombia(fecha).toISOString().slice(0, 10);
+    const objetivos = dias.get(dia) ?? new Map<string, Date>();
+    dias.set(dia, objetivos);
+    if (!objetivos.has(clave) || objetivos.get(clave)! < fecha)
+      objetivos.set(clave, fecha);
+  };
+  for (const m of movimientos)
+    agregar(`INGREDIENTE:${m.id_ingrediente_movimiento}`, m.fecha_movimiento);
+  for (const p of produccion)
+    agregar(
+      `${p.id_producto_planProduccion !== null ? 'PRODUCTO' : 'INGREDIENTE'}:${p.id_producto_planProduccion ?? p.id_ingrediente_planProduccion}`,
+      p.fecha_resolucion_planProduccion,
+    );
+  for (const r of recepciones)
+    agregar(
+      `PRODUCTO:${r.id_producto_detalleCuenta}`,
+      r.cuentaPorPagar.fecha_recepcion_mercancia,
+    );
+  return dias;
 }
 
 export function compararConteo(
   conteo: ConteoInventarioDiario,
   salidas: Map<string, Salida>,
+  actividad?: Map<string, Date>,
 ) {
   const clave = `${conteo.tipo_objetivo_conteoInventario}:${conteo.id_producto_conteoInventario ?? conteo.id_ingrediente_conteoInventario}`;
   const salida = salidas.get(clave);
   const cantidadSistema = salida?.cantidad ?? new Prisma.Decimal(0);
   const faltaDiaAnterior =
-    conteo.fecha_anterior_conteoInventario !== null &&
+    conteo.fecha_anterior_conteoInventario != null &&
     conteo.fecha_conteoInventario.getTime() -
       conteo.fecha_anterior_conteoInventario.getTime() !==
       86400000;
@@ -107,11 +229,14 @@ export function compararConteo(
     : faltaDiaAnterior
       ? 'El saldo corresponde a un cierre anterior al día previo. No permite una comparación diaria exacta.'
       : null;
+  const ultimaActividad = [salida?.ultima, actividad?.get(clave)]
+    .filter((f): f is Date => !!f)
+    .sort((a, b) => b.getTime() - a.getTime())[0];
   const requiereReconteo =
     conteo.estado_conteoInventario === 'FINALIZADO' &&
-    !!salida?.ultima &&
+    !!ultimaActividad &&
     !!conteo.fecha_finalizacion_conteoInventario &&
-    salida.ultima > conteo.fecha_finalizacion_conteoInventario;
+    ultimaActividad > conteo.fecha_finalizacion_conteoInventario;
   const diferencia =
     !motivoNoComparable && conteo.cantidad_salida_conteoInventario !== null
       ? conteo.cantidad_salida_conteoInventario
@@ -139,7 +264,8 @@ export async function estadoConteoCierre(
   db: Prisma.TransactionClient,
   fecha: Date,
 ) {
-  const [elementos, conteos, salidas] = await Promise.all([
+  const { inicio, fin } = rangoDia(fecha);
+  const [elementos, conteos, salidas, actividad] = await Promise.all([
     db.elementoConteoDiario.findMany({
       where: {
         activo: true,
@@ -155,6 +281,7 @@ export async function estadoConteoCierre(
       where: { fecha_conteoInventario: fecha },
     }),
     salidasEntregadas(db, fecha),
+    actividadRestauranteEnRango(db, inicio, fin),
   ]);
   const clave = (tipo: string, id: number | null) => `${tipo}:${id}`;
   const registrados = new Set(
@@ -175,7 +302,11 @@ export async function estadoConteoCierre(
   const detalle = conteos.map((c) => ({
     id: c.id_conteoInventario,
     nombre: c.nombre_objetivo_conteoInventario,
-    ...compararConteo(c, salidas),
+    ...compararConteo(
+      c,
+      salidas,
+      actividad.get(fecha.toISOString().slice(0, 10)),
+    ),
   }));
   const pendientes = conteos
     .filter((c) => c.estado_conteoInventario !== 'FINALIZADO')

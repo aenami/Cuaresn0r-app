@@ -13,7 +13,12 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInventoryCountDto } from './dto/create-inventory-count.dto';
 import { CreateCountElementDto } from './dto/create-count-element.dto';
-import { compararConteo, salidasEntregadas } from './inventory-reconciliation';
+import {
+  actividadRestauranteEnRango,
+  compararConteo,
+  salidasEntregadas,
+} from './inventory-reconciliation';
+import { crearValoracion, presentarValoracion } from './inventory-valuation';
 
 const CONTEO_INCLUDE = {
   producto: {
@@ -58,6 +63,19 @@ type ConteoIncluido = Prisma.ConteoInventarioDiarioGetPayload<{
 @Injectable()
 export class InventoryCountsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  listTargets() {
+    return this.prisma.producto.findMany({
+      where: { habilitado_producto: true },
+      select: {
+        id_producto: true,
+        nombre_producto: true,
+        habilitado_producto: true,
+        categoria: { select: { id_categoria: true, nombre_categoria: true } },
+      },
+      orderBy: { nombre_producto: 'asc' },
+    });
+  }
 
   listElements() {
     return this.prisma.elementoConteoDiario.findMany({
@@ -214,11 +232,28 @@ export class InventoryCountsService {
       ],
     });
 
-    const [actualizados, salidas] = await Promise.all([
+    const { inicio, fin } = this.rangoLocalDelDia(fechaDb);
+    const [actualizados, salidas, actividad] = await Promise.all([
       this.agregarEntradasEnCurso(conteos, fechaDb),
       salidasEntregadas(this.prisma, fechaDb),
+      actividadRestauranteEnRango(this.prisma, inicio, fin),
     ]);
-    return actualizados.map(conteo => ({ ...conteo, conciliacion: compararConteo(conteo, salidas) }));
+    return actualizados.map((conteo) => {
+      const conciliacion = compararConteo(
+        conteo,
+        salidas,
+        actividad.get(fechaDb.toISOString().slice(0, 10)),
+      );
+      return {
+        ...conteo,
+        conciliacion,
+        valoracion: presentarValoracion(
+          conteo.valoracion,
+          conciliacion.estado,
+          conciliacion.motivoNoComparable,
+        ),
+      };
+    });
   }
 
   async create(
@@ -378,9 +413,47 @@ export class InventoryCountsService {
             where: {
               id_ingrediente: conteo.id_ingrediente_conteoInventario,
             },
-            select: { stock_ingrediente: true },
+            select: { stock_ingrediente: true, precio_ingrediente: true },
           })
         : null;
+
+      const salidas = await salidasEntregadas(
+        tx,
+        conteo.fecha_conteoInventario,
+      );
+      const salida = salidas.get(
+        `${conteo.tipo_objetivo_conteoInventario}:${conteo.id_producto_conteoInventario ?? conteo.id_ingrediente_conteoInventario}`,
+      );
+      const finalizacion = new Date();
+      const conciliacion = compararConteo(
+        {
+          ...conteo,
+          cantidad_salida_conteoInventario: cantidadSalida,
+          estado_conteoInventario: 'FINALIZADO',
+          fecha_finalizacion_conteoInventario: finalizacion,
+        },
+        salidas,
+      );
+      const producto = conteo.id_producto_conteoInventario
+        ? await tx.producto.findUnique({
+            where: { id_producto: conteo.id_producto_conteoInventario },
+            select: { precio_producto: true },
+          })
+        : null;
+      const valoracion = crearValoracion({
+        tipoReferencia: ingrediente ? 'COSTO_UNITARIO' : 'PRECIO_VENTA',
+        precioReferencia:
+          ingrediente?.precio_ingrediente ?? producto?.precio_producto ?? null,
+        nombre: conteo.nombre_objetivo_conteoInventario,
+        unidad: conteo.unidad_objetivo_conteoInventario,
+        salidaFisica: cantidadSalida,
+        cantidadCorroborada: salida?.cantidadCorroborada ?? 0,
+        salidasNoValorables: (
+          salida?.cantidadTrasladada ?? new Prisma.Decimal(0)
+        ).plus(salida?.cantidadMerma ?? 0),
+        motivoNoComparable: conciliacion.motivoNoComparable,
+        fechaValoracion: finalizacion,
+      });
 
       return tx.conteoInventarioDiario.update({
         where: { id_conteoInventario: id },
@@ -392,7 +465,8 @@ export class InventoryCountsService {
             ingrediente?.stock_ingrediente ?? null,
           estado_conteoInventario: EstadoConteoInventario.FINALIZADO,
           id_usuario_cierra_conteoInventario: idUsuario,
-          fecha_finalizacion_conteoInventario: new Date(),
+          fecha_finalizacion_conteoInventario: finalizacion,
+          valoracion: valoracion as unknown as Prisma.InputJsonValue,
         },
         include: CONTEO_INCLUDE,
       });
@@ -446,6 +520,7 @@ export class InventoryCountsService {
           estado_conteoInventario: EstadoConteoInventario.PENDIENTE,
           id_usuario_cierra_conteoInventario: null,
           fecha_finalizacion_conteoInventario: null,
+          valoracion: Prisma.DbNull,
         },
         include: CONTEO_INCLUDE,
       });

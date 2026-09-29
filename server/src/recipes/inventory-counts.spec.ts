@@ -23,6 +23,8 @@ function setup(
     tipo_objetivo_conteoInventario: TipoObjetivoProduccion.INGREDIENTE,
     id_ingrediente_conteoInventario: 8,
     id_producto_conteoInventario: null,
+    nombre_objetivo_conteoInventario: 'Queso',
+    unidad_objetivo_conteoInventario: 'kg',
     cantidad_anterior_conteoInventario: new Prisma.Decimal(10),
     estado_conteoInventario: EstadoConteoInventario.PENDIENTE,
   };
@@ -41,12 +43,14 @@ function setup(
       id_producto: 3,
       nombre_producto: 'Empanada',
       habilitado_producto: true,
+      precio_producto: new Prisma.Decimal(2500),
     }),
     ingrediente: jest.fn().mockResolvedValue({
       id_ingrediente: 8,
       nombre_ingrediente: 'Queso',
       unidades_ingrediente: 'kg',
       stock_ingrediente: new Prisma.Decimal(6.5),
+      precio_ingrediente: new Prisma.Decimal(10000),
     }),
     entradasIngrediente: jest.fn().mockResolvedValue({
       _sum: {
@@ -76,9 +80,23 @@ function setup(
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     ingrediente: { findUnique: spies.ingrediente },
-    movimientoInventario: { aggregate: spies.entradasIngrediente },
-    detalleCuentaPorPagar: { aggregate: spies.entradasProducto },
-    planProduccionDiaria: { aggregate: spies.produccion },
+    producto: { findUnique: spies.producto },
+    detalleComanda: { findMany: jest.fn().mockResolvedValue([]) },
+    transferenciaRestaurantePanaderia: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    movimientoInventario: {
+      aggregate: spies.entradasIngrediente,
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    detalleCuentaPorPagar: {
+      aggregate: spies.entradasProducto,
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    planProduccionDiaria: {
+      aggregate: spies.produccion,
+      findMany: jest.fn().mockResolvedValue([]),
+    },
   };
   const prisma = {
     elementoConteoDiario: {
@@ -133,12 +151,10 @@ describe('Lista permanente de conteo', () => {
       },
     ] as never);
     const crear = jest.spyOn(service, 'create').mockResolvedValue({} as never);
-    jest
-      .spyOn(prisma.elementoConteoDiario, 'findUnique')
-      .mockResolvedValue({
-        activo: true,
-        cantidadInicial: new Prisma.Decimal(4),
-      } as never);
+    jest.spyOn(prisma.elementoConteoDiario, 'findUnique').mockResolvedValue({
+      activo: true,
+      cantidadInicial: new Prisma.Decimal(4),
+    } as never);
     jest.spyOn(service, 'findAll').mockResolvedValue([]);
     await service.prepare('2026-09-20', 2);
     expect(crear).toHaveBeenCalledTimes(1);
@@ -175,12 +191,10 @@ describe('Lista permanente de conteo', () => {
       },
     ] as never);
     jest.spyOn(service, 'create').mockRejectedValue(new ConflictException());
-    jest
-      .spyOn(prisma.elementoConteoDiario, 'findUnique')
-      .mockResolvedValue({
-        activo: true,
-        cantidadInicial: new Prisma.Decimal(10),
-      } as never);
+    jest.spyOn(prisma.elementoConteoDiario, 'findUnique').mockResolvedValue({
+      activo: true,
+      cantidadInicial: new Prisma.Decimal(10),
+    } as never);
     const listar = jest.spyOn(service, 'findAll').mockResolvedValue([]);
     await expect(service.prepare('2026-09-20', 2)).resolves.toEqual([]);
     expect(listar).toHaveBeenCalled();
@@ -220,14 +234,12 @@ describe('Lista permanente de conteo', () => {
     'retira solo el pendiente de hoy para %s y conserva historial y confirmados',
     async (tipo) => {
       const { service, prisma, tx } = setup();
-      jest
-        .spyOn(prisma.elementoConteoDiario, 'findUnique')
-        .mockResolvedValue({
-          id: 1,
-          tipo,
-          idProducto: tipo === 'PRODUCTO' ? 3 : null,
-          idIngrediente: tipo === 'INGREDIENTE' ? 8 : null,
-        } as never);
+      jest.spyOn(prisma.elementoConteoDiario, 'findUnique').mockResolvedValue({
+        id: 1,
+        tipo,
+        idProducto: tipo === 'PRODUCTO' ? 3 : null,
+        idIngrediente: tipo === 'INGREDIENTE' ? 8 : null,
+      } as never);
       await service.removeElement(1);
       expect(prisma.elementoConteoDiario.update).toHaveBeenCalledWith({
         where: { id: 1 },
@@ -394,5 +406,28 @@ describe('InventoryCountsService', () => {
     });
 
     await expect(service.reopen(4)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('al reabrir elimina la valoración congelada para que no siga alimentando el informe', async () => {
+    const { service, spies } = setup({
+      conteo: {
+        id_conteoInventario: 4,
+        fecha_conteoInventario: new Date('2026-09-14'),
+        tipo_objetivo_conteoInventario: 'INGREDIENTE',
+        id_ingrediente_conteoInventario: 8,
+        id_producto_conteoInventario: null,
+        estado_conteoInventario: 'FINALIZADO',
+        valoracion: { version: 1 },
+      },
+    });
+    await service.reopen(4);
+    expect(spies.actualizar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          estado_conteoInventario: 'PENDIENTE',
+          valoracion: Prisma.DbNull,
+        }),
+      }),
+    );
   });
 });
