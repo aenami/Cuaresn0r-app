@@ -78,8 +78,10 @@ export function InventarioPanaderia({ esAdmin, vista }: { esAdmin: boolean; vist
         toast.success(operacion === 'entrada' ? 'Entrada registrada' : 'Merma registrada')
       }
       setSeleccion(null)
-      await queryClient.invalidateQueries({ queryKey: bakeryKeys.all })
-      await queryClient.invalidateQueries({ queryKey: ['inventario', 'valoracion-mensual'] })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: bakeryKeys.all }),
+        queryClient.invalidateQueries({ queryKey: ['inventario', 'valoracion-rango'] }),
+      ])
     } catch (error) { toast.error(errorApi(error)) }
     finally { setGuardando(false) }
   }

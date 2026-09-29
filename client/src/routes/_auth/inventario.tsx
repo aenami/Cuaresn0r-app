@@ -9,7 +9,7 @@ import { SeccionConteoDiario } from '@/features/inventario/seccion-conteo-diario
 import { InventarioPanaderia } from '@/features/panaderia/inventario'
 import { RecetasPanaderia } from '@/features/panaderia/recetas'
 import { cn } from '@/lib/utils'
-import { ResumenMonetarioMensual } from '@/features/inventario/resumen-valoracion-mensual'
+import { ResumenMonetarioPorFechas } from '@/features/inventario/resumen-valoracion-rango'
 
 export const Route = createFileRoute('/_auth/inventario')({
   validateSearch: z.object({ area: z.enum(['RESTAURANTE', 'PANADERIA']).optional() }),
@@ -75,7 +75,7 @@ function PaginaInventario() {
           <SeccionRecetas esAdmin={esAdmin} />
         )}
       </div>
-      {pestanaVisible === 'conteo' && esAdmin && <ResumenMonetarioMensual />}
+      {pestanaVisible === 'conteo' && esAdmin && <ResumenMonetarioPorFechas />}
     </div>
   )
 }

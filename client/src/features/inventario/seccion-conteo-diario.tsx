@@ -99,10 +99,7 @@ export function SeccionConteoDiario({ esAdmin }: { esAdmin: boolean }) {
         <div className="pointer-events-none absolute -right-8 -top-14 size-52 rounded-full bg-secondary/10 blur-3xl" />
         <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="micro-label flex items-center gap-2 text-secondary">
-              <ClipboardList className="size-3.5" /> Verificacion de cierre
-            </p>
-            <h2 className="mt-2 font-heading text-3xl font-semibold capitalize tracking-tighter">
+            <h2 className="font-heading text-3xl font-semibold capitalize tracking-tighter">
               {fechaLarga(fecha)}
             </h2>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
@@ -242,7 +239,7 @@ function TarjetaConteo({ conteo, esAdmin }: { conteo: ConteoInventarioDiario; es
             <History className="size-3" />
             {conteo.fecha_anterior_conteoInventario
               ? `Ultimo cierre: ${fechaCorta(conteo.fecha_anterior_conteoInventario)}`
-              : 'Primer registro: saldo inicial manual'}
+              : 'Primer conteo'}
           </p>
         </div>
         <span
@@ -335,16 +332,15 @@ function TarjetaConteo({ conteo, esAdmin }: { conteo: ConteoInventarioDiario; es
 
         {conciliacion ? <div className="mt-4 space-y-2 border-t border-border pt-3 text-sm">
           <p className="flex flex-wrap justify-between gap-2">
-            <span>{conteo.tipo_objetivo_conteoInventario === 'PRODUCTO' ? 'Entregado en el sistema' : 'Salidas registradas: consumo, traslados y mermas'}</span>
+            <span>{conteo.tipo_objetivo_conteoInventario === 'PRODUCTO' ? 'Entregado en el sistema' : 'Salidas registradas'}</span>
             <span className="font-semibold tabular-nums">{formatearCantidad(conciliacion.cantidadSistema)} {unidad}</span>
           </p>
-          {conciliacion.motivoNoComparable ? <p className="text-tertiary">{conciliacion.motivoNoComparable}</p>
-            : conciliacion.requiereReconteo ? <p className="text-rose-300" role="status">Hubo movimientos después de contar. Solicita al administrador reabrir este conteo y vuelve a verificarlo antes de cerrar caja.</p>
+          {conciliacion.motivoNoComparable ? <p className="text-tertiary">Sin base comparable</p>
+            : conciliacion.requiereReconteo ? <p className="text-rose-300" role="status">Requiere reabrir y volver a contar</p>
             : finalizado && diferenciaEntregas !== null ? <p className={diferenciaEntregas === 0 ? 'text-emerald-300' : 'text-rose-300'}>
-              {diferenciaEntregas === 0 ? 'Coincide con las salidas registradas.'
-                : `${diferenciaEntregas > 0 ? 'Faltante' : 'Sobrante'} de ${formatearCantidad(Math.abs(diferenciaEntregas))} ${unidad} frente a las salidas registradas.`}
-            </p> : <p className="text-xs text-muted-foreground">Confirma el conteo para registrar si coincide. Cobrar no mueve esta cantidad; entregar sí.</p>}
-          <p className="text-xs text-muted-foreground">Una diferencia puede corresponder a mermas, ajustes o registros pendientes; no se corrige el stock automáticamente.</p>
+              {diferenciaEntregas === 0 ? 'Sin diferencias'
+                : `${diferenciaEntregas > 0 ? 'Faltante' : 'Sobrante'}: ${formatearCantidad(Math.abs(diferenciaEntregas))} ${unidad}`}
+            </p> : null}
         </div> : null}
 
         {salida !== null && salida < 0 ? (
@@ -368,7 +364,7 @@ function TarjetaConteo({ conteo, esAdmin }: { conteo: ConteoInventarioDiario; es
           <p className="text-[11px] text-muted-foreground">
             {finalizado
               ? `Confirmado por ${nombreUsuario(conteo) ?? 'un trabajador'}`
-              : 'Salida = saldo anterior + entradas - conteo fisico'}
+              : 'Pendiente de confirmar'}
           </p>
           {esAdmin ? (
             <div className="flex gap-1">
@@ -476,7 +472,7 @@ function DialogNuevoConteo({ abierto, onCerrar }: { abierto: boolean; onCerrar: 
       .mutateAsync({
         tipo,
         idObjetivo: Number(idObjetivo),
-        ...(cantidadInicial !== '' && {
+        ...(tipo === 'PRODUCTO' && cantidadInicial !== '' && {
           cantidadInicial: Number(cantidadInicial),
         }),
       })
@@ -531,6 +527,7 @@ function DialogNuevoConteo({ abierto, onCerrar }: { abierto: boolean; onCerrar: 
                 onValueChange={(valor) => {
                   setTipo(valor as TipoObjetivoProduccion)
                   setIdObjetivo('')
+                  setCantidadInicial('')
                 }}
               >
                 <SelectTrigger className="mt-1.5 w-full">
@@ -558,13 +555,13 @@ function DialogNuevoConteo({ abierto, onCerrar }: { abierto: boolean; onCerrar: 
               </Select>
             </div>
           </div>
-          <div className="rounded-lg border border-border bg-surface-high p-3">
+          {tipo === 'PRODUCTO' ? <div className="rounded-lg border border-border bg-surface-high p-3">
             <Label htmlFor="saldo-inicial">Saldo inicial, si es el primer conteo</Label>
             <Input
               id="saldo-inicial"
               type="number"
               min={0}
-              step={tipo === 'PRODUCTO' ? 1 : 'any'}
+              step={1}
               value={cantidadInicial}
               onChange={(evento) => setCantidadInicial(evento.target.value)}
               className="mt-1.5"
@@ -574,7 +571,7 @@ function DialogNuevoConteo({ abierto, onCerrar }: { abierto: boolean; onCerrar: 
               El sistema usara automaticamente el ultimo conteo fisico finalizado. Este valor solo inicia un historial
               nuevo.
             </p>
-          </div>
+          </div> : <p className="text-xs text-muted-foreground">El primer saldo se toma del inventario; después se usa el último conteo confirmado.</p>}
           <Button className="btn-heat w-full" disabled={!idObjetivo || crear.isPending || isPending || !!error}>
             <Plus className="size-4" /> Agregar elemento
           </Button>

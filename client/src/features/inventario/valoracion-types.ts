@@ -37,6 +37,10 @@ export interface ResumenValoracionMensual {
     costoConsumido: string
     perdidaEstimada: string
     valorSobrante: string
+    perdidaProductos: string
+    perdidaIngredientes: string
+    sobranteProductos: string
+    sobranteIngredientes: string
   }
   excluidos: {
     sinValoracion: number
@@ -45,4 +49,9 @@ export interface ResumenValoracionMensual {
     sinReferencia: number
     recontar: number
   }
+}
+
+export interface ResumenValoracionRango extends Omit<ResumenValoracionMensual, 'mes'> {
+  desde: string
+  hasta: string
 }

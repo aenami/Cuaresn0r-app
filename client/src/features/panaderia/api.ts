@@ -48,7 +48,7 @@ export interface EstadoConteoPanaderia {
   valorDiferencia: string
   proyeccion: {
     articuloId: number
-    cantidadInicial: string
+    cantidadInicial: string | null
     entradas: string
     ventasRegistradas: string
     transferencias: string
