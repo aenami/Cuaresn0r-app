@@ -11,11 +11,11 @@ web
 - Cada trabajador y administrador local pertenece a una sola área: Panadería o Restaurante / cafetería. Sus módulos y operaciones dependen de su rol.
 - El panadero registra ingredientes, hornadas de Panadería y Pastelería y conteos; el cajero de panadería atiende mostrador, productos externos, proveedores, caja y remisiones.
 - En restaurante, el cajero opera caja, inventario, impresoras y pedidos; el mesero trabaja en pedidos y el cocinero en inventario y pedidos. Cada trabajador consulta Mi nómina.
-- El administrador local administra catálogos, empleados, usuarios, nómina y reportes de su área y puede operar su caja. El administrador global administra y supervisa ambas áreas mediante un selector, sin cobrar, facturar ni operar turnos.
+- El administrador local administra catálogos, empleados, usuarios, nómina y reportes de su área, además de impresoras en Restaurante, y puede operar su caja. El administrador global supervisa ambas áreas mediante un selector y conserva inventario, reportes, proveedores, cierres y remisiones; no tiene Usuarios, Catálogos, Nómina, Mi nómina ni Impresoras y no cobra, factura, paga ni opera turnos.
 
 ## Product Purpose
 
-Un POS para la panadería y el restaurante/cafetería de la misma sede. Cada área conserva sus catálogos, existencias, proveedores, cuentas, cajas, empleados y nómina. El administrador global puede gestionar ambas; los accesos locales solo operan su área.
+Un POS para la panadería y el restaurante/cafetería de la misma sede. Cada área conserva sus catálogos, existencias, proveedores, cuentas, cajas, empleados y nómina. La administración de personas, accesos, catálogos y nómina corresponde al administrador local de esa área; el global supervisa ambas.
 
 ## Operating Context
 
@@ -25,17 +25,20 @@ Un POS para la panadería y el restaurante/cafetería de la misma sede. Cada ár
 - Las remisiones agrupan entregas por turno (`TURNO`) o por día (`DIA`), sin mezclar modalidades en una misma fecha de Colombia. Cerrarlas bloquea nuevas entregas y genera la deuda completa del Restaurante; no admiten abonos. La diaria solo se cierra en turno único o tarde-noche.
 - El cajero o administrador local de Restaurante registra el pago completo. El cajero o administrador local de Panadería confirma el ingreso una sola vez. Efectivo y transferencia mantienen su tratamiento separado en el cuadre.
 - Se conservan los traslados anteriores y las recepciones de Restaurante a Panadería: Restaurante envía ingredientes con stock y Panadería confirma su recepción como insumo no vendible de igual unidad, conservando sus fracciones.
-- El conteo físico compara la salida aparente con las ventas y los demás movimientos verificables. Los faltantes se valoran para revisión, sin crear una venta automáticamente.
+- El conteo físico compara la salida aparente con las ventas, el consumo y los demás movimientos verificables. Cada conteo confirmado conserva su precio o costo de referencia: los productos muestran ingreso estimado por salidas corroboradas y pérdida por faltantes; los ingredientes muestran costo consumido y pérdida a costo. Los traslados y las mermas documentados justifican salidas sin atribuirles ventas ni faltantes; los sobrantes se muestran aparte. La valoración no crea ventas, cobros ni ajustes de existencias.
 - Cada área realiza su propio cierre de caja y maneja sus comprobantes por separado.
 
 ## Capabilities and Constraints
 
 - El restaurante conserva pedidos por ficha, comandas, subcuentas, cuadre de efectivo y conteo diario.
 - Panadería dispone de venta directa, entradas de hornadas y externos, pagos mixtos, cuadre monetario y cuadre físico por artículo.
-- La autorización se comprueba en navegación y API. Cambiar la URL o enviar otra área no concede acceso. `ADMIN_GLOBAL` y el rol heredado `ADMIN` son supervisores: no realizan transacciones de dinero, pagos de nómina, ventas, facturación ni apertura/cierre de turnos.
-- La migración `20260928120000_accesos_areas_remisiones` ya se aplicó únicamente al POS local, con respaldo privado previo; no se aplicó a producción. Convierte los usuarios `ADMIN` anteriores a `ADMIN_GLOBAL`. Para operar caja se deben crear empleados y usuarios `ADMIN_LOCAL` de cada área. No se reimporta ni reinicializa stock.
+- La autorización se comprueba en navegación y API. Cambiar la URL o enviar otra área no concede acceso. `ADMIN_GLOBAL` y el rol heredado `ADMIN` son supervisores: no administran usuarios, empleados, catálogos, nómina ni impresoras y no realizan transacciones de dinero, ventas, facturación ni apertura/cierre de turnos. Cada usuario puede cambiar su propia contraseña desde Perfil.
+- Inventario obtiene las referencias mínimas necesarias de los artículos del área propia; esto no abre el módulo Catálogos ni concede edición del catálogo.
+- La valoración mensual está disponible para administradores locales y globales. Agrupa por artículo, área y mes de Colombia y separa productos de ingredientes. Solo suma valoraciones guardadas y vigentes; excluye e informa cuántos conteos están pendientes, no son comparables, requieren reconteo, carecen de referencia o no conservan valoración histórica. Los precios actuales no reconstruyen conteos antiguos.
+- Las migraciones `20260928120000_accesos_areas_remisiones` y `20260929090000_valoracion_conteos` se aplicaron únicamente al POS local, con respaldo privado previo verificado; no se aplicaron a Neon, Render ni Vercel. No se reimportó ni reinicializó stock ni se hizo un reset por las cuatro migraciones antiguas registradas en la base local pero ausentes del repositorio.
+- Ya están preparados dos accesos `ADMIN_LOCAL` en el POS local, uno por área, vinculados a empleados técnicos mínimos sin tarifas ni jornadas. Desde esos accesos se administran los trabajadores reales del área y se opera caja. El global existente conserva su rol. Las credenciales quedan fuera del repositorio.
 - **Pendiente:** confirmar si ambas áreas usan el mismo NIT y qué numeración fiscal corresponde a cada una. Los comprobantes internos no se presentan como facturas fiscales mientras esto no se resuelva.
-- La guía operativa y la matriz de accesos están en [docs/ROLES_Y_AREAS.md](docs/ROLES_Y_AREAS.md).
+- La guía operativa y la matriz de accesos están en [docs/ROLES_Y_AREAS.md](docs/ROLES_Y_AREAS.md); las reglas y ejemplos monetarios, en [docs/VALORACION_CONTEOS.md](docs/VALORACION_CONTEOS.md).
 
 ## Product Principles
 

@@ -548,3 +548,65 @@ alcance o feature terminada.
   de panadería y prueba física de impresoras continúan pendientes.
 - Cambios guardados en commits locales. Esta etapa no modifica Neon, Render
   ni Vercel; publicación en producción pendiente.
+
+### 2026-09-29 — Supervisión global y valoración monetaria de conteos
+
+- El administrador global deja de tener acceso a Usuarios, Catálogo, Nómina,
+  Mi nómina e Impresoras. La restricción cubre menú, rutas directas y API en
+  ambas áreas, incluido el rol heredado `ADMIN`. Conserva su perfil y cambio
+  de contraseña, inventario, estadísticas, proveedores, cierres y remisiones.
+  Los administradores locales y trabajadores conservan sus módulos propios.
+- Inventario consulta una lista mínima de productos de su área, independiente
+  del módulo de Catálogo, para que producción, recetas y lista fija de conteo
+  sigan funcionando sin conceder acceso al catálogo al supervisor global.
+- Cada conteo confirmado conserva una valoración monetaria: precio de venta
+  para productos y costo unitario para ingredientes. Se distinguen ingreso
+  estimado por ventas corroboradas, costo de consumo, pérdida por faltantes
+  sin justificar y sobrante. El consumo no es dinero cobrado ni utilidad;
+  los sobrantes no crean ingresos ni compensan las pérdidas de otros artículos.
+- Traslados y mermas registrados se separan de ventas y consumo. Las entradas
+  de proveedores cuentan al confirmar recepción, no al crear la factura.
+  Ninguna valoración genera ventas, cobros o ajustes de stock automáticamente.
+- Los insumos de panadería admiten un costo opcional por unidad y cantidades
+  fraccionarias. Costo vacío significa sin referencia; cero explícito es válido.
+  Al confirmar se guarda el nombre, unidad, referencia e importes del conteo:
+  cambiar posteriormente precios o costos no recalcula su historial.
+- El conteo muestra un resumen mensual por artículo y área, separado entre
+  productos e ingredientes. No suma registros antiguos sin valoración,
+  pendientes, no comparables, sin referencia ni aquellos por recontar; indica
+  sus exclusiones. Reabrir elimina la valoración hasta confirmar nuevamente.
+  Movimientos posteriores al conteo obligan a recontar antes de usar sus importes.
+- Migración aditiva `20260929090000_valoracion_conteos` aplicada a `POS` local
+  tras crear el respaldo privado
+  `server/backups/pos-before-inventory-valuation-1790697050163.dump`
+  (339411 bytes, formato custom comprobado con `pg_restore --list`). No se
+  reconstruyeron importes antiguos ni se cambió la base de producción.
+- Verificación: Prisma válido, compilaciones de servidor y cliente, lint del
+  cliente, 25 suites / 329 pruebas unitarias y 228 comprobaciones HTTP sobre
+  PostgreSQL temporal (187 permisos/remisiones y 41 valoración financiera).
+  La provisión administrativa se probó también en bases temporales. Las tres
+  bases temporales se eliminaron al terminar.
+- Navegador: 31 controles con API simulada, sin errores React ni desbordamiento
+  en escritorio/móvil. Incluye referencias congeladas, costos opcionales,
+  separación de importes, permisos globales, recuperación de errores y estado
+  mensual vacío. Se conserva la interfaz existente con importes diferenciados
+  por color. La revisión independiente pidió ampliar el selector mensual para
+  mostrar el año completo; su veredicto sobre esa corrección fue resuelto,
+  con disposición de envío tras comprobar las seis capturas renovadas.
+- Preparación de accesos: `server/scripts/provision-local-admin.cjs` permite
+  simulación sin cambios y provisión explícita para empleados del área,
+  preservando historial y protección del último administrador global.
+  Las credenciales no se incluyen en código, documentación ni commits.
+- Por autorización del usuario, se crearon dos administradores locales nuevos
+  únicamente en `POS`: uno de Panadería y otro de Restaurante, con sus
+  empleados activos mínimos y sin tarifas o jornadas ficticias. Se verificaron
+  rol, área, bcrypt12 y autenticación real de ambos. El administrador global
+  existente conserva su rol y contraseña. Las claves temporales se entregan en
+  un archivo privado ignorado por Git y con acceso exclusivo para el usuario
+  de Windows; no están en esta documentación ni en el historial de commits.
+- Guías actualizadas: `docs/ROLES_Y_AREAS.md` y
+  `docs/VALORACION_CONTEOS.md`. El contexto de producto refleja las nuevas
+  restricciones y reglas monetarias; se preservó el sistema visual existente.
+- No se publicaron cambios en Neon, Render ni Vercel. Continúan pendientes
+  la validación operativa con el negocio, el NIT/numeración fiscal y la prueba
+  física de las impresoras.
