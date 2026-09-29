@@ -3,6 +3,7 @@ import { crearValoracion, presentarValoracion } from './inventory-valuation';
 import {
   agregarValoraciones,
   InventoryValuationService,
+  rangoFechas,
   rangoMes,
 } from './inventory-valuation.service';
 import {
@@ -210,6 +211,201 @@ describe('Valoración conservadora de conteos', () => {
       expect(() => rangoMes(mes)).toThrow();
   });
 
+  it('incluye los extremos de un rango entre meses y años', () => {
+    expect(rangoFechas('2026-12-29', '2027-01-04')).toEqual({
+      fechaInicio: new Date('2026-12-29'),
+      fechaFin: new Date('2027-01-05'),
+    });
+    expect(rangoFechas('2026-09-29', '2026-09-29')).toEqual({
+      fechaInicio: new Date('2026-09-29'),
+      fechaFin: new Date('2026-09-30'),
+    });
+    expect(rangoFechas('2024-02-29', '2024-02-29').fechaInicio).toEqual(
+      new Date('2024-02-29'),
+    );
+    expect(rangoFechas('9998-12-31', '9998-12-31').fechaFin).toEqual(
+      new Date('9999-01-01'),
+    );
+  });
+
+  it.each([
+    [undefined, undefined],
+    ['2026-09-01', undefined],
+    [undefined, '2026-09-07'],
+    ['', '2026-09-07'],
+    ['2026-9-1', '2026-09-07'],
+    ['2026-09-01T00:00:00Z', '2026-09-07'],
+    ['2026-02-29', '2026-03-01'],
+    ['2026-04-31', '2026-05-01'],
+    ['1999-12-31', '2000-01-01'],
+    ['9999-01-01', '9999-01-02'],
+    ['2026-09-07', '2026-09-01'],
+    ['2024-01-01', '2025-01-01'],
+  ])(
+    'rechaza rango inválido %s / %s antes de consultar datos',
+    (desde, hasta) => {
+      expect(() => rangoFechas(desde, hasta)).toThrow();
+    },
+  );
+
+  it('permite un año bisiesto completo de 366 días, pero no 367 días', () => {
+    expect(rangoFechas('2024-01-01', '2024-12-31')).toEqual({
+      fechaInicio: new Date('2024-01-01'),
+      fechaFin: new Date('2025-01-01'),
+    });
+    expect(() => rangoFechas('2024-01-01', '2025-01-01')).toThrow();
+  });
+
+  it('el rango de panadería conserva varias referencias históricas y fracciones sin mezclar ingreso con costo', async () => {
+    const conteos = jest.fn().mockResolvedValue([
+      {
+        articuloId: 1,
+        fecha: new Date('2026-12-31'),
+        fechaRegistro: new Date('2027-01-01T03:00:00Z'),
+        valoracion: referencia(),
+      },
+      {
+        articuloId: 1,
+        fecha: new Date('2027-01-01'),
+        fechaRegistro: new Date('2027-01-02T03:00:00Z'),
+        valoracion: referencia({ precioReferencia: 3000 }),
+      },
+      {
+        articuloId: 2,
+        fecha: new Date('2027-01-01'),
+        fechaRegistro: new Date('2027-01-02T03:00:00Z'),
+        valoracion: referencia({
+          tipoReferencia: 'COSTO_UNITARIO',
+          precioReferencia: '1234.5678',
+          salidaFisica: '1.75',
+          cantidadCorroborada: '1.25',
+          nombre: 'Harina',
+          unidad: 'kg',
+        }),
+      },
+    ]);
+    const movimientos = jest.fn().mockResolvedValue([]);
+    const soloRestaurante = jest.fn();
+    const prisma = {
+      conteoPanaderia: { findMany: conteos },
+      movimientoPanaderia: { findMany: movimientos },
+      conteoInventarioDiario: { findMany: soloRestaurante },
+    } as unknown as PrismaService;
+    const respuesta = await accessContext.run(
+      { area: 'PANADERIA', user: { rolNombre: 'ADMIN_GLOBAL' } } as never,
+      () =>
+        new InventoryValuationService(prisma).range('2026-12-29', '2027-01-04'),
+    );
+    expect(respuesta).toMatchObject({
+      desde: '2026-12-29',
+      hasta: '2027-01-04',
+      area: 'PANADERIA',
+      totales: {
+        ingresoEstimado: '38500',
+        costoConsumido: '1543.2098',
+        perdidaProductos: '16500',
+        perdidaIngredientes: '617.2839',
+      },
+    });
+    expect(respuesta.filas.find((f) => f.idObjetivo === 1)).toMatchObject({
+      diasValorados: 2,
+      ingresoEstimado: '38500',
+    });
+    expect(conteos).toHaveBeenCalledTimes(1);
+    expect(conteos.mock.calls[0][0].where.fecha).toEqual({
+      gte: new Date('2026-12-29'),
+      lt: new Date('2027-01-05'),
+    });
+    expect(movimientos).toHaveBeenCalledTimes(1);
+    expect(movimientos.mock.calls[0][0].where.fecha).toEqual({
+      gte: new Date('2026-12-29T05:00:00Z'),
+      lt: new Date('2027-01-05T05:00:00Z'),
+    });
+    expect(soloRestaurante).not.toHaveBeenCalled();
+  });
+
+  it('el rango restaurante utiliza consultas constantes y mantiene todas las exclusiones', async () => {
+    const datos = (id: number) => ({
+      id_producto_conteoInventario: id,
+      id_ingrediente_conteoInventario: null,
+      tipo_objetivo_conteoInventario: 'PRODUCTO',
+      fecha_conteoInventario: new Date('2026-12-31'),
+      fecha_anterior_conteoInventario: null,
+      estado_conteoInventario: 'FINALIZADO',
+      cantidad_salida_conteoInventario: new Prisma.Decimal(10),
+      fecha_finalizacion_conteoInventario: new Date('2027-01-01T03:00:00Z'),
+      valoracion: referencia(),
+    });
+    const conteos = jest.fn().mockResolvedValue([
+      datos(1),
+      { ...datos(2), estado_conteoInventario: 'PENDIENTE' },
+      { ...datos(3), valoracion: null },
+      { ...datos(4), valoracion: referencia({ precioReferencia: null }) },
+      {
+        ...datos(5),
+        fecha_anterior_conteoInventario: new Date('2026-12-29'),
+      },
+      datos(6),
+    ]);
+    const movimientos = jest.fn().mockResolvedValue([]);
+    const recepciones = jest.fn().mockResolvedValue([
+      {
+        id_producto_detalleCuenta: 6,
+        cuentaPorPagar: {
+          fecha_recepcion_mercancia: new Date('2027-01-01T04:00:00Z'),
+        },
+      },
+    ]);
+    const detalles = jest.fn().mockResolvedValue([]);
+    const produccion = jest.fn().mockResolvedValue([]);
+    const transferencias = jest.fn().mockResolvedValue([]);
+    const soloPanaderia = jest.fn();
+    const prisma = {
+      conteoInventarioDiario: { findMany: conteos },
+      detalleComanda: { findMany: detalles },
+      transferenciaRestaurantePanaderia: { findMany: transferencias },
+      movimientoInventario: { findMany: movimientos },
+      planProduccionDiaria: { findMany: produccion },
+      detalleCuentaPorPagar: { findMany: recepciones },
+      conteoPanaderia: { findMany: soloPanaderia },
+    } as unknown as PrismaService;
+    const respuesta = await accessContext.run(
+      { area: 'RESTAURANTE', user: { rolNombre: 'ADMIN_LOCAL' } } as never,
+      () =>
+        new InventoryValuationService(prisma).range('2026-12-29', '2027-01-04'),
+    );
+    expect(respuesta).toMatchObject({
+      area: 'RESTAURANTE',
+      excluidos: {
+        pendientes: 1,
+        sinValoracion: 1,
+        sinReferencia: 1,
+        noComparables: 1,
+        recontar: 1,
+      },
+      totales: { ingresoEstimado: '17500', perdidaProductos: '7500' },
+    });
+    expect(respuesta.filas).toHaveLength(1);
+    for (const consulta of [
+      conteos,
+      detalles,
+      produccion,
+      transferencias,
+      recepciones,
+    ])
+      expect(consulta).toHaveBeenCalledTimes(1);
+    expect(movimientos).toHaveBeenCalledTimes(2);
+    expect(soloPanaderia).not.toHaveBeenCalled();
+    expect(conteos.mock.calls[0][0].where.fecha_conteoInventario).toEqual({
+      gte: new Date('2026-12-29'),
+      lt: new Date('2027-01-05'),
+    });
+    expect(detalles.mock.calls[0][0].where.OR[0].fecha_entrega_dc).toEqual({
+      gte: new Date('2026-12-29T05:00:00Z'),
+      lt: new Date('2027-01-05T05:00:00Z'),
+    });
+  });
+
   it('una entrada posterior obliga a recontar aunque no haya nuevas entregas', async () => {
     const db = {
       movimientoInventario: {
@@ -305,16 +501,14 @@ describe('Valoración conservadora de conteos', () => {
       fecha_finalizacion_conteoInventario: new Date('2026-09-02T03:00:00Z'),
       valoracion: referencia(),
     });
-    const recepciones = jest
-      .fn()
-      .mockResolvedValue([
-        {
-          id_producto_detalleCuenta: 2,
-          cuentaPorPagar: {
-            fecha_recepcion_mercancia: new Date('2026-09-02T04:00:00Z'),
-          },
+    const recepciones = jest.fn().mockResolvedValue([
+      {
+        id_producto_detalleCuenta: 2,
+        cuentaPorPagar: {
+          fecha_recepcion_mercancia: new Date('2026-09-02T04:00:00Z'),
         },
-      ]);
+      },
+    ]);
     const prisma = {
       conteoInventarioDiario: {
         findMany: jest.fn().mockResolvedValue([datos(1), datos(2)]),

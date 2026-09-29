@@ -69,6 +69,42 @@ export function rangoMes(mes: string) {
   };
 }
 
+export function rangoFechas(desde?: string, hasta?: string) {
+  const validar = (valor: string | undefined) => {
+    if (typeof valor !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(valor))
+      throw new BadRequestException(
+        'Indica ambas fechas con formato AAAA-MM-DD',
+      );
+    const anio = Number(valor.slice(0, 4));
+    const fecha = new Date(`${valor}T00:00:00.000Z`);
+    if (
+      anio < 2000 ||
+      anio > 9998 ||
+      !Number.isFinite(fecha.getTime()) ||
+      fecha.toISOString().slice(0, 10) !== valor
+    )
+      throw new BadRequestException(
+        'Las fechas deben ser válidas, con un año entre 2000 y 9998',
+      );
+    return fecha;
+  };
+  const fechaInicio = validar(desde);
+  const fechaUltima = validar(hasta);
+  const dias = (fechaUltima.getTime() - fechaInicio.getTime()) / 86400000 + 1;
+  if (dias < 1)
+    throw new BadRequestException(
+      'La fecha inicial no puede ser posterior a la final',
+    );
+  if (dias > 366)
+    throw new BadRequestException('El rango no puede superar 366 días');
+  return {
+    fechaInicio,
+    // Los días se almacenan como DATE; las actividades usan instantes en UTC-5.
+    // Un límite superior exclusivo permite incluir el último día completo.
+    fechaFin: new Date(fechaUltima.getTime() + 86400000),
+  };
+}
+
 // Los importes conservados son la única fuente monetaria del informe. Leer el
 // precio actual o reconstruir datos antiguos falsearía el historial.
 export function agregarValoraciones(entradas: Entrada[]) {
@@ -160,6 +196,22 @@ export class InventoryValuationService {
   async monthly(mes?: string) {
     const mesElegido = mes ?? fechaColombia().toISOString().slice(0, 7);
     const { fechaInicio, fechaFin } = rangoMes(mesElegido);
+    return {
+      mes: mesElegido,
+      ...(await this.summary(fechaInicio, fechaFin)),
+    };
+  }
+
+  async range(desde?: string, hasta?: string) {
+    const { fechaInicio, fechaFin } = rangoFechas(desde, hasta);
+    return {
+      desde: fechaInicio.toISOString().slice(0, 10),
+      hasta: new Date(fechaFin.getTime() - 86400000).toISOString().slice(0, 10),
+      ...(await this.summary(fechaInicio, fechaFin)),
+    };
+  }
+
+  private async summary(fechaInicio: Date, fechaFin: Date) {
     const inicio = rangoDia(fechaInicio).inicio;
     const fin = rangoDia(fechaFin).inicio;
     const area = areaActual();
@@ -234,6 +286,6 @@ export class InventoryValuationService {
         });
       }
     }
-    return { mes: mesElegido, area, ...agregarValoraciones(entradas) };
+    return { area, ...agregarValoraciones(entradas) };
   }
 }

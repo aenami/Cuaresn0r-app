@@ -15,6 +15,8 @@ function setup(
     posteriores?: number;
     entradasIngrediente?: number;
     entradasProducto?: number;
+    produccion?: number;
+    movimientosIniciales?: { tipo_movimiento: string; cantidad: number }[];
   } = {},
 ) {
   const conteo = overrides.conteo ?? {
@@ -67,19 +69,35 @@ function setup(
       },
     }),
     produccion: jest.fn().mockResolvedValue({
-      _sum: { cantidad_objetivo_planProduccion: null },
+      _sum: {
+        cantidad_objetivo_planProduccion:
+          overrides.produccion === undefined
+            ? null
+            : new Prisma.Decimal(overrides.produccion),
+      },
     }),
+    movimientosIniciales: jest.fn().mockResolvedValue(
+      (overrides.movimientosIniciales ?? []).map((movimiento) => ({
+        tipo_movimiento: movimiento.tipo_movimiento,
+        _sum: { cantidad_movimiento: new Prisma.Decimal(movimiento.cantidad) },
+      })),
+    ),
   };
   const tx = {
     $queryRaw: jest.fn().mockResolvedValue([{ id_conteoInventario: 4 }]),
     conteoInventarioDiario: {
       findUnique: spies.encontrar,
+      findFirst: spies.anterior,
+      create: spies.crear,
       findUniqueOrThrow: spies.encontrarObligatorio,
       update: spies.actualizar,
       count: spies.contar,
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
-    ingrediente: { findUnique: spies.ingrediente },
+    ingrediente: {
+      findUnique: spies.ingrediente,
+      findUniqueOrThrow: spies.ingrediente,
+    },
     producto: { findUnique: spies.producto },
     detalleComanda: { findMany: jest.fn().mockResolvedValue([]) },
     transferenciaRestaurantePanaderia: {
@@ -88,6 +106,7 @@ function setup(
     movimientoInventario: {
       aggregate: spies.entradasIngrediente,
       findMany: jest.fn().mockResolvedValue([]),
+      groupBy: spies.movimientosIniciales,
     },
     detalleCuentaPorPagar: {
       aggregate: spies.entradasProducto,
@@ -208,7 +227,7 @@ describe('Lista permanente de conteo', () => {
     expect(prisma.elementoConteoDiario.upsert).not.toHaveBeenCalled();
   });
 
-  it('permite configurar con el saldo del último cierre y rechaza fracciones de productos', async () => {
+  it('conserva el último cierre aunque el cliente envíe otro saldo inicial', async () => {
     const { service, prisma } = setup({
       anterior: { cantidad_fisica_conteoInventario: new Prisma.Decimal(7) },
     });
@@ -221,6 +240,22 @@ describe('Lista permanente de conteo', () => {
         }),
       }),
     );
+    await service.addElement({
+      tipo: 'PRODUCTO',
+      idObjetivo: 3,
+      cantidadInicial: 0.5,
+    });
+    expect(prisma.elementoConteoDiario.upsert).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          cantidadInicial: new Prisma.Decimal(7),
+        }),
+      }),
+    );
+  });
+
+  it('rechaza fracciones para el saldo manual de un producto sin historial', async () => {
+    const { service, prisma } = setup();
     await expect(
       service.addElement({
         tipo: 'PRODUCTO',
@@ -228,6 +263,206 @@ describe('Lista permanente de conteo', () => {
         cantidadInicial: 0.5,
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.elementoConteoDiario.upsert).not.toHaveBeenCalled();
+  });
+
+  it('inicia automáticamente un ingrediente fraccionario desde su inventario', async () => {
+    const { service, prisma } = setup();
+    await service.addElement({
+      tipo: 'INGREDIENTE',
+      idObjetivo: 8,
+      cantidadInicial: 99,
+    });
+    expect(prisma.elementoConteoDiario.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          cantidadInicial: new Prisma.Decimal('6.5'),
+        }),
+      }),
+    );
+  });
+
+  it('reconstruye la apertura sin duplicar entradas ni salidas previas al alta', async () => {
+    const { service, prisma, spies } = setup({
+      movimientosIniciales: [
+        { tipo_movimiento: 'ENTRADA', cantidad: 20 },
+        { tipo_movimiento: 'SALIDA_RECETA', cantidad: 10 },
+      ],
+    });
+    spies.ingrediente.mockResolvedValue({
+      stock_ingrediente: new Prisma.Decimal(80),
+      id_ingrediente: 8,
+      unidades_ingrediente: 'kg',
+    } as never);
+    await service.addElement({ tipo: 'INGREDIENTE', idObjetivo: 8 });
+    expect(prisma.elementoConteoDiario.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          cantidadInicial: new Prisma.Decimal(70),
+        }),
+      }),
+    );
+    expect(spies.movimientosIniciales).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id_ingrediente_movimiento: 8,
+          fecha_movimiento: {
+            gte: new Date('2026-09-20T05:00:00Z'),
+            lt: new Date('2026-09-21T05:00:00Z'),
+          },
+        },
+      }),
+    );
+  });
+
+  it('respeta los efectos de mermas, traslados, ajustes y reversos en la apertura', async () => {
+    const { service, prisma } = setup({
+      movimientosIniciales: [
+        { tipo_movimiento: 'MERMA', cantidad: 1 },
+        { tipo_movimiento: 'TRANSFERENCIA', cantidad: 2 },
+        { tipo_movimiento: 'AJUSTE_NEGATIVO', cantidad: 3 },
+        { tipo_movimiento: 'AJUSTE_POSITIVO', cantidad: 4 },
+        { tipo_movimiento: 'REVERSO', cantidad: 0.5 },
+      ],
+    });
+    await service.addElement({ tipo: 'INGREDIENTE', idObjetivo: 8 });
+    expect(prisma.elementoConteoDiario.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          cantidadInicial: new Prisma.Decimal(8),
+        }),
+      }),
+    );
+  });
+
+  it('no vuelve a leer el stock si existe un conteo físico anterior', async () => {
+    const { service, prisma, spies } = setup({
+      anterior: {
+        cantidad_fisica_conteoInventario: new Prisma.Decimal('7.25'),
+      },
+    });
+    await service.addElement({ tipo: 'INGREDIENTE', idObjetivo: 8 });
+    expect(prisma.elementoConteoDiario.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          cantidadInicial: new Prisma.Decimal('7.25'),
+        }),
+      }),
+    );
+    expect(spies.movimientosIniciales).not.toHaveBeenCalled();
+  });
+
+  it('conserva la foto al reactivar el mismo día aunque después haya cambiado el stock', async () => {
+    const { service, prisma, spies } = setup();
+    jest.spyOn(prisma.elementoConteoDiario, 'findUnique').mockResolvedValue({
+      activo: false,
+      fechaInicio: new Date('2026-09-20'),
+      cantidadInicial: new Prisma.Decimal('4.125'),
+    } as never);
+    await service.addElement({ tipo: 'INGREDIENTE', idObjetivo: 8 });
+    expect(prisma.elementoConteoDiario.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          cantidadInicial: new Prisma.Decimal('4.125'),
+        }),
+      }),
+    );
+    expect(spies.movimientosIniciales).not.toHaveBeenCalled();
+  });
+
+  it('reactivar en otra fecha sin conteos usa la apertura de hoy, no una foto vieja', async () => {
+    const { service, prisma, spies } = setup();
+    jest.spyOn(prisma.elementoConteoDiario, 'findUnique').mockResolvedValue({
+      activo: false,
+      fechaInicio: new Date('2026-09-19'),
+      cantidadInicial: new Prisma.Decimal(99),
+    } as never);
+    await service.addElement({ tipo: 'INGREDIENTE', idObjetivo: 8 });
+    expect(prisma.elementoConteoDiario.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          cantidadInicial: new Prisma.Decimal('6.5'),
+        }),
+      }),
+    );
+    expect(spies.movimientosIniciales).toHaveBeenCalledTimes(1);
+  });
+
+  it('preparar la jornada usa la foto de la lista aunque entren existencias después', async () => {
+    const { service, prisma, spies } = setup();
+    const elemento = {
+      id: 1,
+      activo: true,
+      tipo: 'INGREDIENTE',
+      idIngrediente: 8,
+      idProducto: null,
+      fechaInicio: new Date('2026-09-20'),
+      cantidadInicial: new Prisma.Decimal('4.125'),
+    };
+    jest
+      .spyOn(prisma.elementoConteoDiario, 'findMany')
+      .mockResolvedValue([elemento] as never);
+    jest
+      .spyOn(prisma.elementoConteoDiario, 'findUnique')
+      .mockResolvedValue(elemento as never);
+    spies.ingrediente.mockResolvedValue({
+      stock_ingrediente: new Prisma.Decimal(99),
+    } as never);
+    const crear = jest.spyOn(service, 'create').mockResolvedValue({} as never);
+    jest.spyOn(service, 'findAll').mockResolvedValue([]);
+    await service.prepare('2026-09-20', 2);
+    expect(crear).toHaveBeenCalledWith(
+      {
+        fecha: '2026-09-20',
+        tipo: 'INGREDIENTE',
+        idObjetivo: 8,
+        cantidadInicial: 4.125,
+      },
+      2,
+      expect.any(Object),
+    );
+    expect(spies.movimientosIniciales).not.toHaveBeenCalled();
+  });
+
+  it('la meta producida se suma al conteo pero no se invierte como movimiento del stock', async () => {
+    const { service, prisma, spies } = setup({
+      entradasIngrediente: 0,
+      produccion: 5,
+      conteo: {
+        id_conteoInventario: 4,
+        fecha_conteoInventario: new Date('2026-09-20'),
+        tipo_objetivo_conteoInventario: 'INGREDIENTE',
+        id_ingrediente_conteoInventario: 8,
+        id_producto_conteoInventario: null,
+        nombre_objetivo_conteoInventario: 'Queso',
+        unidad_objetivo_conteoInventario: 'kg',
+        cantidad_anterior_conteoInventario: new Prisma.Decimal('6.5'),
+        estado_conteoInventario: 'PENDIENTE',
+      },
+    });
+    await service.addElement({ tipo: 'INGREDIENTE', idObjetivo: 8 });
+    expect(prisma.elementoConteoDiario.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          cantidadInicial: new Prisma.Decimal('6.5'),
+        }),
+      }),
+    );
+    expect(spies.produccion).not.toHaveBeenCalled();
+    await service.finalize(4, 11.5, 2);
+    expect(spies.actualizar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          cantidad_entradas_conteoInventario: new Prisma.Decimal(5),
+          cantidad_salida_conteoInventario: new Prisma.Decimal(0),
+          stock_sistema_conteoInventario: new Prisma.Decimal('6.5'),
+          valoracion: expect.objectContaining({
+            perdidaEstimada: '0',
+            costoConsumido: '0',
+          }),
+        }),
+      }),
+    );
   });
 
   it.each(['PRODUCTO', 'INGREDIENTE'] as const)(

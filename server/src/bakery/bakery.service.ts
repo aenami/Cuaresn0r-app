@@ -320,7 +320,10 @@ export class BakeryService {
       const suma = (...tipos: string[]) => movimientos
         .filter((movimiento) => tipos.includes(movimiento.tipo))
         .reduce((total, movimiento) => total.plus(movimiento.cantidad), cero);
+      const saldosPrevios = previo ? new Map<number, Prisma.Decimal>()
+        : await this.saldosDesdeConteoPrevio(tx, [id], fecha);
       const cantidadInicial = previo?.cantidadInicial
+        ?? saldosPrevios.get(id)
         ?? movimientos[0]?.existenciaAntes
         ?? articulo.existencia;
       const datos = {
@@ -364,6 +367,9 @@ export class BakeryService {
       where: { fecha }, include: { articulo: true },
     });
     const conteoPorArticulo = new Map(conteos.map((conteo) => [conteo.articuloId, conteo]));
+    const saldosPrevios = await this.saldosDesdeConteoPrevio(
+      cliente, articulos.filter((articulo) => !conteoPorArticulo.has(articulo.id)).map((articulo) => articulo.id), fecha,
+    );
     const faltantes = articulos.filter((articulo) => !conteoPorArticulo.has(articulo.id)).map((a) => a.nombre);
     const { inicio, fin } = rangoDia(fecha);
     const movimientos = await cliente.movimientoPanaderia.findMany({
@@ -403,7 +409,12 @@ export class BakeryService {
       return {
         articuloId: articulo.id,
         cantidadInicial: conteoPorArticulo.get(articulo.id)?.cantidadInicial
-          ?? movimientosArticulo[0]?.existenciaAntes ?? articulo.existencia,
+          ?? saldosPrevios.get(articulo.id)
+          ?? movimientosArticulo[0]?.existenciaAntes
+          // Una lectura histórica no convierte el stock de hoy en un saldo
+          // de aquella fecha. Sin conteo ni libro de movimientos es desconocido.
+          ?? (fecha.toISOString().slice(0, 10) === fechaColombia().toISOString().slice(0, 10)
+            ? articulo.existencia : null),
         entradas: suma('PRODUCCION', 'RECEPCION'),
         ventasRegistradas: suma('VENTA'),
         transferencias: suma('TRANSFERENCIA'),
@@ -421,6 +432,41 @@ export class BakeryService {
       proyeccion,
       detalle,
     };
+  }
+
+  private async saldosDesdeConteoPrevio(cliente: Cliente, ids: number[], fecha: Date) {
+    const saldos = new Map<number, Prisma.Decimal>();
+    if (ids.length === 0) return saldos;
+    const { inicio } = rangoDia(fecha);
+    // Una consulta por grupo: cada artículo parte de su último conteo físico,
+    // aunque el ajuste a la existencia cacheada todavía no se haya aplicado.
+    const anteriores = await cliente.conteoPanaderia.findMany({
+      where: { articuloId: { in: ids }, fecha: { lt: fecha }, fechaRegistro: { lte: inicio } },
+      distinct: ['articuloId'],
+      orderBy: [{ articuloId: 'asc' }, { fecha: 'desc' }, { fechaRegistro: 'desc' }, { id: 'desc' }],
+      select: { articuloId: true, cantidadFisica: true, fechaRegistro: true },
+    });
+    if (anteriores.length === 0) return saldos;
+    const anteriorPorArticulo = new Map(anteriores.map((conteo) => [conteo.articuloId, conteo]));
+    for (const anterior of anteriores)
+      saldos.set(anterior.articuloId, anterior.cantidadFisica);
+    const desde = new Date(Math.min(...anteriores.map((conteo) => conteo.fechaRegistro.getTime())));
+    const movimientos = await cliente.movimientoPanaderia.findMany({
+      where: {
+        articuloId: { in: anteriores.map((conteo) => conteo.articuloId) },
+        fecha: { gt: desde, lt: inicio },
+        tipo: { not: 'AJUSTE_CONTEO' },
+      },
+      select: { articuloId: true, tipo: true, existenciaAntes: true, existenciaDespues: true, fecha: true },
+    });
+    for (const movimiento of movimientos) {
+      const anterior = anteriorPorArticulo.get(movimiento.articuloId);
+      if (!anterior || movimiento.tipo === 'AJUSTE_CONTEO' || movimiento.fecha <= anterior.fechaRegistro)
+        continue;
+      saldos.set(movimiento.articuloId, saldos.get(movimiento.articuloId)!
+        .plus(movimiento.existenciaDespues.minus(movimiento.existenciaAntes)));
+    }
+    return saldos;
   }
 
   async crearCaja(nombre: string) {

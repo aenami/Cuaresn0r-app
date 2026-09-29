@@ -86,53 +86,70 @@ export class InventoryCountsService {
   }
 
   async addElement(dto: CreateCountElementDto) {
-    await this.obtenerObjetivo(dto.tipo, dto.idObjetivo);
-    const anterior = await this.prisma.conteoInventarioDiario.findFirst({
-      where: {
-        ...this.filtroObjetivo(dto.tipo, dto.idObjetivo),
-        estado_conteoInventario: 'FINALIZADO',
-        fecha_conteoInventario: { lte: this.fechaDeHoy() },
-      },
-      orderBy: { fecha_conteoInventario: 'desc' },
-    });
-    const inicial =
-      dto.cantidadInicial ?? anterior?.cantidad_fisica_conteoInventario;
-    if (inicial === undefined || inicial === null) {
-      throw new BadRequestException(
-        'Indica el saldo inicial para comenzar el historial de este elemento',
-      );
-    }
-    const cantidad = new Prisma.Decimal(inicial);
-    if (
-      cantidad.isNegative() ||
-      (dto.tipo === 'PRODUCTO' && !cantidad.isInteger())
-    ) {
-      throw new BadRequestException(
-        'El saldo debe ser positivo o cero y entero para productos',
-      );
-    }
-    const where =
-      dto.tipo === 'PRODUCTO'
-        ? { idProducto: dto.idObjetivo }
-        : { idIngrediente: dto.idObjetivo };
-    const existente = await this.prisma.elementoConteoDiario.findUnique({
-      where,
-    });
-    if (existente?.activo)
-      throw new ConflictException('Este elemento ya pertenece a la lista fija');
-    return this.prisma.elementoConteoDiario.upsert({
-      where,
-      create: {
-        ...where,
-        tipo: dto.tipo,
-        cantidadInicial: cantidad,
-        fechaInicio: this.fechaDeHoy(),
-      },
-      update: {
-        activo: true,
-        cantidadInicial: cantidad,
-        fechaInicio: this.fechaDeHoy(),
-      },
+    return this.prisma.$transaction(async (tx) => {
+      // El inventario y el saldo inicial se leen bajo el mismo bloqueo. Una
+      // recepción concurrente no puede quedar solo en uno de los dos lados.
+      if (dto.tipo === 'INGREDIENTE') {
+        await tx.$queryRaw`SELECT "id_ingrediente" FROM "Ingrediente" WHERE "id_ingrediente" = ${dto.idObjetivo} FOR UPDATE`;
+      } else {
+        await tx.$queryRaw`SELECT "id_producto" FROM "Producto" WHERE "id_producto" = ${dto.idObjetivo} FOR UPDATE`;
+      }
+      await this.obtenerObjetivo(dto.tipo, dto.idObjetivo, tx);
+      const hoy = this.fechaDeHoy();
+      const anterior = await tx.conteoInventarioDiario.findFirst({
+        where: {
+          ...this.filtroObjetivo(dto.tipo, dto.idObjetivo),
+          estado_conteoInventario: 'FINALIZADO',
+          fecha_conteoInventario: { lte: hoy },
+        },
+        orderBy: { fecha_conteoInventario: 'desc' },
+      });
+      const where =
+        dto.tipo === 'PRODUCTO'
+          ? { idProducto: dto.idObjetivo }
+          : { idIngrediente: dto.idObjetivo };
+      const existente = await tx.elementoConteoDiario.findUnique({ where });
+      if (existente?.activo)
+        throw new ConflictException(
+          'Este elemento ya pertenece a la lista fija',
+        );
+      // Una retirada y reposición en la misma jornada conserva la foto inicial.
+      // Los días siguientes se encadenan al conteo real, nunca al stock actual.
+      const inicial =
+        anterior?.cantidad_fisica_conteoInventario ??
+        (existente?.fechaInicio.getTime() === hoy.getTime()
+          ? existente.cantidadInicial
+          : dto.tipo === 'INGREDIENTE'
+            ? await this.saldoInicialIngrediente(tx, dto.idObjetivo, hoy)
+            : dto.cantidadInicial);
+      if (inicial === undefined || inicial === null) {
+        throw new BadRequestException(
+          'Este producto no tiene existencias propias. Indica el saldo inicial para comenzar su historial',
+        );
+      }
+      const cantidad = new Prisma.Decimal(inicial);
+      if (
+        cantidad.isNegative() ||
+        (dto.tipo === 'PRODUCTO' && !cantidad.isInteger())
+      ) {
+        throw new BadRequestException(
+          'El saldo debe ser positivo o cero y entero para productos',
+        );
+      }
+      return tx.elementoConteoDiario.upsert({
+        where,
+        create: {
+          ...where,
+          tipo: dto.tipo,
+          cantidadInicial: cantidad,
+          fechaInicio: hoy,
+        },
+        update: {
+          activo: true,
+          cantidadInicial: cantidad,
+          fechaInicio: hoy,
+        },
+      });
     });
   }
 
@@ -262,7 +279,7 @@ export class InventoryCountsService {
     db: Prisma.TransactionClient = this.prisma,
   ) {
     const fecha = this.parsearFecha(dto.fecha);
-    const objetivo = await this.obtenerObjetivo(dto.tipo, dto.idObjetivo);
+    const objetivo = await this.obtenerObjetivo(dto.tipo, dto.idObjetivo, db);
     const filtroObjetivo = this.filtroObjetivo(dto.tipo, dto.idObjetivo);
     const anterior = await db.conteoInventarioDiario.findFirst({
       where: {
@@ -670,6 +687,7 @@ export class InventoryCountsService {
   private async obtenerObjetivo(
     tipo: TipoObjetivoProduccion,
     idObjetivo: number,
+    db: Prisma.TransactionClient = this.prisma,
   ): Promise<{
     id_producto_conteoInventario?: number;
     id_ingrediente_conteoInventario?: number;
@@ -677,7 +695,7 @@ export class InventoryCountsService {
     unidad_objetivo_conteoInventario: UnidadIngrediente;
   }> {
     if (tipo === TipoObjetivoProduccion.PRODUCTO) {
-      const producto = await this.prisma.producto.findUnique({
+      const producto = await db.producto.findUnique({
         where: { id_producto: idObjetivo },
       });
       if (!producto || !producto.habilitado_producto) {
@@ -690,7 +708,7 @@ export class InventoryCountsService {
       };
     }
 
-    const ingrediente = await this.prisma.ingrediente.findUnique({
+    const ingrediente = await db.ingrediente.findUnique({
       where: { id_ingrediente: idObjetivo },
     });
     if (!ingrediente) {
@@ -701,6 +719,36 @@ export class InventoryCountsService {
       nombre_objetivo_conteoInventario: ingrediente.nombre_ingrediente,
       unidad_objetivo_conteoInventario: ingrediente.unidades_ingrediente,
     };
+  }
+
+  private async saldoInicialIngrediente(
+    db: Prisma.TransactionClient,
+    idIngrediente: number,
+    fecha: Date,
+  ) {
+    const ingrediente = await db.ingrediente.findUniqueOrThrow({
+      where: { id_ingrediente: idIngrediente },
+      select: { stock_ingrediente: true },
+    });
+    const { inicio, fin } = this.rangoLocalDelDia(fecha);
+    const movimientos = await db.movimientoInventario.groupBy({
+      by: ['tipo_movimiento'],
+      where: {
+        id_ingrediente_movimiento: idIngrediente,
+        fecha_movimiento: { gte: inicio, lt: fin },
+      },
+      _sum: { cantidad_movimiento: true },
+    });
+    // El conteo suma nuevamente las entradas del día. Deshacer los movimientos
+    // del stock reconstruye su apertura sin contabilizar dos veces recepciones
+    // ni tratar el consumo registrado antes del alta como un sobrante.
+    const positivos = new Set(['ENTRADA', 'AJUSTE_POSITIVO', 'REVERSO']);
+    return movimientos.reduce((saldo, movimiento) => {
+      const cantidad = movimiento._sum.cantidad_movimiento ?? 0;
+      return positivos.has(movimiento.tipo_movimiento)
+        ? saldo.minus(cantidad)
+        : saldo.plus(cantidad);
+    }, ingrediente.stock_ingrediente);
   }
 
   private filtroObjetivo(tipo: TipoObjetivoProduccion, idObjetivo: number) {

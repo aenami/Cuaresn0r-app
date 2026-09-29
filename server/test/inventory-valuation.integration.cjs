@@ -52,6 +52,9 @@ async function main() {
     const {
       fechaColombia,
     } = require('../dist/src/recipes/inventory-reconciliation');
+    const {
+      crearValoracion,
+    } = require('../dist/src/recipes/inventory-valuation');
     app = await NestFactory.create(AppModule, { logger: ['error'] });
     app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
     await app.listen(0, '127.0.0.1');
@@ -130,6 +133,18 @@ async function main() {
         200,
         area,
       );
+    const rango = (area, desde, hasta, u = owner) =>
+      pedir(
+        u,
+        `/recipes/inventory-valuation/range?from=${desde}&to=${hasta}`,
+        'GET',
+        undefined,
+        200,
+        area,
+      );
+    const inicioSemana = new Date(new Date(fecha).getTime() - 6 * 86400000)
+      .toISOString()
+      .slice(0, 10);
     const producto = await prisma.producto.create({
       data: { nombre_producto: 'Agua valoración REST', precio_producto: 2500 },
     });
@@ -245,6 +260,16 @@ async function main() {
     assert.equal(restAmbos.totales.ingresoEstimado, '17500');
     assert.equal(restAmbos.totales.costoConsumido, '15000');
     assert.equal(restAmbos.totales.perdidaIngredientes, '3000');
+    const restSemana = await rango(
+      'RESTAURANTE',
+      inicioSemana,
+      fecha,
+      adminRest,
+    );
+    assert.equal(restSemana.desde, inicioSemana);
+    assert.equal(restSemana.hasta, fecha);
+    assert.deepEqual(restSemana.totales, restAmbos.totales);
+    assert.deepEqual(restSemana.filas, restAmbos.filas);
     await pedir(
       adminRest,
       `/recipes/inventory-counts/${conteo.id_conteoInventario}/reopen`,
@@ -443,6 +468,9 @@ async function main() {
     assert.equal(panAmbos.totales.costoConsumido, '15000');
     assert.equal(panAmbos.totales.ingresoEstimado, '17500');
     assert.equal(panAmbos.totales.perdidaIngredientes, '3750');
+    const panSemana = await rango('PANADERIA', inicioSemana, fecha, adminPan);
+    assert.deepEqual(panSemana.totales, panAmbos.totales);
+    assert.deepEqual(panSemana.filas, panAmbos.filas);
     await pedir(adminPan, `/bakery/articulos/${harina.id}`, 'PATCH', {
       costoReferencia: null,
     });
@@ -522,6 +550,605 @@ async function main() {
     const destinos = await pedir(owner, '/recipes/inventory-counts/targets');
     assert(destinos.some((p) => p.id_producto === producto.id_producto));
     assert(destinos.every((p) => !('precio_producto' in p)));
+
+    // Historial controlado: referencias anteriores al precio actual, días a
+    // ambos lados del rango y cambio de año. No registra ventas ni recaudos.
+    const productoRango = await prisma.producto.create({
+      data: { nombre_producto: 'Rango REST', precio_producto: 9000 },
+    });
+    const articuloRango = await prisma.articuloPanaderia.create({
+      data: {
+        nombre: 'Rango PAN',
+        tipo: 'EXTERNO',
+        precioVenta: 9000,
+      },
+    });
+    const costoRango = await prisma.articuloPanaderia.create({
+      data: {
+        nombre: 'Costo Rango PAN',
+        tipo: 'INSUMO',
+        unidad: 'kg',
+        precioVenta: 0,
+        costoReferencia: 9999,
+      },
+    });
+    const diasRango = [
+      ['2024-12-30', 500],
+      ['2024-12-31', 3],
+      ['2025-01-01', 4],
+      ['2025-01-02', 500],
+    ];
+    for (const [dia, precio] of diasRango) {
+      const registrado = new Date(`${dia}T23:00:00Z`);
+      const valoracion = crearValoracion({
+        tipoReferencia: 'PRECIO_VENTA',
+        precioReferencia: precio,
+        nombre: 'Rango REST',
+        unidad: 'UNIDADES',
+        salidaFisica: 2,
+        cantidadCorroborada: 1,
+        fechaValoracion: registrado,
+      });
+      await prisma.conteoInventarioDiario.create({
+        data: {
+          fecha_conteoInventario: new Date(dia),
+          tipo_objetivo_conteoInventario: 'PRODUCTO',
+          id_producto_conteoInventario: productoRango.id_producto,
+          nombre_objetivo_conteoInventario: 'Rango REST',
+          unidad_objetivo_conteoInventario: 'UNIDADES',
+          cantidad_anterior_conteoInventario: 5,
+          cantidad_fisica_conteoInventario: 3,
+          cantidad_salida_conteoInventario: 2,
+          estado_conteoInventario: 'FINALIZADO',
+          id_usuario_crea_conteoInventario: adminRest.id_usuario,
+          id_usuario_cierra_conteoInventario: cashRest.id_usuario,
+          fecha_finalizacion_conteoInventario: registrado,
+          valoracion,
+        },
+      });
+      await prisma.conteoPanaderia.create({
+        data: {
+          fecha: new Date(dia),
+          articuloId: articuloRango.id,
+          usuarioId: cashPan.id_usuario,
+          cantidadInicial: 5,
+          entradas: 0,
+          ventasRegistradas: 1,
+          transferencias: 0,
+          mermas: 0,
+          cantidadFisica: 3,
+          precioReferencia: precio,
+          fechaRegistro: registrado,
+          valoracion: { ...valoracion, nombre: 'Rango PAN' },
+        },
+      });
+    }
+    const valoracionCosto = crearValoracion({
+      tipoReferencia: 'COSTO_UNITARIO',
+      precioReferencia: '1234.5678',
+      nombre: 'Costo Rango PAN',
+      unidad: 'kg',
+      salidaFisica: '1.75',
+      cantidadCorroborada: '1.25',
+      fechaValoracion: new Date('2025-01-01T23:00:00Z'),
+    });
+    await prisma.conteoPanaderia.create({
+      data: {
+        fecha: new Date('2025-01-01'),
+        articuloId: costoRango.id,
+        usuarioId: panadero.id_usuario,
+        cantidadInicial: 3,
+        entradas: 0,
+        ventasRegistradas: 0,
+        consumoReceta: 1.25,
+        transferencias: 0,
+        mermas: 0,
+        cantidadFisica: 1.25,
+        precioReferencia: '1234.5678',
+        fechaRegistro: new Date('2025-01-01T23:00:00Z'),
+        valoracion: valoracionCosto,
+      },
+    });
+    const rangoRest = await rango('RESTAURANTE', '2024-12-31', '2025-01-01');
+    assert.equal(rangoRest.filas.length, 1);
+    assert.equal(rangoRest.filas[0].diasValorados, 2);
+    assert.equal(rangoRest.totales.ingresoEstimado, '7');
+    assert.equal(rangoRest.totales.perdidaProductos, '7');
+    assert.equal(rangoRest.totales.costoConsumido, '0');
+    const rangoPan = await rango('PANADERIA', '2024-12-31', '2025-01-01');
+    assert.equal(rangoPan.filas.length, 2);
+    assert.equal(rangoPan.totales.ingresoEstimado, '7');
+    assert.equal(rangoPan.totales.perdidaProductos, '7');
+    assert.equal(rangoPan.totales.costoConsumido, '1543.2098');
+    assert.equal(rangoPan.totales.perdidaIngredientes, '617.2839');
+    assert(rangoPan.filas.every((f) => f.nombre !== 'Rango REST'));
+    const unDia = await rango('PANADERIA', '2025-01-01', '2025-01-01');
+    assert.equal(unDia.totales.ingresoEstimado, '4');
+    assert.equal(unDia.filas[0].diasValorados, 1);
+    const fuera = await rango('RESTAURANTE', '2024-12-28', '2024-12-29');
+    assert.equal(fuera.filas.length, 0);
+    assert.equal(fuera.totales.ingresoEstimado, '0');
+    const ultimoDiaBisiesto = await rango(
+      'PANADERIA',
+      '2024-02-29',
+      '2024-02-29',
+    );
+    assert.equal(ultimoDiaBisiesto.filas.length, 0);
+    for (const query of [
+      '',
+      'from=2024-12-31',
+      'to=2025-01-01',
+      'from=2026-02-29&to=2026-03-01',
+      'from=2026-04-31&to=2026-05-01',
+      'from=2026-9-1&to=2026-09-07',
+      'from=2025-01-02&to=2025-01-01',
+      'from=2024-01-01&to=2025-01-01',
+    ])
+      await pedir(
+        owner,
+        `/recipes/inventory-valuation/range?${query}`,
+        'GET',
+        undefined,
+        400,
+        'PANADERIA',
+      );
+    await pedir(
+      cashPan,
+      '/recipes/inventory-valuation/range?from=2024-12-31&to=2025-01-01',
+      'GET',
+      undefined,
+      403,
+    );
+    await pedir(
+      adminRest,
+      '/recipes/inventory-valuation/range?from=2024-12-31&to=2025-01-01',
+      'GET',
+      undefined,
+      403,
+      'PANADERIA',
+    );
+
+    // Primera alta en la lista fija: el stock de hoy ya incluye entradas y
+    // salidas. La apertura debe deshacer esos movimientos, no sumarlos dos veces.
+    const inicialIngrediente = await pedir(
+      adminRest,
+      '/recipes/ingredients',
+      'POST',
+      { name: 'Saldo inicial automático', stock: 70, units: 'kg', price: 1000 },
+      201,
+    );
+    await pedir(
+      cashRest,
+      `/recipes/ingredients/${inicialIngrediente.id_ingrediente}/movements`,
+      'POST',
+      { tipo: 'ENTRADA', cantidad: 20 },
+      201,
+    );
+    await prisma.$transaction(async (tx) => {
+      const entregaInicial = await tx.detalleComanda.create({
+        data: {
+          id_comanda_dc: comanda.id_comanda,
+          id_producto_dc: producto.id_producto,
+          cantidad_producto_dc: 10,
+          precio_unitario_dc: 2500,
+          estado_dc: 'ENTREGADO',
+          fecha_entrega_dc: new Date(),
+        },
+      });
+      await tx.movimientoInventario.create({
+        data: {
+          id_ingrediente_movimiento: inicialIngrediente.id_ingrediente,
+          id_detalleComanda_movimiento: entregaInicial.id_detalleComanda,
+          tipo_movimiento: 'SALIDA_RECETA',
+          cantidad_movimiento: 10,
+        },
+      });
+      await tx.ingrediente.update({
+        where: { id_ingrediente: inicialIngrediente.id_ingrediente },
+        data: { stock_ingrediente: { decrement: 10 } },
+      });
+    });
+    const stockInicialActual = async () =>
+      (
+        await prisma.ingrediente.findUniqueOrThrow({
+          where: { id_ingrediente: inicialIngrediente.id_ingrediente },
+        })
+      ).stock_ingrediente.toString();
+    assert.equal(await stockInicialActual(), '80');
+    const fijoInicial = await pedir(
+      adminRest,
+      '/recipes/inventory-counts/elements',
+      'POST',
+      { tipo: 'INGREDIENTE', idObjetivo: inicialIngrediente.id_ingrediente },
+      201,
+    );
+    assert.equal(fijoInicial.cantidadInicial, '70');
+    assert.equal(
+      await stockInicialActual(),
+      '80',
+      'Dar de alta no modifica inventario',
+    );
+    const preparados = await pedir(
+      cashRest,
+      `/recipes/inventory-counts/prepare?date=${fecha}`,
+      'POST',
+      {},
+      201,
+    );
+    const inicialPreparado = preparados.find(
+      (c) =>
+        c.id_ingrediente_conteoInventario === inicialIngrediente.id_ingrediente,
+    );
+    assert(inicialPreparado, 'La lista fija prepara el primer conteo');
+    assert.equal(inicialPreparado.cantidad_anterior_conteoInventario, '70');
+    assert.equal(inicialPreparado.cantidad_entradas_conteoInventario, '20');
+    const inicialCerrado = await pedir(
+      cashRest,
+      `/recipes/inventory-counts/${inicialPreparado.id_conteoInventario}/finalize`,
+      'PATCH',
+      { cantidadFisica: 80 },
+    );
+    assert.equal(inicialCerrado.cantidad_salida_conteoInventario, '10');
+    assert.equal(inicialCerrado.valoracion.costoConsumido, '10000');
+    assert.equal(inicialCerrado.valoracion.perdidaEstimada, '0');
+    assert.equal(
+      await stockInicialActual(),
+      '80',
+      'Contar no ajusta stock automáticamente',
+    );
+    await pedir(
+      cashRest,
+      `/recipes/ingredients/${inicialIngrediente.id_ingrediente}/movements`,
+      'POST',
+      { tipo: 'ENTRADA', cantidad: 5 },
+      201,
+    );
+    const fijoPersistido = await prisma.elementoConteoDiario.findUniqueOrThrow({
+      where: { id: fijoInicial.id },
+    });
+    assert.equal(fijoPersistido.cantidadInicial.toString(), '70');
+    await pedir(
+      adminRest,
+      `/recipes/inventory-counts/${inicialPreparado.id_conteoInventario}/reopen`,
+      'PATCH',
+      {},
+    );
+    const inicialRecontado = await pedir(
+      cashRest,
+      `/recipes/inventory-counts/${inicialPreparado.id_conteoInventario}/finalize`,
+      'PATCH',
+      { cantidadFisica: 85 },
+    );
+    assert.equal(inicialRecontado.cantidad_anterior_conteoInventario, '70');
+    assert.equal(inicialRecontado.cantidad_entradas_conteoInventario, '25');
+    assert.equal(inicialRecontado.valoracion.perdidaEstimada, '0');
+    assert.equal(await stockInicialActual(), '85');
+    const filaInicial = (await rango('RESTAURANTE', fecha, fecha)).filas.find(
+      (f) =>
+        f.tipo === 'INGREDIENTE' &&
+        f.idObjetivo === inicialIngrediente.id_ingrediente,
+    );
+    assert.equal(filaInicial.costoConsumido, '10000');
+    assert.equal(filaInicial.perdidaEstimada, '0');
+
+    // El producto restaurante no tiene inventario propio; no se inventa cero.
+    const productoManual = await prisma.producto.create({
+      data: { nombre_producto: 'Saldo manual REST', precio_producto: 1000 },
+    });
+    await pedir(
+      adminRest,
+      '/recipes/inventory-counts/elements',
+      'POST',
+      { tipo: 'PRODUCTO', idObjetivo: productoManual.id_producto },
+      400,
+    );
+    const fijoManual = await pedir(
+      adminRest,
+      '/recipes/inventory-counts/elements',
+      'POST',
+      {
+        tipo: 'PRODUCTO',
+        idObjetivo: productoManual.id_producto,
+        cantidadInicial: 4,
+      },
+      201,
+    );
+    assert.equal(fijoManual.cantidadInicial, '4');
+
+    // Las metas confirmadas son entradas físicas para el conteo, pero no
+    // modifican el stock cacheado. No se invierten al reconstruir la apertura.
+    const ingredienteMeta = await pedir(
+      adminRest,
+      '/recipes/ingredients',
+      'POST',
+      { name: 'Meta de ingrediente', stock: 6.5, units: 'kg', price: 1000 },
+      201,
+    );
+    const metaInicial = await pedir(
+      adminRest,
+      '/recipes/production-plans',
+      'POST',
+      {
+        fecha,
+        tipo: 'INGREDIENTE',
+        idObjetivo: ingredienteMeta.id_ingrediente,
+        cantidad: 5,
+      },
+      201,
+    );
+    await pedir(
+      cashRest,
+      `/recipes/production-plans/${metaInicial.id_planProduccion}/status`,
+      'PATCH',
+      { estado: 'PRODUCIDO' },
+    );
+    assert.equal(
+      (
+        await prisma.ingrediente.findUniqueOrThrow({
+          where: { id_ingrediente: ingredienteMeta.id_ingrediente },
+        })
+      ).stock_ingrediente.toString(),
+      '6.5',
+    );
+    const fijoMeta = await pedir(
+      adminRest,
+      '/recipes/inventory-counts/elements',
+      'POST',
+      { tipo: 'INGREDIENTE', idObjetivo: ingredienteMeta.id_ingrediente },
+      201,
+    );
+    assert.equal(fijoMeta.cantidadInicial, '6.5');
+    const preparadosMeta = await pedir(
+      cashRest,
+      `/recipes/inventory-counts/prepare?date=${fecha}`,
+      'POST',
+      {},
+      201,
+    );
+    const conteoMeta = preparadosMeta.find(
+      (c) =>
+        c.id_ingrediente_conteoInventario === ingredienteMeta.id_ingrediente,
+    );
+    assert.equal(conteoMeta.cantidad_anterior_conteoInventario, '6.5');
+    assert.equal(conteoMeta.cantidad_entradas_conteoInventario, '5');
+    const metaContada = await pedir(
+      cashRest,
+      `/recipes/inventory-counts/${conteoMeta.id_conteoInventario}/finalize`,
+      'PATCH',
+      { cantidadFisica: 11.5 },
+    );
+    assert.equal(metaContada.cantidad_salida_conteoInventario, '0');
+    assert.equal(metaContada.valoracion.perdidaEstimada, '0');
+
+    // Panadería usa la existencia anterior al primer movimiento del día.
+    const inicialPan = await pedir(
+      adminPan,
+      '/bakery/articulos',
+      'POST',
+      { nombre: 'Apertura inventario PAN', tipo: 'EXTERNO', precioVenta: 2500 },
+      201,
+    );
+    await prisma.articuloPanaderia.update({
+      where: { id: inicialPan.id },
+      data: { existencia: 70 },
+    });
+    await pedir(
+      cashPan,
+      `/bakery/articulos/${inicialPan.id}/entradas`,
+      'POST',
+      { cantidad: 20, concepto: 'Entrada del día' },
+      201,
+    );
+    await pedir(
+      cashPan,
+      '/bakery/ventas',
+      'POST',
+      {
+        claveOperacion: crypto.randomUUID(),
+        lineas: [{ articuloId: inicialPan.id, cantidad: 10 }],
+        pagos: [{ metodo: 'EFECTIVO', monto: 25000 }],
+      },
+      201,
+    );
+    const panStock = async () =>
+      (
+        await prisma.articuloPanaderia.findUniqueOrThrow({
+          where: { id: inicialPan.id },
+        })
+      ).existencia.toString();
+    assert.equal(await panStock(), '80');
+    const inicialPanContado = await pedir(
+      cashPan,
+      `/bakery/conteo/${inicialPan.id}`,
+      'POST',
+      { cantidadFisica: 80 },
+      201,
+    );
+    assert.equal(inicialPanContado.cantidadInicial, '70');
+    assert.equal(inicialPanContado.entradas, '20');
+    assert.equal(inicialPanContado.valoracion.ingresoEstimado, '25000');
+    assert.equal(inicialPanContado.valoracion.perdidaEstimada, '0');
+    assert.equal(await panStock(), '80');
+    await pedir(
+      cashPan,
+      `/bakery/articulos/${inicialPan.id}/entradas`,
+      'POST',
+      { cantidad: 5, concepto: 'Entrada después del conteo' },
+      201,
+    );
+    const panRecontado = await pedir(
+      cashPan,
+      `/bakery/conteo/${inicialPan.id}`,
+      'POST',
+      { cantidadFisica: 85 },
+      201,
+    );
+    assert.equal(panRecontado.cantidadInicial, '70');
+    assert.equal(panRecontado.entradas, '25');
+    assert.equal(panRecontado.valoracion.perdidaEstimada, '0');
+    assert.equal(await panStock(), '85');
+
+    // La base física previa manda aunque aún no se hubiera ajustado el cache.
+    const ayer = new Date(new Date(fecha).getTime() - 86400000)
+      .toISOString()
+      .slice(0, 10);
+    const haceTresDias = new Date(new Date(fecha).getTime() - 3 * 86400000)
+      .toISOString()
+      .slice(0, 10);
+    const haceDosDias = new Date(new Date(fecha).getTime() - 2 * 86400000)
+      .toISOString()
+      .slice(0, 10);
+    async function articuloConCierre(nombre, fechaCierre, registro) {
+      const articulo = await pedir(
+        adminPan,
+        '/bakery/articulos',
+        'POST',
+        { nombre, tipo: 'EXTERNO', precioVenta: 2500 },
+        201,
+      );
+      await prisma.articuloPanaderia.update({
+        where: { id: articulo.id },
+        data: { existencia: 20 },
+      });
+      await prisma.conteoPanaderia.create({
+        data: {
+          articuloId: articulo.id,
+          usuarioId: cashPan.id_usuario,
+          fecha: new Date(fechaCierre),
+          fechaRegistro: new Date(registro),
+          cantidadInicial: 20,
+          entradas: 0,
+          ventasRegistradas: 0,
+          transferencias: 0,
+          mermas: 0,
+          consumoReceta: 0,
+          cantidadFisica: 17,
+          precioReferencia: 2500,
+        },
+      });
+      return articulo;
+    }
+    const previoFisicoPan = await articuloConCierre(
+      'Cierre físico sin ajuste',
+      ayer,
+      `${ayer}T22:00:00Z`,
+    );
+    const proyectadoPrevio = (
+      await pedir(cashPan, '/bakery/conteo')
+    ).proyeccion.find((p) => p.articuloId === previoFisicoPan.id);
+    assert.equal(proyectadoPrevio.cantidadInicial, '17');
+    const contadoPrevio = await pedir(
+      cashPan,
+      `/bakery/conteo/${previoFisicoPan.id}`,
+      'POST',
+      { cantidadFisica: 17 },
+      201,
+    );
+    assert.equal(
+      contadoPrevio.cantidadInicial,
+      proyectadoPrevio.cantidadInicial,
+    );
+    assert.equal(contadoPrevio.valoracion.perdidaEstimada, '0');
+    assert.equal(
+      (
+        await prisma.articuloPanaderia.findUniqueOrThrow({
+          where: { id: previoFisicoPan.id },
+        })
+      ).existencia.toString(),
+      '20',
+    );
+    await pedir(
+      cashPan,
+      `/bakery/articulos/${previoFisicoPan.id}/entradas`,
+      'POST',
+      { cantidad: 5, concepto: 'Recepción después del conteo físico' },
+      201,
+    );
+    const previoRecontado = await pedir(
+      cashPan,
+      `/bakery/conteo/${previoFisicoPan.id}`,
+      'POST',
+      { cantidadFisica: 22 },
+      201,
+    );
+    assert.equal(previoRecontado.cantidadInicial, '17');
+    assert.equal(previoRecontado.valoracion.perdidaEstimada, '0');
+
+    // Días sin conteo y movimientos después del último físico se arrastran;
+    // AJUSTE_CONTEO no descuenta otra vez el faltante ya reflejado en el físico.
+    const previoConMovimientos = await articuloConCierre(
+      'Cierre y movimientos tardíos',
+      haceTresDias,
+      `${haceTresDias}T22:00:00Z`,
+    );
+    await prisma.movimientoPanaderia.createMany({
+      data: [
+        {
+          articuloId: previoConMovimientos.id,
+          usuarioId: cashPan.id_usuario,
+          tipo: 'AJUSTE_CONTEO',
+          cantidad: 3,
+          existenciaAntes: 20,
+          existenciaDespues: 17,
+          fecha: new Date(`${haceTresDias}T22:01:00Z`),
+          concepto: 'Ajuste del cierre previo',
+        },
+        {
+          articuloId: previoConMovimientos.id,
+          usuarioId: cashPan.id_usuario,
+          tipo: 'RECEPCION',
+          cantidad: 5,
+          existenciaAntes: 17,
+          existenciaDespues: 22,
+          fecha: new Date(`${haceDosDias}T12:00:00Z`),
+          concepto: 'Entrada en día omitido',
+        },
+        {
+          articuloId: previoConMovimientos.id,
+          usuarioId: cashPan.id_usuario,
+          tipo: 'VENTA',
+          cantidad: 2,
+          existenciaAntes: 22,
+          existenciaDespues: 20,
+          fecha: new Date(`${ayer}T23:00:00Z`),
+          concepto: 'Salida posterior al cierre',
+        },
+      ],
+    });
+    const proyectadoNeto = (
+      await pedir(cashPan, '/bakery/conteo')
+    ).proyeccion.find((p) => p.articuloId === previoConMovimientos.id);
+    assert.equal(proyectadoNeto.cantidadInicial, '20');
+    const contadoNeto = await pedir(
+      cashPan,
+      `/bakery/conteo/${previoConMovimientos.id}`,
+      'POST',
+      { cantidadFisica: 20 },
+      201,
+    );
+    assert.equal(contadoNeto.cantidadInicial, proyectadoNeto.cantidadInicial);
+    assert.equal(contadoNeto.valoracion.perdidaEstimada, '0');
+
+    // Un registro retroactivo creado después de comenzar hoy no inventa una
+    // apertura histórica; sin libro aplicable hoy conserva el stock actual.
+    const registroTardioPan = await articuloConCierre(
+      'Registro retroactivo tardío',
+      ayer,
+      new Date().toISOString(),
+    );
+    const proyectadoTardio = (
+      await pedir(cashPan, '/bakery/conteo')
+    ).proyeccion.find((p) => p.articuloId === registroTardioPan.id);
+    assert.equal(proyectadoTardio.cantidadInicial, '20');
+    const contadoTardio = await pedir(
+      cashPan,
+      `/bakery/conteo/${registroTardioPan.id}`,
+      'POST',
+      { cantidadFisica: 20 },
+      201,
+    );
+    assert.equal(contadoTardio.cantidadInicial, '20');
+    assert.equal(contadoTardio.valoracion.perdidaEstimada, '0');
     process.stdout.write(
       `Valoración API real: ${checks} comprobaciones HTTP y snapshots persistidos correctos.\n`,
     );

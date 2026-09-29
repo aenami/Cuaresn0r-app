@@ -13,4 +13,9 @@ export class InventoryValuationController {
   monthly(@Query('month') mes?: string) {
     return this.valuation.monthly(mes);
   }
+
+  @Get('range')
+  range(@Query('from') desde?: string, @Query('to') hasta?: string) {
+    return this.valuation.range(desde, hasta);
+  }
 }
