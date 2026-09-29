@@ -15,9 +15,9 @@ import {
   X,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { productosQuery } from '@/features/catalogo/api'
 import {
   ingredientesQuery,
+  productosInventarioQuery,
   planProduccionQuery,
   useCambiarEstadoMetaProduccion,
   useCrearMetaProduccion,
@@ -352,7 +352,7 @@ function DialogNuevaMeta({ abierto, fecha, onCerrar }: { abierto: boolean; fecha
   const [tipo, setTipo] = useState<TipoObjetivoProduccion>('PRODUCTO')
   const [idObjetivo, setIdObjetivo] = useState('')
   const [cantidad, setCantidad] = useState('')
-  const { data: productos } = useQuery(productosQuery)
+  const { data: productos } = useQuery(productosInventarioQuery)
   const { data: ingredientes } = useQuery(ingredientesQuery)
   const crear = useCrearMetaProduccion()
 

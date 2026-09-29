@@ -16,9 +16,9 @@ import {
   TriangleAlert,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { productosQuery } from '@/features/catalogo/api'
 import {
   conteoInventarioQuery,
+  productosInventarioQuery,
   ingredientesQuery,
   elementosConteoQuery,
   useAgregarElementoConteo,
@@ -35,6 +35,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import { ValoracionDelConteo } from './valoracion-conteo'
 
 function fechaLocalIso(fecha = new Date()) {
   const partes = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota',
@@ -334,14 +335,14 @@ function TarjetaConteo({ conteo, esAdmin }: { conteo: ConteoInventarioDiario; es
 
         {conciliacion ? <div className="mt-4 space-y-2 border-t border-border pt-3 text-sm">
           <p className="flex flex-wrap justify-between gap-2">
-            <span>{conteo.tipo_objetivo_conteoInventario === 'PRODUCTO' ? 'Entregado en el sistema' : 'Consumo por productos entregados'}</span>
+            <span>{conteo.tipo_objetivo_conteoInventario === 'PRODUCTO' ? 'Entregado en el sistema' : 'Salidas registradas: consumo, traslados y mermas'}</span>
             <span className="font-semibold tabular-nums">{formatearCantidad(conciliacion.cantidadSistema)} {unidad}</span>
           </p>
           {conciliacion.motivoNoComparable ? <p className="text-tertiary">{conciliacion.motivoNoComparable}</p>
-            : conciliacion.requiereReconteo ? <p className="text-rose-300" role="status">Hubo entregas después de contar. Solicita al administrador reabrir este conteo y vuelve a verificarlo antes de cerrar caja.</p>
+            : conciliacion.requiereReconteo ? <p className="text-rose-300" role="status">Hubo movimientos después de contar. Solicita al administrador reabrir este conteo y vuelve a verificarlo antes de cerrar caja.</p>
             : finalizado && diferenciaEntregas !== null ? <p className={diferenciaEntregas === 0 ? 'text-emerald-300' : 'text-rose-300'}>
-              {diferenciaEntregas === 0 ? 'Coincide con las entregas registradas.'
-                : `${diferenciaEntregas > 0 ? 'Faltante' : 'Sobrante'} de ${formatearCantidad(Math.abs(diferenciaEntregas))} ${unidad} frente a las entregas registradas.`}
+              {diferenciaEntregas === 0 ? 'Coincide con las salidas registradas.'
+                : `${diferenciaEntregas > 0 ? 'Faltante' : 'Sobrante'} de ${formatearCantidad(Math.abs(diferenciaEntregas))} ${unidad} frente a las salidas registradas.`}
             </p> : <p className="text-xs text-muted-foreground">Confirma el conteo para registrar si coincide. Cobrar no mueve esta cantidad; entregar sí.</p>}
           <p className="text-xs text-muted-foreground">Una diferencia puede corresponder a mermas, ajustes o registros pendientes; no se corrige el stock automáticamente.</p>
         </div> : null}
@@ -360,6 +361,8 @@ function TarjetaConteo({ conteo, esAdmin }: { conteo: ConteoInventarioDiario; es
             {formatearCantidad(diferenciaSistema)} {unidad}
           </p>
         ) : null}
+
+        <ValoracionDelConteo valoracion={conteo.valoracion} pendiente={!finalizado} esIngrediente={conteo.tipo_objetivo_conteoInventario === 'INGREDIENTE'} />
 
         <div className="mt-4 flex min-h-7 items-center justify-between gap-3 border-t border-border/70 pt-3">
           <p className="text-[11px] text-muted-foreground">
@@ -440,7 +443,7 @@ function Resultado({
 }
 
 function DialogNuevoConteo({ abierto, onCerrar }: { abierto: boolean; onCerrar: () => void }) {
-  const { data: productos } = useQuery(productosQuery)
+  const { data: productos } = useQuery(productosInventarioQuery)
   const { data: ingredientes } = useQuery(ingredientesQuery)
   const { data: elementos, isPending, error } = useQuery(elementosConteoQuery)
   const crear = useAgregarElementoConteo()

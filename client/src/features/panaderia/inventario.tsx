@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Boxes, Plus } from 'lucide-react'
@@ -13,6 +13,7 @@ import type { ArticuloPanaderia, TipoArticulo, UnidadInventario } from './api'
 import { useAuthStore } from '@/stores/auth.store'
 import { puedeEntradaPanaderia } from '@/lib/acceso'
 import { RecepcionesPanaderia } from './recepciones'
+import { ValoracionDelConteo } from '@/features/inventario/valoracion-conteo'
 
 type Operacion = 'entrada' | 'conteo' | 'merma' | 'editar'
 
@@ -29,6 +30,7 @@ export function InventarioPanaderia({ esAdmin, vista }: { esAdmin: boolean; vist
   const [tipo, setTipo] = useState<TipoArticulo>('PANADERIA')
   const [unidad, setUnidad] = useState<UnidadInventario>('UNIDADES')
   const [precio, setPrecio] = useState('')
+  const [costo, setCosto] = useState('')
   const [creando, setCreando] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const conteos = new Map((estado?.detalle ?? []).map((conteo) => [conteo.articuloId, conteo]))
@@ -42,13 +44,14 @@ export function InventarioPanaderia({ esAdmin, vista }: { esAdmin: boolean; vist
     setConcepto('')
     setNombre(articulo.nombre)
     setPrecio(String(Number(articulo.precioVenta)))
+    setCosto(articulo.costoReferencia == null ? '' : articulo.costoReferencia)
   }
 
   async function crear() {
-    if (!nombre.trim() || (vista === 'conteo' && (precio === '' || !Number.isInteger(Number(precio)) || Number(precio) < 0))) return
+    if (!nombre.trim() || !costoValido || (vista === 'conteo' && (precio === '' || !Number.isInteger(Number(precio)) || Number(precio) < 0))) return
     setGuardando(true)
     try {
-      await bakeryApi.crearArticulo({ nombre: nombre.trim(), tipo: vista === 'ingredientes' ? 'INSUMO' : tipo, unidad: vista === 'ingredientes' ? unidad : 'UNIDADES', precioVenta: vista === 'ingredientes' ? 0 : Number(precio) })
+      await bakeryApi.crearArticulo({ nombre: nombre.trim(), tipo: vista === 'ingredientes' ? 'INSUMO' : tipo, unidad: vista === 'ingredientes' ? unidad : 'UNIDADES', precioVenta: vista === 'ingredientes' ? 0 : Number(precio), ...(vista === 'ingredientes' && { costoReferencia: costo === '' ? null : Number(costo) }) })
       toast.success('Articulo agregado')
       setCreando(false)
       setNombre('')
@@ -63,7 +66,7 @@ export function InventarioPanaderia({ esAdmin, vista }: { esAdmin: boolean; vist
     setGuardando(true)
     try {
       if (operacion === 'editar') {
-        await bakeryApi.actualizarArticulo(seleccion.id, { nombre: nombre.trim(), precioVenta: Number(precio) })
+        await bakeryApi.actualizarArticulo(seleccion.id, { nombre: nombre.trim(), ...(seleccion.tipo === 'INSUMO' ? { costoReferencia: costo === '' ? null : Number(costo) } : { precioVenta: Number(precio) }) })
         toast.success('Articulo actualizado')
       } else if (operacion === 'conteo') {
         await bakeryApi.conteo(seleccion.id, Number(cantidad))
@@ -76,13 +79,15 @@ export function InventarioPanaderia({ esAdmin, vista }: { esAdmin: boolean; vist
       }
       setSeleccion(null)
       await queryClient.invalidateQueries({ queryKey: bakeryKeys.all })
+      await queryClient.invalidateQueries({ queryKey: ['inventario', 'valoracion-mensual'] })
     } catch (error) { toast.error(errorApi(error)) }
     finally { setGuardando(false) }
   }
 
   const cantidadValida = cantidad !== '' && Number.isFinite(Number(cantidad)) && Number(cantidad) >= (operacion === 'conteo' ? 0 : 0.0001)
     && (seleccion?.unidad !== 'UNIDADES' || Number.isInteger(Number(cantidad)))
-  const editarValido = nombre.trim() !== '' && Number.isInteger(Number(precio)) && Number(precio) >= 0
+  const costoValido = costo === '' || (Number.isFinite(Number(costo)) && Number(costo) >= 0)
+  const editarValido = nombre.trim() !== '' && (seleccion?.tipo === 'INSUMO' ? costoValido : Number.isInteger(Number(precio)) && Number(precio) >= 0)
   const puedeGuardar = operacion === 'editar' ? editarValido : cantidadValida && (operacion === 'conteo' || concepto.trim() !== '')
 
   return <div className="space-y-6">
@@ -90,7 +95,7 @@ export function InventarioPanaderia({ esAdmin, vista }: { esAdmin: boolean; vist
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div><h2 className="font-heading text-xl font-semibold uppercase">{vista === 'ingredientes' ? 'Ingredientes de panadería' : 'Conteo diario de panadería'}</h2>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{vista === 'ingredientes' ? 'Insumos exclusivos de panadería. Las hornadas descuentan automáticamente las cantidades de sus recetas.' : 'Las hornadas y recepciones suman. El conteo compara la salida física con ventas, consumo de recetas, traslados y mermas.'}</p></div>
-      {esAdmin && <Button size="sm" onClick={() => { setSeleccion(null); setCreando(true); setNombre(''); setPrecio(''); setTipo(vista === 'ingredientes' ? 'INSUMO' : 'PANADERIA'); setUnidad('UNIDADES') }}><Plus className="mr-1 size-4" /> {vista === 'ingredientes' ? 'Ingrediente' : 'Artículo'}</Button>}
+      {esAdmin && <Button size="sm" onClick={() => { setSeleccion(null); setCreando(true); setNombre(''); setPrecio(''); setCosto(''); setTipo(vista === 'ingredientes' ? 'INSUMO' : 'PANADERIA'); setUnidad('UNIDADES') }}><Plus className="mr-1 size-4" /> {vista === 'ingredientes' ? 'Ingrediente' : 'Artículo'}</Button>}
     </div>
 
     {vista === 'conteo' && <div className="rounded-lg bg-surface-low p-4 text-sm">
@@ -106,7 +111,8 @@ export function InventarioPanaderia({ esAdmin, vista }: { esAdmin: boolean; vist
       {vista === 'conteo' ? <div><Label htmlFor="pan-tipo-nuevo">Tipo</Label><Select value={tipo} onValueChange={(valor) => setTipo(valor as TipoArticulo)}><SelectTrigger id="pan-tipo-nuevo"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PANADERIA">Panadería</SelectItem><SelectItem value="PASTELERIA">Pastelería</SelectItem><SelectItem value="EXTERNO">Bebida / externo</SelectItem></SelectContent></Select></div> : <p className="self-end pb-2 text-sm text-muted-foreground">Insumo no vendible</p>}
       {vista === 'ingredientes' ? <div><Label htmlFor="pan-unidad-nuevo">Unidad</Label><Select value={unidad} onValueChange={(valor) => setUnidad(valor as UnidadInventario)}><SelectTrigger id="pan-unidad-nuevo"><SelectValue /></SelectTrigger><SelectContent>{(['UNIDADES', 'kg', 'g', 'dg', 'mg', 'ml', 'L'] as const).map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent></Select></div> : null}
       {vista === 'conteo' ? <div><Label htmlFor="pan-precio-nuevo">Precio COP</Label><Input id="pan-precio-nuevo" type="number" min="0" step="1" inputMode="numeric" value={precio} onChange={(e) => setPrecio(e.target.value)} /></div> : null}
-      <div className="flex gap-2"><Button type="submit" disabled={guardando || !nombre.trim() || (vista === 'conteo' && precio === '')}>Crear</Button><Button type="button" variant="ghost" onClick={() => setCreando(false)}>Cancelar</Button></div>
+      {vista === 'ingredientes' ? <div><Label htmlFor="pan-costo-nuevo">Costo COP / {unidad} (opcional)</Label><Input id="pan-costo-nuevo" type="number" min="0" step="0.0001" inputMode="decimal" value={costo} onChange={(e) => setCosto(e.target.value)} placeholder="Sin referencia" /></div> : null}
+      <div className="flex gap-2"><Button type="submit" disabled={guardando || !nombre.trim() || !costoValido || (vista === 'conteo' && precio === '')}>Crear</Button><Button type="button" variant="ghost" onClick={() => setCreando(false)}>Cancelar</Button></div>
     </form>}
 
     {isPending ? <div className="h-72 animate-pulse rounded-lg bg-surface-high" />
@@ -117,7 +123,7 @@ export function InventarioPanaderia({ esAdmin, vista }: { esAdmin: boolean; vist
               const conteo = conteos.get(articulo.id)
               const dia = proyeccion.get(articulo.id)
               const diferencia = Number(conteo?.conciliacion.diferenciaUnidades ?? 0)
-              return <tr key={articulo.id} className="border-b border-border/40 last:border-0">
+              return <Fragment key={articulo.id}><tr className="border-b border-border/40 last:border-0">
                 <td className="px-4 py-3"><strong>{articulo.nombre}</strong><span className="ml-2 text-xs text-muted-foreground">{articulo.tipo === 'PANADERIA' ? 'Panadería' : articulo.tipo === 'PASTELERIA' ? 'Pastelería' : articulo.tipo === 'INSUMO' ? 'Insumo' : 'Externo'} · {articulo.unidad}</span>{!articulo.activo && <span className="ml-2 text-xs text-tertiary">Inactivo</span>}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{dia?.cantidadInicial ?? '—'}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{dia?.entradas ?? '—'}</td>
@@ -127,14 +133,14 @@ export function InventarioPanaderia({ esAdmin, vista }: { esAdmin: boolean; vist
                 <td className="px-4 py-3 text-right tabular-nums">{conteo ? conteo.cantidadFisica : 'Pendiente'}{conteo?.requiereReconteo && <span className="block text-xs text-tertiary">Recontar</span>}</td>
                 <td className={`px-4 py-3 text-right tabular-nums ${diferencia > 0 ? 'text-destructive' : diferencia < 0 ? 'text-tertiary' : 'text-emerald-400'}`}>{conteo ? `${diferencia > 0 ? 'Faltan ' : diferencia < 0 ? 'Sobran ' : ''}${Math.abs(diferencia)}` : '—'}</td>
                 <td className="whitespace-nowrap px-4 py-3 text-right">{puedeEntradaPanaderia(rol, articulo.tipo) && <button className="mr-3 text-primary hover:underline" onClick={() => elegir(articulo, 'entrada')}>{['PANADERIA', 'PASTELERIA'].includes(articulo.tipo) ? 'Producción' : 'Recibir'}</button>}{vista === 'conteo' && <button className="mr-3 text-primary hover:underline" onClick={() => elegir(articulo, 'conteo')}>Contar</button>}{puedeEntradaPanaderia(rol, articulo.tipo) && <button className="mr-3 text-muted-foreground hover:text-foreground" onClick={() => elegir(articulo, 'merma')}>Merma</button>}{esAdmin && <button className="text-muted-foreground hover:text-foreground" onClick={() => elegir(articulo, 'editar')}>Editar</button>}</td>
-              </tr>
+              </tr>{vista === 'conteo' && articulo.activo && <tr className="border-b border-border/40"><td colSpan={9} className="px-4 pb-4"><div className="w-[calc(100vw-6rem)] max-w-3xl lg:w-full"><ValoracionDelConteo valoracion={conteo?.valoracion} pendiente={!conteo} esIngrediente={articulo.tipo === 'INSUMO'} /></div></td></tr>}</Fragment>
             })}</tbody></table></div></div>}
 
     {seleccion && <section className="max-w-2xl rounded-lg bg-surface-high p-5" aria-labelledby="pan-operacion-title">
       <h3 id="pan-operacion-title" className="font-heading text-lg font-semibold uppercase">{operacion === 'entrada' ? 'Registrar entrada' : operacion === 'conteo' ? 'Registrar conteo fisico' : operacion === 'merma' ? 'Registrar merma' : 'Editar articulo'} · {seleccion.nombre}</h3>
       {operacion === 'conteo' && <p className="mt-2 text-sm text-muted-foreground">Cuenta las unidades fisicas que quedan. Si despues entran o salen articulos, deberas contar de nuevo antes del cierre.</p>}
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        {operacion === 'editar' ? <><div><Label htmlFor="pan-editar-nombre">Nombre</Label><Input id="pan-editar-nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} /></div><div><Label htmlFor="pan-editar-precio">Precio COP</Label><Input id="pan-editar-precio" type="number" min="0" step="1" value={precio} onChange={(e) => setPrecio(e.target.value)} /></div></>
+        {operacion === 'editar' ? <><div><Label htmlFor="pan-editar-nombre">Nombre</Label><Input id="pan-editar-nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} /></div>{seleccion.tipo === 'INSUMO' ? <div><Label htmlFor="pan-editar-costo">Costo COP / {seleccion.unidad} (opcional)</Label><Input id="pan-editar-costo" type="number" min="0" step="0.0001" inputMode="decimal" value={costo} onChange={(e) => setCosto(e.target.value)} placeholder="Sin referencia" /><p className="mt-1 text-xs text-muted-foreground">Se guarda al confirmar cada conteo; no cambia valoraciones anteriores.</p></div> : <div><Label htmlFor="pan-editar-precio">Precio COP</Label><Input id="pan-editar-precio" type="number" min="0" step="1" value={precio} onChange={(e) => setPrecio(e.target.value)} /></div>}</>
           : <><div><Label htmlFor="pan-cantidad">{operacion === 'conteo' ? 'Cantidad fisica' : 'Cantidad'} ({seleccion.unidad})</Label><Input id="pan-cantidad" type="number" min={operacion === 'conteo' ? 0 : seleccion.unidad === 'UNIDADES' ? 1 : 0.0001} step={seleccion.unidad === 'UNIDADES' ? 1 : 0.0001} inputMode="decimal" autoFocus value={cantidad} onChange={(e) => setCantidad(e.target.value)} /></div>{operacion !== 'conteo' && <div><Label htmlFor="pan-concepto">Concepto</Label><Input id="pan-concepto" value={concepto} maxLength={200} onChange={(e) => setConcepto(e.target.value)} placeholder={operacion === 'entrada' ? 'Ej. hornada de la mañana' : 'Ej. producto dañado'} /></div>}</>}
       </div>
       <div className="mt-4 flex gap-2"><Button onClick={() => void guardar()} disabled={guardando || !puedeGuardar}>{guardando ? 'Guardando…' : 'Registrar'}</Button><Button variant="ghost" onClick={() => setSeleccion(null)}>Cancelar</Button></div>

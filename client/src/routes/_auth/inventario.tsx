@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
-import { useAreaTrabajo, useEsAdmin } from '@/stores/auth.store'
+import { useAreaTrabajo, useEsAdmin, useEsGlobal } from '@/stores/auth.store'
 import { SeccionIngredientes } from '@/features/inventario/seccion-ingredientes'
 import { SeccionRecetas } from '@/features/inventario/seccion-recetas'
 import { SeccionProduccion } from '@/features/inventario/seccion-produccion'
@@ -9,6 +9,7 @@ import { SeccionConteoDiario } from '@/features/inventario/seccion-conteo-diario
 import { InventarioPanaderia } from '@/features/panaderia/inventario'
 import { RecetasPanaderia } from '@/features/panaderia/recetas'
 import { cn } from '@/lib/utils'
+import { ResumenMonetarioMensual } from '@/features/inventario/resumen-valoracion-mensual'
 
 export const Route = createFileRoute('/_auth/inventario')({
   validateSearch: z.object({ area: z.enum(['RESTAURANTE', 'PANADERIA']).optional() }),
@@ -26,6 +27,7 @@ const PESTANAS: { id: Pestana; etiqueta: string }[] = [
 
 function PaginaInventario() {
   const esAdmin = useEsAdmin()
+  const esGlobal = useEsGlobal()
   const area = useAreaTrabajo()
   const [pestana, setPestana] = useState<Pestana>('produccion')
   const pestanaVisible = area === 'PANADERIA' && pestana === 'produccion' ? 'conteo' : pestana
@@ -62,7 +64,7 @@ function PaginaInventario() {
 
       <div className="mt-8">
         {area === 'PANADERIA' ? pestanaVisible === 'recetas' ? <RecetasPanaderia esAdmin={esAdmin} />
-          : <InventarioPanaderia esAdmin={esAdmin} vista={pestanaVisible === 'ingredientes' ? 'ingredientes' : 'conteo'} />
+          : <InventarioPanaderia esAdmin={esAdmin && !esGlobal} vista={pestanaVisible === 'ingredientes' ? 'ingredientes' : 'conteo'} />
           : pestanaVisible === 'produccion' ? (
           <SeccionProduccion esAdmin={esAdmin} />
         ) : pestanaVisible === 'conteo' ? (
@@ -73,6 +75,7 @@ function PaginaInventario() {
           <SeccionRecetas esAdmin={esAdmin} />
         )}
       </div>
+      {pestanaVisible === 'conteo' && esAdmin && <ResumenMonetarioMensual />}
     </div>
   )
 }

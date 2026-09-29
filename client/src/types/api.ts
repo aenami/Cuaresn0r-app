@@ -134,6 +134,7 @@ export interface ElementoConteoDiario {
 }
 
 export interface ConteoInventarioDiario {
+  valoracion?: import('@/features/inventario/valoracion-types').ValoracionConteo | null
   conciliacion?: {
     cantidadSistema: string
     diferencia: string | null

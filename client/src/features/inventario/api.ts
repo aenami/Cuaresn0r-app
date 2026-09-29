@@ -7,10 +7,20 @@ import type {
   Ingrediente,
   MovimientoInventario,
   PlanProduccionDiaria,
+  Producto,
   Receta,
   TipoObjetivoProduccion,
   UnidadIngrediente,
 } from '@/types/api'
+
+export type ProductoInventario = Pick<Producto, 'id_producto' | 'nombre_producto' | 'habilitado_producto'> & {
+  categoria?: Pick<NonNullable<Producto['categoria']>, 'id_categoria' | 'nombre_categoria'>
+}
+// Lectura mínima propia de inventario: no concede acceso al catálogo.
+export const productosInventarioQuery = queryOptions({
+  queryKey: ['inventario', 'productos-objetivo'],
+  queryFn: () => api.get<ProductoInventario[]>('/recipes/inventory-counts/targets'),
+})
 
 export const ingredientesQuery = queryOptions({
   queryKey: ['inventario', 'ingredientes'],

@@ -2,10 +2,10 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Search, SquarePen } from 'lucide-react'
 import { formatearCantidad, formatearFecha } from '@/lib/formato'
-import { productosQuery } from '@/features/catalogo/api'
-import { recetasQuery } from '@/features/inventario/api'
+import { productosInventarioQuery, recetasQuery } from '@/features/inventario/api'
+import type { ProductoInventario } from '@/features/inventario/api'
 import { RecetaFormDialog } from '@/features/inventario/receta-form-dialog'
-import type { Producto, Receta } from '@/types/api'
+import type { Receta } from '@/types/api'
 import { Input } from '@/components/ui/input'
 import {
   Dialog,
@@ -18,11 +18,11 @@ import { cn } from '@/lib/utils'
 import { BotonHeat } from './boton-heat'
 
 export function SeccionRecetas({ esAdmin }: { esAdmin: boolean }) {
-  const { data: productos, isPending: cargandoProductos } = useQuery(productosQuery)
+  const { data: productos, isPending: cargandoProductos } = useQuery(productosInventarioQuery)
   const { data: recetas, isPending: cargandoRecetas } = useQuery(recetasQuery)
   const [busqueda, setBusqueda] = useState('')
   const [selectorAbierto, setSelectorAbierto] = useState(false)
-  const [dialogo, setDialogo] = useState<{ producto: Producto; recetaBase: Receta | null } | null>(null)
+  const [dialogo, setDialogo] = useState<{ producto: ProductoInventario; recetaBase: Receta | null } | null>(null)
 
   if (cargandoProductos || cargandoRecetas) {
     return <p className="text-sm text-muted-foreground">Cargando recetas…</p>
@@ -35,7 +35,7 @@ export function SeccionRecetas({ esAdmin }: { esAdmin: boolean }) {
 
   const conReceta = (productos ?? [])
     .map((producto) => ({ producto, receta: activaPorProducto.get(producto.id_producto) }))
-    .filter((x): x is { producto: Producto; receta: Receta } => Boolean(x.receta))
+    .filter((x): x is { producto: ProductoInventario; receta: Receta } => Boolean(x.receta))
 
   const sinReceta = (productos ?? []).filter((p) => !activaPorProducto.has(p.id_producto))
 
@@ -124,7 +124,7 @@ function TarjetaReceta({
   esAdmin,
   onEditar,
 }: {
-  producto: Producto
+  producto: ProductoInventario
   receta: Receta
   esAdmin: boolean
   onEditar: () => void
@@ -198,8 +198,8 @@ function SelectorProductoDialog({
   onCerrar,
 }: {
   abierto: boolean
-  productos: Producto[]
-  onElegir: (producto: Producto) => void
+  productos: ProductoInventario[]
+  onElegir: (producto: ProductoInventario) => void
   onCerrar: () => void
 }) {
   const [busqueda, setBusqueda] = useState('')

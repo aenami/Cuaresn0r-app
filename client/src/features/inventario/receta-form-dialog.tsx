@@ -6,7 +6,8 @@ import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { ApiError } from '@/lib/api'
 import { ingredientesQuery, useCrearReceta } from '@/features/inventario/api'
-import type { Producto, Receta } from '@/types/api'
+import type { Receta } from '@/types/api'
+import type { ProductoInventario } from '@/features/inventario/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -53,7 +54,7 @@ export function RecetaFormDialog({
   recetaBase,
   onCerrar,
 }: {
-  producto: Producto | null
+  producto: ProductoInventario | null
   recetaBase: Receta | null
   onCerrar: () => void
 }) {

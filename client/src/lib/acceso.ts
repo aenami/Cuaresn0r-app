@@ -36,7 +36,9 @@ export function puedeRuta(
   if (!usuario) return false
   const rol = usuario.rolNombre
   const ruta = path.split('/').filter(Boolean)[0] ?? ''
-  if (ruta === 'mi-nomina' || !ruta) return true
+  if (!ruta) return true
+  if (ruta === 'mi-nomina') return !esGlobal(rol)
+  if (esGlobal(rol) && ['usuarios', 'catalogo', 'nomina', 'empleados', 'impresoras'].includes(ruta)) return false
   if (['usuarios', 'catalogo', 'nomina'].includes(ruta))
     return esAdministrador(rol)
   if (ruta === 'inventario')
@@ -52,7 +54,7 @@ export function puedeRuta(
   if (ruta === 'cuentas-por-pagar' || ruta === 'remisiones')
     return puedeCobrar(rol) || esGlobal(rol)
   if (ruta === 'impresoras')
-    return area === 'RESTAURANTE' && (puedeCobrar(rol) || esGlobal(rol))
+    return area === 'RESTAURANTE' && puedeCobrar(rol)
   if (ruta === 'panaderia') return area === 'PANADERIA' && puedeCobrar(rol)
   if (ruta === 'cobro') return area === 'RESTAURANTE' && puedeCobrar(rol)
   if (ruta === 'traslados') return area === 'RESTAURANTE' && puedeCobrar(rol)
