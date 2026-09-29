@@ -40,6 +40,9 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     request.user = { id: usuario.id_usuario, idRol: usuario.id_rol, rolNombre: usuario.rol.nombre_rol, area: usuario.area };
+    const rol = usuario.rol.nombre_rol;
+    if ((rol === 'PANADERO' && usuario.area !== 'PANADERIA') || (['MESERO', 'COCINERO'].includes(rol) && usuario.area !== 'RESTAURANTE'))
+      throw new UnauthorizedException('El rol no corresponde al área asignada; solicita corregir el usuario');
     return true;
   }
 

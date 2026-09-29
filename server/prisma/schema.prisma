@@ -101,6 +101,7 @@ enum AreaNegocio {
 
 enum TipoArticuloPanaderia {
   PANADERIA
+  PASTELERIA
   EXTERNO
   INSUMO
 }
@@ -233,7 +234,47 @@ model Rol {
   usuarios Usuario[]
 }
 
+model RemisionPanaderia {
+  id Int @id @default(autoincrement())
+  claveAgrupacion String @unique @db.VarChar(50)
+  fecha DateTime @db.Date
+  modalidad String @db.VarChar(10)
+  turnoId Int
+  fechaCreacion DateTime @default(now()) @db.Timestamp(6)
+  fechaCierre DateTime? @db.Timestamp(6)
+  cuentaPorPagarId Int? @unique
+  turnoIngresoId Int?
+  fechaIngreso DateTime? @db.Timestamp(6)
+  metodoIngreso MetodoPago?
+  montoTotal Decimal @default(0) @db.Decimal(20,4)
+  turno Turno @relation("RemisionTurno", fields: [turnoId], references: [id_turno])
+  turnoIngreso Turno? @relation("RemisionIngreso", fields: [turnoIngresoId], references: [id_turno])
+  cuentaPorPagar CuentaPorPagar? @relation(fields: [cuentaPorPagarId], references: [id_cuentaPorPagar])
+  detalles DetalleRemisionPanaderia[]
+  movimientos MovimientoPanaderia[]
+}
+
+model DetalleRemisionPanaderia {
+  id Int @id @default(autoincrement())
+  claveOperacion String @unique @db.VarChar(50)
+  remisionId Int
+  articuloId Int
+  ingredienteDestinoId Int
+  usuarioId Int
+  nombreSnapshot String @db.VarChar(80)
+  cantidad Decimal @db.Decimal(20,4)
+  precioUnitario Decimal @db.Decimal(20,4)
+  subtotal Decimal @db.Decimal(20,4)
+  concepto String @db.VarChar(150)
+  fechaEntrega DateTime @default(now()) @db.Timestamp(6)
+  remision RemisionPanaderia @relation(fields: [remisionId], references: [id])
+  articulo ArticuloPanaderia @relation(fields: [articuloId], references: [id])
+  ingrediente Ingrediente @relation(fields: [ingredienteDestinoId], references: [id_ingrediente])
+  usuario Usuario @relation(fields: [usuarioId], references: [id_usuario])
+}
+
 model Usuario {
+  entregasRemision DetalleRemisionPanaderia[]
   id_usuario             Int      @id @default(autoincrement())
   id_empleado_usuario    Int
   id_rol                 Int
@@ -516,6 +557,8 @@ model Caja {
 }
 
 model Turno {
+  remisionesPanaderia RemisionPanaderia[] @relation("RemisionTurno")
+  ingresosRemisiones RemisionPanaderia[] @relation("RemisionIngreso")
   id_turno                         Int         @id @default(autoincrement())
   id_caja_turno                    Int
   id_usuario_turno                 Int
@@ -638,6 +681,7 @@ model DetalleReceta {
 }
 
 model Ingrediente {
+  entregasRemision DetalleRemisionPanaderia[]
   id_ingrediente          Int               @id @default(autoincrement())
   nombre_ingrediente      String            @db.VarChar(25)
   stock_ingrediente       Decimal           @default(0) @db.Decimal(20, 4)
@@ -828,16 +872,20 @@ model Ficha {
 
 model Proveedor {
   id_proveedor       Int     @id @default(autoincrement())
-  nombre_proveedor   String  @unique @db.VarChar(80)
+  nombre_proveedor   String  @db.VarChar(80)
+  area               AreaNegocio @default(RESTAURANTE)
   contacto_proveedor String? @db.VarChar(80)
   telefono_proveedor String? @db.VarChar(30)
   nit_proveedor      String? @db.VarChar(30)
   proveedor_activo   Boolean @default(true)
 
   cuentasPorPagar CuentaPorPagar[]
+  @@unique([area, nombre_proveedor])
 }
 
 model CuentaPorPagar {
+  area AreaNegocio @default(RESTAURANTE)
+  remisionPanaderia RemisionPanaderia?
   id_cuentaPorPagar                  Int                  @id @default(autoincrement())
   id_proveedor_cuentaPorPagar        Int
   concepto_cuentaPorPagar            String               @db.VarChar(150)
@@ -860,6 +908,7 @@ model CuentaPorPagar {
   movimientosCaja MovimientoCaja[]
   transferenciaPanaderia TransferenciaPanaderia?
 
+    @@index([area, estado_cuentaPorPagar], map: "CuentaPorPagar_area_estado_idx")
   @@index([id_proveedor_cuentaPorPagar])
   @@index([estado_cuentaPorPagar])
   @@index([fecha_vencimiento_cuentaPorPagar])
@@ -868,6 +917,8 @@ model CuentaPorPagar {
 }
 
 model DetalleCuentaPorPagar {
+  articuloPanaderiaId Int?
+  articuloPanaderia ArticuloPanaderia? @relation(fields: [articuloPanaderiaId], references: [id])
   id_detalleCuentaPorPagar      Int     @id @default(autoincrement())
   id_cuentaPorPagar_detalle     Int
   id_ingrediente_detalleCuenta  Int?
@@ -923,6 +974,7 @@ model SubcuentaDetalleComanda {
 // =========================================================================
 
 model Empleado {
+  area AreaNegocio @default(RESTAURANTE)
   id_empleado            Int            @id @default(autoincrement())
   nombre_empleado        String         @db.VarChar(50)
   apellido_empleado      String         @db.VarChar(60)
@@ -985,6 +1037,7 @@ model Marcacion {
 // =========================================================================
 
 model ConfiguracionNomina {
+  area AreaNegocio @default(RESTAURANTE)
   id_configuracionNomina             Int       @id @default(autoincrement())
   aplica_recargo_nocturno            Boolean   @default(false)
   porcentaje_recargo_nocturno        Decimal?  @db.Decimal(5, 2)
@@ -1012,6 +1065,7 @@ model ConfiguracionPropinas {
 // =========================================================================
 
 model ConceptoNomina {
+  area AreaNegocio @default(RESTAURANTE)
   id_conceptoNomina             Int                          @id @default(autoincrement())
   nombre_conceptoNomina         String                       @db.VarChar(50)
   tipo_conceptoNomina           TipoConceptoNomina
@@ -1196,6 +1250,8 @@ model TrabajoImpresion {
 // La panaderia conserva su propio catalogo y existencias. Sus movimientos
 // permiten reconstruir el dia sin alterar el inventario del restaurante.
 model ArticuloPanaderia {
+  detallesCompras DetalleCuentaPorPagar[]
+  detallesRemision DetalleRemisionPanaderia[]
   id              Int                   @id @default(autoincrement())
   nombre          String                @db.VarChar(80)
   tipo            TipoArticuloPanaderia
@@ -1242,6 +1298,8 @@ model DetalleRecetaPanaderia {
 }
 
 model MovimientoPanaderia {
+  remisionId Int?
+  remision RemisionPanaderia? @relation(fields: [remisionId], references: [id])
   id              Int                    @id @default(autoincrement())
   articuloId      Int
   usuarioId       Int

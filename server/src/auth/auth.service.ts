@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { CreateAuthDto } from './dto/create-auth.dto';
 import { PrismaService } from '../prisma/prisma.service'
 import { AreaNegocio } from '../generated/prisma/client';
+import { accessContext, esGlobal } from './access-context';
 
 interface AuthenticatedUserData {
   id: number;
@@ -39,6 +40,6 @@ export class AuthService {
   }
 
   async findRoles() {
-    return this.prisma.rol.findMany({ orderBy: { id_rol: 'asc' } });
+    return this.prisma.rol.findMany({ where: { nombre_rol: { notIn: esGlobal(accessContext.getStore()?.user.rolNombre ?? '') ? ['ADMIN'] : ['ADMIN', 'ADMIN_GLOBAL'] } }, orderBy: { id_rol: 'asc' } });
   }
 }

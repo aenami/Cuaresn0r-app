@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
@@ -7,6 +8,7 @@ import {
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { fechaColombia, rangoDia } from '../recipes/inventory-reconciliation';
+import { accessContext, esAdministrador } from '../auth/access-context';
 import {
   CrearArticuloPanaderiaDto,
   CrearRecetaPanaderiaDto,
@@ -22,6 +24,7 @@ import {
 
 const cero = new Prisma.Decimal(0);
 type Cliente = Prisma.TransactionClient | PrismaService;
+const esProducido = (tipo: string) => tipo === 'PANADERIA' || tipo === 'PASTELERIA';
 
 export function resumenConteo(conteo: {
   cantidadInicial: Prisma.Decimal;
@@ -55,6 +58,13 @@ export function resumenConteo(conteo: {
 
 @Injectable()
 export class BakeryService {
+  listarInsumosDestino() {
+    return this.prisma.articuloPanaderia.findMany({ where: { tipo: 'INSUMO', activo: true }, select: { id: true, nombre: true, unidad: true, activo: true, tipo: true }, orderBy: { nombre: 'asc' } });
+  }
+
+  listarRecepciones() {
+    return this.prisma.transferenciaRestaurantePanaderia.findMany({ where: { fechaRecepcion: null }, select: { id: true, cantidad: true, concepto: true, fechaSalida: true, articuloDestino: { select: { nombre: true, unidad: true } } }, orderBy: { fechaSalida: 'asc' } });
+  }
   constructor(private readonly prisma: PrismaService) {}
 
   listarArticulos() {
@@ -74,7 +84,7 @@ export class BakeryService {
       throw new UnprocessableEntityException('Cada insumo debe aparecer una sola vez en la receta');
     return this.prisma.$transaction(async (tx) => {
       const articulo = await this.bloquearArticulo(tx, dto.articuloId);
-      if (articulo.tipo !== 'PANADERIA' || !articulo.activo)
+      if (!esProducido(articulo.tipo) || !articulo.activo)
         throw new UnprocessableEntityException('La receta debe pertenecer a un articulo activo de panaderia');
       const insumos = await tx.articuloPanaderia.findMany({
         where: { id: { in: dto.detalles.map((detalle) => detalle.insumoId) } },
@@ -140,6 +150,7 @@ export class BakeryService {
     return this.prisma.$transaction(async (tx) => {
       const articulo = await this.bloquearArticulo(tx, id);
       if (!articulo.activo) throw new ConflictException('El articulo esta desactivado');
+      this.exigirEntradaPermitida(articulo.tipo);
       const receta = await tx.recetaPanaderia.findFirst({
         where: { articuloId: id, activa: true }, include: { detalles: true },
       });
@@ -148,7 +159,7 @@ export class BakeryService {
         articulos.set(insumoId, await this.bloquearArticulo(tx, insumoId));
       if (articulo.unidad === 'UNIDADES' && !Number.isInteger(dto.cantidad))
         throw new UnprocessableEntityException('Este articulo se cuenta en unidades enteras');
-      if (articulo.tipo === 'PANADERIA') {
+      if (esProducido(articulo.tipo)) {
         if (!receta || receta.detalles.length === 0)
           throw new ConflictException('Crea una receta activa antes de registrar una hornada');
         for (const detalle of receta.detalles) {
@@ -163,7 +174,7 @@ export class BakeryService {
         }
       }
       return this.mover(tx, articulo, dto.cantidad, usuarioId,
-        articulo.tipo === 'PANADERIA' ? 'PRODUCCION' : 'RECEPCION',
+        esProducido(articulo.tipo) ? 'PRODUCCION' : 'RECEPCION',
         dto.concepto.trim(), receta ? { recetaId: receta.id } : undefined);
     });
   }
@@ -171,10 +182,18 @@ export class BakeryService {
   async registrarMerma(id: number, usuarioId: number, dto: EntradaPanaderiaDto) {
     return this.prisma.$transaction(async (tx) => {
       const articulo = await this.bloquearArticulo(tx, id);
+      this.exigirEntradaPermitida(articulo.tipo);
       if (articulo.unidad === 'UNIDADES' && !Number.isInteger(dto.cantidad))
         throw new UnprocessableEntityException('Este articulo se cuenta en unidades enteras');
       return this.mover(tx, articulo, -dto.cantidad, usuarioId, 'MERMA', dto.concepto.trim());
     });
+  }
+
+  private exigirEntradaPermitida(tipo: string) {
+    const actor = accessContext.getStore()?.user;
+    if (!actor || esAdministrador(actor.rolNombre)) return;
+    const permitido = actor.rolNombre === 'PANADERO' ? tipo !== 'EXTERNO' : actor.rolNombre === 'CAJERO' && tipo === 'EXTERNO';
+    if (!permitido) throw new ForbiddenException('El panadero recibe insumos y registra producción; el cajero recibe productos externos');
   }
 
   async crearVenta(usuarioId: number, dto: CrearVentaPanaderiaDto) {
@@ -448,7 +467,7 @@ export class BakeryService {
         },
       });
       const proveedor = await tx.proveedor.upsert({
-        where: { nombre_proveedor: 'Panaderia (traslados internos)' },
+        where: { area_nombre_proveedor: { area: 'RESTAURANTE', nombre_proveedor: 'Panaderia (traslados internos)' } },
         create: { nombre_proveedor: 'Panaderia (traslados internos)' },
         update: {},
       });

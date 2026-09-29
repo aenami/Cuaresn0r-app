@@ -156,6 +156,7 @@ function setupCerrar(
     transferenciaRestaurantePanaderia: {
       findMany: jest.fn().mockResolvedValue([]),
     },
+    remisionPanaderia: { count: jest.fn().mockResolvedValue(0) },
   };
   const prisma = {
     $transaction: (cb: (t: typeof tx) => unknown) => cb(tx),

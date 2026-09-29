@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateConceptoDto } from './dto/create-concepto.dto';
 import { UpdateConceptoDto } from './dto/update-concepto.dto';
 import { CreateValorConceptoDto } from './dto/create-valor-concepto.dto';
+import { areaActual, exigirArea } from '../auth/access-context';
 
 // Catalogo de conceptos (auxilios, incentivos, deducciones) y sus valores
 // versionados — patron catalogo/instancia igual que Combo/DetalleCombo.
@@ -19,6 +20,7 @@ export class ConceptosService {
     return this.prisma.$transaction(async (tx) => {
       const concepto = await tx.conceptoNomina.create({
         data: {
+          area: areaActual(),
           nombre_conceptoNomina: dto.nombre,
           tipo_conceptoNomina: dto.tipo,
           aplica_automaticamente: dto.aplicaAutomaticamente ?? false,
@@ -39,6 +41,7 @@ export class ConceptosService {
 
   async findAll() {
     return this.prisma.conceptoNomina.findMany({
+      where: { area: areaActual() },
       include: { valores: { where: { valor_activo: true } } },
       orderBy: { id_conceptoNomina: 'asc' },
     });
@@ -50,6 +53,7 @@ export class ConceptosService {
       include: { valores: { where: { valor_activo: true } } },
     });
     if (!concepto) throw new NotFoundException('Concepto de nomina no encontrado');
+    exigirArea(concepto.area);
     return concepto;
   }
 

@@ -3,10 +3,12 @@ import { EmpleadosService } from './empleados.service';
 import { CreateEmpleadoDto } from './dto/create-empleado.dto';
 import { UpdateEmpleadoDto } from './dto/update-empleado.dto';
 import { Roles } from '../decorators/roles.decorator';
+import { Area } from '../decorators/area.decorator';
 import { EstadoEmpleado } from '../../generated/prisma/client';
 
 // La gestion de empleados (altas, bajas) queda restringida a ADMIN.
 @Roles('ADMIN')
+@Area('AMBAS')
 @Controller('/auth/empleados')
 export class EmpleadosController {
   constructor(private readonly empleadosService: EmpleadosService) {}

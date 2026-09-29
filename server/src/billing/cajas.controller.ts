@@ -3,10 +3,12 @@ import { CajasService } from './cajas.service';
 import { CreateCajaDto } from './dto/create-caja.dto';
 import { UpdateCajaDto } from './dto/update-caja.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Area } from '../auth/decorators/area.decorator';
 
 // CAJERO puede listar (necesita elegir caja para abrir su turno); solo ADMIN
 // crea o renombra.
 @Roles('ADMIN', 'CAJERO')
+@Area('AMBAS')
 @Controller('/billing/cajas')
 export class CajasController {
   constructor(private readonly cajasService: CajasService) {}

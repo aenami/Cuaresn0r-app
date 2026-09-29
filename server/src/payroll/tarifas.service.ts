@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTarifaDto } from './dto/create-tarifa.dto';
+import { exigirArea } from '../auth/access-context';
 
 @Injectable()
 export class TarifasService {
@@ -9,6 +10,7 @@ export class TarifasService {
   private async findEmpleado(idEmpleado: number) {
     const empleado = await this.prisma.empleado.findUnique({ where: { id_empleado: idEmpleado } });
     if (!empleado) throw new NotFoundException('Empleado no encontrado');
+    exigirArea(empleado.area);
     return empleado;
   }
 

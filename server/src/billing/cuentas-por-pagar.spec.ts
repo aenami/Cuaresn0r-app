@@ -10,13 +10,15 @@ const dto = (monto: number, metodo = 'TRANSFERENCIA') =>
 function setup() {
   const spies = {
     cuentaFind: jest.fn().mockResolvedValue({
+      area: 'RESTAURANTE',
       estado_cuentaPorPagar: 'PENDIENTE',
       monto_total_cuentaPorPagar: new Prisma.Decimal(100000),
       pagos: [],
       proveedor: { nombre_proveedor: 'Proveedor prueba' },
       concepto_cuentaPorPagar: 'Compra semanal',
     }),
-    turnoFind: jest.fn().mockResolvedValue({ id_turno: 9, id_caja_turno: 1 }),
+    turnoFind: jest.fn().mockResolvedValue({ id_turno: 9, id_caja_turno: 1, estado_turno: 'ABIERTO' }),
+    remisionFind: jest.fn().mockResolvedValue(null),
     cajaFind: jest.fn().mockResolvedValue({ area: 'RESTAURANTE' }),
     transferenciaFind: jest.fn().mockResolvedValue(null),
     pagoCreate: jest.fn((args: { data: Record<string, unknown> }) =>
@@ -33,7 +35,8 @@ function setup() {
       findUnique: spies.cuentaFind,
       update: spies.cuentaUpdate,
     },
-    turno: { findFirst: spies.turnoFind, update: spies.turnoUpdate },
+    turno: { findFirst: spies.turnoFind, findUniqueOrThrow: spies.turnoFind, update: spies.turnoUpdate },
+    remisionPanaderia: { findUnique: spies.remisionFind },
     caja: { findUniqueOrThrow: spies.cajaFind },
     transferenciaPanaderia: { findUnique: spies.transferenciaFind },
     pagoCuentaPorPagar: { create: spies.pagoCreate },
@@ -46,6 +49,19 @@ function setup() {
 }
 
 describe('CuentasPorPagarService.pagar', () => {
+  it('rechaza abonos de remisiones sin registrar ningún pago', async () => {
+    const { servicio, spies } = setup();
+    spies.remisionFind.mockResolvedValue({ id: 1 });
+    await expect(servicio.pagar(4, 2, dto(25000))).rejects.toThrow('no admiten pagos parciales');
+    expect(spies.pagoCreate).not.toHaveBeenCalled();
+  });
+
+  it('rechaza pagar con la caja de otra área', async () => {
+    const { servicio, spies } = setup();
+    spies.cajaFind.mockResolvedValue({ area: 'PANADERIA' });
+    await expect(servicio.pagar(4, 2, dto(100000))).rejects.toThrow('misma área');
+    expect(spies.pagoCreate).not.toHaveBeenCalled();
+  });
   it('registra la fecha exacta en el pago y al completar la cuenta', async () => {
     const { servicio, spies } = setup();
 

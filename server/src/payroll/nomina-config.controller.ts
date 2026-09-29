@@ -2,9 +2,11 @@ import { Controller, Get, Post, Body } from '@nestjs/common';
 import { NominaConfigService } from './nomina-config.service';
 import { UpdateNominaConfigDto } from './dto/update-nomina-config.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Area } from '../auth/decorators/area.decorator';
 
 @Roles('ADMIN')
 @Controller('/payroll/config')
+@Area('AMBAS')
 export class NominaConfigController {
   constructor(private readonly nominaConfigService: NominaConfigService) {}
 

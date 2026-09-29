@@ -2,10 +2,12 @@ import { Controller, Get, Post, Body, Param, ParseIntPipe } from '@nestjs/common
 import { TarifasService } from './tarifas.service';
 import { CreateTarifaDto } from './dto/create-tarifa.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Area } from '../auth/decorators/area.decorator';
 
 // Cuanto gana cada empleado es dato sensible: solo ADMIN.
 @Roles('ADMIN')
 @Controller('/payroll/empleados/:idEmpleado/tarifas')
+@Area('AMBAS')
 export class TarifasController {
   constructor(private readonly tarifasService: TarifasService) {}
 

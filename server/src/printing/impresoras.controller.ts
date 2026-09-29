@@ -6,7 +6,7 @@ import { UpdateImpresoraDto } from './dto/update-impresora.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 
 // La configuracion de impresoras es infraestructura del local: solo ADMIN.
-@Roles('ADMIN')
+@Roles('ADMIN', 'CAJERO')
 @Controller('/printing/impresoras')
 export class ImpresorasController {
   constructor(

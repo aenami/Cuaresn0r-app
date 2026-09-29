@@ -4,9 +4,11 @@ import { CreateConceptoDto } from './dto/create-concepto.dto';
 import { UpdateConceptoDto } from './dto/update-concepto.dto';
 import { CreateValorConceptoDto } from './dto/create-valor-concepto.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Area } from '../auth/decorators/area.decorator';
 
 @Roles('ADMIN')
 @Controller('/payroll/conceptos')
+@Area('AMBAS')
 export class ConceptosController {
   constructor(private readonly conceptosService: ConceptosService) {}
 

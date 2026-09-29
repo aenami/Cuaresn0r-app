@@ -9,6 +9,7 @@ import { Area } from '../decorators/area.decorator';
 import { AuthenticatedRequest } from '../types/authenticated-request';
 
 @Controller('/auth/usuarios')
+@Area('AMBAS')
 export class UsuariosController {
   constructor(private readonly usuariosService: UsuariosService) {}
 

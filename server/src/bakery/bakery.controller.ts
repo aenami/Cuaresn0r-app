@@ -25,7 +25,7 @@ import {
 } from './dto';
 import { CreateCajaDto } from '../billing/dto/create-caja.dto';
 
-@Roles('ADMIN', 'CAJERO')
+@Roles('ADMIN', 'CAJERO', 'PANADERO')
 @Area('PANADERIA')
 @Controller('/bakery')
 export class BakeryController {
@@ -36,6 +36,15 @@ export class BakeryController {
 
   @Get('recetas')
   listarRecetas() { return this.bakery.listarRecetas(); }
+
+  @Get('recepciones')
+  listarRecepciones() { return this.bakery.listarRecepciones(); }
+
+  @Roles('ADMIN', 'PANADERO')
+  @Post('recepciones/:id/recibir')
+  recibirInsumos(@Param('id', ParseIntPipe) id: number, @Req() req: AuthenticatedRequest) {
+    return this.bakery.recibirTransferenciaRestaurante(id, req.user.id);
+  }
 
   @Roles('ADMIN')
   @Post('recetas')
@@ -72,11 +81,13 @@ export class BakeryController {
   ) { return this.bakery.registrarMerma(id, req.user.id, dto); }
 
   @Get('ventas')
+  @Roles('ADMIN', 'CAJERO')
   listarVentas(@Query('turnoId') turnoId?: string) {
     return this.bakery.listarVentas(turnoId ? Number(turnoId) : undefined);
   }
 
   @Post('ventas')
+  @Roles('ADMIN_LOCAL', 'CAJERO')
   crearVenta(@Req() req: AuthenticatedRequest, @Body() dto: CrearVentaPanaderiaDto) {
     return this.bakery.crearVenta(req.user.id, dto);
   }
@@ -92,6 +103,7 @@ export class BakeryController {
   ) { return this.bakery.registrarConteo(id, req.user.id, dto); }
 
   @Get('cajas')
+  @Roles('ADMIN', 'CAJERO')
   listarCajas() { return this.bakery.listarCajas(); }
 
   @Roles('ADMIN')
@@ -99,6 +111,7 @@ export class BakeryController {
   crearCaja(@Body() dto: CreateCajaDto) { return this.bakery.crearCaja(dto.nombre); }
 
   @Get('transferencias')
+  @Roles('ADMIN', 'CAJERO')
   @Area('AMBAS')
   listarTransferencias() { return this.bakery.listarTransferencias(); }
 
@@ -109,12 +122,14 @@ export class BakeryController {
   }
 
   @Post('transferencias/:id/recibir')
+  @Roles('ADMIN_LOCAL', 'CAJERO')
   @Area('RESTAURANTE')
   recibirTransferencia(@Param('id', ParseIntPipe) id: number, @Req() req: AuthenticatedRequest) {
     return this.bakery.recibirTransferencia(id, req.user.id);
   }
 
   @Post('transferencias/:id/confirmar-ingreso')
+  @Roles('ADMIN_LOCAL', 'CAJERO')
   confirmarIngresoTransferencia(
     @Param('id', ParseIntPipe) id: number,
     @Req() req: AuthenticatedRequest,

@@ -11,16 +11,22 @@ import { CrearTransferenciaRestauranteDto, PagarTransferenciaRestauranteDto } fr
 export class TransferenciasRestauranteController {
   constructor(private readonly bakery: BakeryService) {}
 
+  @Get('destinos')
+  @Area('RESTAURANTE')
+  destinos() { return this.bakery.listarInsumosDestino(); }
+
   @Get()
   listar() { return this.bakery.listarTransferenciasRestaurante(); }
 
   @Roles('ADMIN')
+  @Area('RESTAURANTE')
   @Post()
   crear(@Req() req: AuthenticatedRequest, @Body() dto: CrearTransferenciaRestauranteDto) {
     return this.bakery.crearTransferenciaRestaurante(req.user.id, dto);
   }
 
   @Area('PANADERIA')
+  @Roles('ADMIN', 'PANADERO')
   @Post(':id/recibir')
   recibir(@Param('id', ParseIntPipe) id: number, @Req() req: AuthenticatedRequest) {
     return this.bakery.recibirTransferenciaRestaurante(id, req.user.id);

@@ -48,7 +48,7 @@ export class IngredientsController {
   }
 
   // ENTRADA/MERMA/AJUSTE_*: SALIDA_RECETA y REVERSO solo los genera Orders.
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'CAJERO', 'COCINERO')
   @Post(':id/movements')
   registerMovement(
     @Param('id', ParseIntPipe) id: number,

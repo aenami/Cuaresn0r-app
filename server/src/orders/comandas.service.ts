@@ -89,7 +89,7 @@ export class ComandasService {
         return proporcionPagada.lessThan(1);
       });
 
-      if (haySinPagar && rolUsuario !== 'ADMIN' && rolUsuario !== 'CAJERO') {
+      if (haySinPagar && rolUsuario !== 'ADMIN_LOCAL' && rolUsuario !== 'CAJERO') {
         throw new ForbiddenException('Un cajero o administrador debe autorizar el envio de productos sin pagar');
       }
       if (actual.pedido.tipo_pedido === 'LOCAL' && !haySinPagar && actual.pedido.id_ficha_pedido === null) {

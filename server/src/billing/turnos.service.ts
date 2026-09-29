@@ -14,6 +14,7 @@ import {
   fechaColombia,
 } from '../recipes/inventory-reconciliation';
 import { BakeryService } from '../bakery/bakery.service';
+import { esGlobal, esAdministrador } from '../auth/access-context';
 
 const BASE_CAJA_COP = new Prisma.Decimal(300_000);
 
@@ -56,7 +57,7 @@ export class TurnosService {
   ) {}
 
   private verificarArea(area: AreaNegocio, areaUsuario?: AreaNegocio, rolNombre?: string) {
-    if (rolNombre === 'CAJERO' && areaUsuario !== undefined && areaUsuario !== area)
+    if (!esGlobal(rolNombre ?? '') && areaUsuario !== undefined && areaUsuario !== area)
       throw new ForbiddenException('El cajero solo puede operar su area asignada');
   }
 
@@ -130,7 +131,7 @@ export class TurnosService {
       this.verificarArea(turno.caja.area, areaUsuario, rolNombre);
       if (turno.estado_turno === 'CERRADO')
         throw new ConflictException('Este turno ya esta cerrado');
-      if (turno.id_usuario_turno !== idUsuario && rolNombre !== 'ADMIN') {
+      if (turno.id_usuario_turno !== idUsuario && !esAdministrador(rolNombre)) {
         throw new ForbiddenException(
           'Solo el cajero que abrio el turno (o un ADMIN) puede cerrarlo',
         );
@@ -141,6 +142,13 @@ export class TurnosService {
         throw new BadRequestException(
           'Selecciona el tipo de este turno antes de cerrarlo',
         );
+      if (turno.caja.area === 'PANADERIA') {
+        const abiertas = await tx.remisionPanaderia.count({ where: { fechaCierre: null, OR: [
+          { modalidad: 'TURNO', turnoId: idTurno },
+          ...(tipo !== 'MANANA' ? [{ modalidad: 'DIA', fecha: new Date(fechaColombia(turno.fecha_apertura_turno)) }] : []),
+        ] } });
+        if (abiertas) throw new ConflictException('Cierra la remisión pendiente antes de confirmar el cuadre');
+      }
       if (tipo !== 'MANANA' && turno.caja.area === 'RESTAURANTE') {
         // Solo durante el cierre: estabiliza lista, conteos y entregas hasta
         // guardar el cuadre. Evita cerrar con un conteo reabierto en paralelo
@@ -236,13 +244,14 @@ export class TurnosService {
     cliente: Prisma.TransactionClient | PrismaService,
     area: AreaNegocio = 'RESTAURANTE',
   ): Promise<FacturasPendientesCuadre> {
+    let adicionales: FacturaPendienteCuadre[] = [];
     if (area === 'PANADERIA') {
       const transferencias = await cliente.transferenciaRestaurantePanaderia.findMany({
         where: { fechaPago: null },
         include: { ingrediente: true },
         orderBy: { fechaSalida: 'asc' },
       });
-      const cuentas = transferencias.map((t) => ({
+      adicionales = transferencias.map((t) => ({
         idCuenta: t.id,
         proveedor: 'Restaurante / cafeteria',
         concepto: t.concepto,
@@ -251,11 +260,9 @@ export class TurnosService {
         montoTotal: t.montoTotal.toString(),
         saldoPendiente: t.montoTotal.toString(),
       }));
-      return { total: transferencias.reduce((total, t) => total.plus(t.montoTotal), new Prisma.Decimal(0)).toString(),
-        cuentas, historicoDisponible: true };
     }
     const cuentas = await cliente.cuentaPorPagar.findMany({
-      where: { estado_cuentaPorPagar: { in: ['PENDIENTE', 'PARCIAL'] } },
+      where: { area, estado_cuentaPorPagar: { in: ['PENDIENTE', 'PARCIAL'] } },
       select: {
         id_cuentaPorPagar: true,
         concepto_cuentaPorPagar: true,
@@ -291,11 +298,12 @@ export class TurnosService {
       };
     });
 
+    const todas = [...adicionales, ...filas];
     return {
-      total: filas
+      total: todas
         .reduce((total, cuenta) => total.plus(cuenta.saldoPendiente), cero)
         .toString(),
-      cuentas: filas,
+      cuentas: todas,
       historicoDisponible: true,
     };
   }
@@ -343,8 +351,10 @@ export class TurnosService {
     });
     if (!turno) throw new NotFoundException('Turno no encontrado');
     this.verificarArea(turno.caja.area, areaUsuario, rolNombre);
-    if (turno.caja.area === 'PANADERIA')
-      return this.bakery.estadoConteo(fechaColombia(turno.fecha_apertura_turno));
+    if (turno.caja.area === 'PANADERIA') {
+      const estado = await this.bakery.estadoConteo(fechaColombia(turno.fecha_apertura_turno));
+      return { ...estado, total: estado.totalArticulos, pendientes: [], inconsistencias: estado.detalle.filter((d) => Number(d.conciliacion.diferenciaUnidades) !== 0).length };
+    }
     return estadoConteoCierre(
       this.prisma,
       fechaColombia(turno.fecha_apertura_turno),
@@ -385,6 +395,7 @@ export class TurnosService {
       pagosNomina,
       pagosProveedores,
       facturasPendientes,
+      cobrosRemisiones,
     ] = await Promise.all([
       this.prisma.pago.groupBy({
         by: ['metodo_pago'],
@@ -480,6 +491,7 @@ export class TurnosService {
         orderBy: { fecha_pagoCuentaPorPagar: 'asc' },
       }),
       facturasPendientesPromise,
+      this.prisma.remisionPanaderia.findMany({ where: { turnoIngresoId: idTurno }, select: { metodoIngreso: true, montoTotal: true } }),
     ]);
 
     const totalVentas = (metodo: string) =>
@@ -532,6 +544,7 @@ export class TurnosService {
           cuentasTransferencia,
         },
         netoTransferencias: ventaNequi.plus(cobroInternoDigital).plus(ingresoInternoDigital)
+          .plus(cobrosRemisiones.filter((r) => r.metodoIngreso === 'TRANSFERENCIA').reduce((total, r) => total.plus(r.montoTotal), new Prisma.Decimal(0)))
           .minus(nominaTransferencia)
           .minus(cuentasTransferencia),
         efectivoEsperadoSinBase: efectivoEsperado.minus(BASE_CAJA_COP),

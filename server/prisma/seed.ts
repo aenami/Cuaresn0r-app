@@ -37,7 +37,7 @@ async function main() {
     await prisma.usuario.create({
       data: {
         id_empleado_usuario: empleado.id_empleado,
-        id_rol: rolesPorNombre.get('ADMIN')!,
+        id_rol: rolesPorNombre.get('ADMIN_GLOBAL')!,
         email_usuario: adminEmail,
         password_usuario: hashedPassword,
       },

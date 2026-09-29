@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '../generated/prisma/client';
 import { CreateConceptoEmpleadoDto } from './dto/create-concepto-empleado.dto';
 import { fechaLocalSinHora } from './fechas';
+import { exigirArea } from '../auth/access-context';
 
 @Injectable()
 export class ConceptosEmpleadoService {
@@ -14,12 +15,14 @@ export class ConceptosEmpleadoService {
   async aplicar(idEmpleado: number, dto: CreateConceptoEmpleadoDto) {
     const empleado = await this.prisma.empleado.findUnique({ where: { id_empleado: idEmpleado } });
     if (!empleado) throw new NotFoundException('Empleado no encontrado');
+    exigirArea(empleado.area);
     if (empleado.estado_empleado !== 'ACTIVO') {
       throw new ConflictException('No se pueden aplicar conceptos a un empleado inactivo');
     }
 
     const concepto = await this.prisma.conceptoNomina.findUnique({ where: { id_conceptoNomina: dto.idConcepto } });
     if (!concepto) throw new NotFoundException('Concepto de nomina no encontrado');
+    exigirArea(concepto.area);
 
     const valor = await this.prisma.valorConceptoNomina.findFirst({
       where: { id_concepto_valorConceptoNomina: dto.idConcepto, valor_activo: true },
@@ -67,6 +70,7 @@ export class ConceptosEmpleadoService {
   async findByEmpleado(idEmpleado: number) {
     const empleado = await this.prisma.empleado.findUnique({ where: { id_empleado: idEmpleado } });
     if (!empleado) throw new NotFoundException('Empleado no encontrado');
+    exigirArea(empleado.area);
     return this.prisma.conceptoNominaEmpleado.findMany({
       where: { id_empleado_cne: idEmpleado },
       include: { concepto: true },

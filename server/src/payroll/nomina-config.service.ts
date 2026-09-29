@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '../generated/prisma/client';
 import { UpdateNominaConfigDto } from './dto/update-nomina-config.dto';
 import { minutosATiempoDb } from './fechas';
+import { areaActual } from '../auth/access-context';
 
 @Injectable()
 export class NominaConfigService {
@@ -13,7 +14,7 @@ export class NominaConfigService {
   // se liquida sin recargo en vez de reventar.
   async findActiva(tx?: Prisma.TransactionClient) {
     const client = tx ?? this.prisma;
-    const config = await client.configuracionNomina.findFirst({ where: { configuracion_activa: true } });
+    const config = await client.configuracionNomina.findFirst({ where: { area: areaActual(), configuracion_activa: true } });
     return (
       config ?? {
         aplica_recargo_nocturno: false,
@@ -38,11 +39,12 @@ export class NominaConfigService {
 
     return this.prisma.$transaction(async (tx) => {
       await tx.configuracionNomina.updateMany({
-        where: { configuracion_activa: true },
+        where: { area: areaActual(), configuracion_activa: true },
         data: { configuracion_activa: false },
       });
       return tx.configuracionNomina.create({
         data: {
+          area: areaActual(),
           aplica_recargo_nocturno: dto.aplicaRecargoNocturno,
           ...(dto.aplicaRecargoNocturno && {
             porcentaje_recargo_nocturno: dto.porcentajeRecargo,
@@ -55,6 +57,6 @@ export class NominaConfigService {
   }
 
   async findHistorial() {
-    return this.prisma.configuracionNomina.findMany({ orderBy: { id_configuracionNomina: 'desc' } });
+    return this.prisma.configuracionNomina.findMany({ where: { area: areaActual() }, orderBy: { id_configuracionNomina: 'desc' } });
   }
 }

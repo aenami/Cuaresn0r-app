@@ -41,6 +41,7 @@ function setup(turno: Record<string, unknown> | null) {
     movimientoCaja: { create: spies.movimientoCreate },
   };
   const prisma = {
+    empleado: { findUnique: jest.fn().mockResolvedValue({ id_empleado: 4, area: 'RESTAURANTE' }) },
     $transaction: (callback: (cliente: typeof tx) => unknown) => callback(tx),
   } as unknown as PrismaService;
   return { service: new PagosNominaService(prisma), spies };

@@ -18,6 +18,7 @@ import { InventoryCountsService } from './inventory-counts.service';
 import { CreateCountElementDto } from './dto/create-count-element.dto';
 
 @Controller('/recipes/inventory-counts')
+@Roles('ADMIN', 'CAJERO', 'COCINERO')
 export class InventoryCountsController {
   constructor(private readonly counts: InventoryCountsService) {}
 

@@ -11,6 +11,7 @@ import { UpdateUsuarioDto } from './dto/update-usuario.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { Prisma } from '../../generated/prisma/client';
+import { accessContext, areaActual, esGlobal, exigirArea, exigirRolAsignable } from '../access-context';
 
 // Selecciona todo excepto password_usuario: nunca debe salir del backend.
 const SAFE_SELECT = {
@@ -54,6 +55,9 @@ export class UsuariosService {
       where: { id_rol: dto.idRol },
     });
     if (!rol) throw new NotFoundException('El rol indicado no existe');
+    const area = dto.area ?? areaActual();
+    exigirRolAsignable(rol.nombre_rol, area);
+    if (empleado.area !== area) throw new ConflictException('El empleado pertenece a otra área');
 
     const hashedPassword = await this.cryptoService.hashPassword(dto.password);
 
@@ -63,7 +67,7 @@ export class UsuariosService {
           id_empleado_usuario: dto.idEmpleado,
           id_rol: dto.idRol,
           email_usuario: dto.email,
-          area: dto.area ?? 'RESTAURANTE',
+          area,
           password_usuario: hashedPassword,
         },
         select: SAFE_SELECT,
@@ -81,6 +85,7 @@ export class UsuariosService {
 
   async findAll() {
     return this.prisma.usuario.findMany({
+      where: { area: areaActual(), ...(!esGlobal(accessContext.getStore()?.user.rolNombre ?? '') && { rol: { nombre_rol: { notIn: ['ADMIN_GLOBAL', 'ADMIN'] } } }) },
       select: SAFE_SELECT,
       orderBy: { id_usuario: 'asc' },
     });
@@ -95,6 +100,12 @@ export class UsuariosService {
       select: SAFE_SELECT,
     });
     if (!usuario) throw new NotFoundException('Usuario no encontrado');
+    const actor = accessContext.getStore()?.user;
+    if (actor && actor.id !== id) {
+      exigirArea(usuario.area);
+      if (!esGlobal(actor.rolNombre) && esGlobal(usuario.rol.nombre_rol))
+        throw new UnauthorizedException('No puedes modificar al administrador global');
+    }
     return usuario;
   }
 
@@ -107,7 +118,7 @@ export class UsuariosService {
   // "hay dos admins" y retirar uno cada una, dejando el sistema sin ninguno.
   private async bloquearAdministradores(tx: Prisma.TransactionClient) {
     const filas = await tx.$queryRaw<{ id_rol: number }[]>`
-      SELECT id_rol FROM "Rol" WHERE nombre_rol = 'ADMIN' FOR UPDATE
+      SELECT id_rol FROM "Rol" WHERE nombre_rol IN ('ADMIN_GLOBAL', 'ADMIN') ORDER BY id_rol FOR UPDATE
     `;
     if (!filas[0])
       throw new ConflictException(
@@ -122,7 +133,7 @@ export class UsuariosService {
   ): Promise<number> {
     return tx.usuario.count({
       where: {
-        rol: { nombre_rol: 'ADMIN' },
+        rol: { nombre_rol: { in: ['ADMIN_GLOBAL', 'ADMIN'] } },
         empleado: { estado_empleado: 'ACTIVO' },
       },
     });
@@ -138,7 +149,7 @@ export class UsuariosService {
     },
   ) {
     const esAdminActivo =
-      usuario.rol?.nombre_rol === 'ADMIN' &&
+      esGlobal(usuario.rol?.nombre_rol ?? '') &&
       usuario.empleado?.estado_empleado === 'ACTIVO';
     if (!esAdminActivo) return;
     if ((await this.contarAdminsActivos(tx)) <= 1) {
@@ -159,8 +170,13 @@ export class UsuariosService {
           if (!rol) throw new NotFoundException('El rol indicado no existe');
           // Cambiar el rol del ultimo admin a uno sin privilegios dejaria el
           // sistema sin administrador.
-          if (rol.nombre_rol !== 'ADMIN')
+          exigirRolAsignable(rol.nombre_rol, dto.area ?? actual.area);
+          if (!esGlobal(rol.nombre_rol))
             await this.assertNoEsUltimoAdmin(tx, actual);
+        }
+        if (dto.area !== undefined) {
+          exigirRolAsignable(actual.rol.nombre_rol, dto.area);
+          if (dto.area !== actual.area) throw new ConflictException('Para cambiar de área crea un nuevo acceso con un empleado del área destino; el historial no se reasigna');
         }
 
         return tx.usuario.update({

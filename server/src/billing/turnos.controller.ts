@@ -21,14 +21,14 @@ export class TurnosController {
 
   @Get()
   findAll(@Req() req: AuthenticatedRequest, @Query('estado') estado?: EstadoTurno, @Query('area') area?: AreaNegocio) {
-    return this.turnosService.findAll(estado, area ?? req.user.area, req.user.area, req.user.rolNombre);
+    return this.turnosService.findAll(estado, area ?? req.areaSeleccionada ?? req.user.area, req.user.area, req.user.rolNombre);
   }
 
   // OJO: declarado antes de ':id' — Express matchea en orden de registro y
   // ':id' capturaria "actual" (mismo bug que hubo en /recipes/ingredients).
   @Get('actual')
   findActual(@Req() req: AuthenticatedRequest, @Query('area') area?: AreaNegocio) {
-    return this.turnosService.findActual(req.user.id, area ?? req.user.area, req.user.area, req.user.rolNombre);
+    return this.turnosService.findActual(req.user.id, area ?? req.areaSeleccionada ?? req.user.area, req.user.area, req.user.rolNombre);
   }
 
   @Get(':id')

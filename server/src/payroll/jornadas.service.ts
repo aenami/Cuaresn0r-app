@@ -4,9 +4,10 @@ import { Prisma, EstadoJornada, TipoMarcacion } from '../generated/prisma/client
 import { NominaConfigService } from './nomina-config.service';
 import { MarcarDto } from './dto/marcar.dto';
 import { fechaLocalSinHora, horasEnFranjaNocturna, tiempoDbAMinutos } from './fechas';
+import { areaActual, exigirArea } from '../auth/access-context';
 
 const JORNADA_INCLUDE = {
-  empleado: { select: { id_empleado: true, nombre_empleado: true, apellido_empleado: true } },
+  empleado: { select: { id_empleado: true, nombre_empleado: true, apellido_empleado: true, area: true } },
   marcaciones: { orderBy: { fecha_hora_marcacion: 'asc' } },
 } satisfies Prisma.JornadaInclude;
 
@@ -27,6 +28,9 @@ export class JornadasService {
   // Registra ENTRADA o SALIDA alternando automaticamente; si el empleado no
   // tiene jornada ABIERTA, la crea (con fecha = dia local de la marcacion).
   async marcar(dto: MarcarDto) {
+    const empleado = await this.prisma.empleado.findUnique({ where: { id_empleado: dto.idEmpleado } });
+    if (!empleado) throw new NotFoundException('Empleado no encontrado');
+    exigirArea(empleado.area);
     return this.prisma.$transaction(async (tx) => {
       // Lock del empleado: dos marcaciones simultaneas del mismo empleado
       // crearian dos jornadas abiertas o romperian la alternancia.
@@ -81,6 +85,7 @@ export class JornadasService {
   // (ordinarias + recargo nocturno) y los de conceptos automaticos por dia
   // trabajado (ej. auxilio de transporte) — todo en una sola transaccion.
   async cerrar(idJornada: number) {
+    await this.findOne(idJornada);
     return this.prisma.$transaction(async (tx) => {
       // Lock: que no entre una marcacion ni otro cierre a mitad de calculo.
       const filas = await tx.$queryRaw<{ id_jornada: number }[]>`
@@ -150,7 +155,7 @@ export class JornadasService {
       // Conceptos automaticos por dia trabajado (seccion 13): una fila de
       // ConceptoNominaEmpleado por jornada cerrada + su devengo, con el
       // valor vigente snapshoteado.
-      const automaticos = await tx.conceptoNomina.findMany({ where: { aplica_automaticamente: true } });
+      const automaticos = await tx.conceptoNomina.findMany({ where: { area: areaActual(), aplica_automaticamente: true } });
       const devengosConceptos = [];
       for (const concepto of automaticos) {
         const valor = await tx.valorConceptoNomina.findFirst({
@@ -201,6 +206,7 @@ export class JornadasService {
   // cajero que marco por error). Si la jornada queda sin marcaciones, se
   // elimina completa. Una jornada CERRADA se corrige reabriendola primero.
   async deshacerUltimaMarcacion(idJornada: number) {
+    await this.findOne(idJornada);
     return this.prisma.$transaction(async (tx) => {
       const filas = await tx.$queryRaw<{ id_jornada: number }[]>`
         SELECT id_jornada FROM "Jornada" WHERE id_jornada = ${idJornada} FOR UPDATE
@@ -240,6 +246,7 @@ export class JornadasService {
   // NINGUN devengo tenga pagos aplicados: si ya se pago, la historia no se
   // toca y la diferencia se compensa con un concepto manual de ajuste.
   async reabrir(idJornada: number) {
+    await this.findOne(idJornada);
     return this.prisma.$transaction(async (tx) => {
       const filas = await tx.$queryRaw<{ id_jornada: number }[]>`
         SELECT id_jornada FROM "Jornada" WHERE id_jornada = ${idJornada} FOR UPDATE
@@ -294,6 +301,7 @@ export class JornadasService {
   async findAll(idEmpleado?: number, estado?: EstadoJornada) {
     return this.prisma.jornada.findMany({
       where: {
+        empleado: { area: areaActual() },
         ...(idEmpleado !== undefined && { id_empleado_jornada: idEmpleado }),
         ...(estado !== undefined && { estado_jornada: estado }),
       },
@@ -308,6 +316,7 @@ export class JornadasService {
       include: { ...JORNADA_INCLUDE, devengos: true, conceptosNomina: { include: { concepto: true } } },
     });
     if (!jornada) throw new NotFoundException('Jornada no encontrada');
+    exigirArea(jornada.empleado.area);
     return jornada;
   }
 }

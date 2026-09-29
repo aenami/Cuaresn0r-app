@@ -8,10 +8,11 @@ import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CrearCuentaPorPagarDto } from './dto/crear-cuenta-por-pagar.dto';
 import { PagarCuentaPorPagarDto } from './dto/pagar-cuenta-por-pagar.dto';
+import { areaActual, exigirArea, accessContext } from '../auth/access-context';
 
 const CUENTA_INCLUDE = {
   proveedor: true,
-  detalles: { include: { ingrediente: true, producto: true } },
+  detalles: { include: { ingrediente: true, producto: true, articuloPanaderia: true } },
   pagos: {
     include: {
       usuario: { select: { id_usuario: true, email_usuario: true } },
@@ -41,13 +42,14 @@ export class CuentasPorPagarService {
       throw new UnprocessableEntityException(
         'Proveedor inexistente o inactivo',
       );
+    exigirArea(proveedor.area);
 
     const detalles = dto.detalles ?? [];
     if (
       detalles.some(
         (detalle) =>
           Number(detalle.idIngrediente !== undefined) +
-            Number(detalle.idProducto !== undefined) !==
+          Number(detalle.idProducto !== undefined) + Number(detalle.articuloPanaderiaId !== undefined) !==
           1,
       )
     ) {
@@ -55,10 +57,24 @@ export class CuentasPorPagarService {
         'Cada linea debe seleccionar un producto o un ingrediente, no ambos',
       );
     }
+    const area = areaActual();
+    if (detalles.some((d) => area === 'PANADERIA' ? d.articuloPanaderiaId === undefined : d.articuloPanaderiaId !== undefined))
+      throw new UnprocessableEntityException('La mercancía debe pertenecer al catálogo del área de la compra');
+    const idsPanaderia = detalles.flatMap((d) => d.articuloPanaderiaId ? [d.articuloPanaderiaId] : []);
+    const articulos = idsPanaderia.length ? await this.prisma.articuloPanaderia.findMany({ where: { id: { in: idsPanaderia }, activo: true } }) : [];
+    if (articulos.length !== idsPanaderia.length || new Set(idsPanaderia).size !== idsPanaderia.length)
+      throw new UnprocessableEntityException('Selecciona artículos activos de panadería sin repetir');
+    if (accessContext.getStore()?.user.rolNombre === 'CAJERO' && articulos.some((a) => a.tipo !== 'EXTERNO'))
+      throw new UnprocessableEntityException('El cajero registra compras de productos externos; los insumos los recibe el panadero');
+    for (const d of detalles) {
+      const a = articulos.find((a) => a.id === d.articuloPanaderiaId);
+      if (a?.unidad === 'UNIDADES' && !Number.isInteger(d.cantidad))
+        throw new UnprocessableEntityException('Este artículo se recibe en unidades enteras');
+    }
     const claves = detalles.map((detalle) =>
       detalle.idIngrediente !== undefined
         ? `INGREDIENTE:${detalle.idIngrediente}`
-        : `PRODUCTO:${detalle.idProducto}`,
+        : detalle.articuloPanaderiaId ? `PANADERIA:${detalle.articuloPanaderiaId}` : `PRODUCTO:${detalle.idProducto}`,
     );
     if (new Set(claves).size !== claves.length) {
       throw new UnprocessableEntityException(
@@ -104,6 +120,7 @@ export class CuentasPorPagarService {
 
     return this.prisma.cuentaPorPagar.create({
       data: {
+        area,
         id_proveedor_cuentaPorPagar: dto.idProveedor,
         concepto_cuentaPorPagar: dto.concepto,
         documento_cuentaPorPagar: dto.documento,
@@ -119,6 +136,7 @@ export class CuentasPorPagarService {
           create: detalles.map((detalle) => ({
             id_ingrediente_detalleCuenta: detalle.idIngrediente,
             id_producto_detalleCuenta: detalle.idProducto,
+            articuloPanaderiaId: detalle.articuloPanaderiaId,
             cantidad_detalleCuenta: detalle.cantidad,
             precio_unitario_detalleCuenta: detalle.precioUnitario,
           })),
@@ -130,6 +148,7 @@ export class CuentasPorPagarService {
 
   listar() {
     return this.prisma.cuentaPorPagar.findMany({
+      where: { area: areaActual() },
       include: CUENTA_INCLUDE,
       orderBy: { id_cuentaPorPagar: 'desc' },
     });
@@ -141,6 +160,7 @@ export class CuentasPorPagarService {
       include: CUENTA_INCLUDE,
     });
     if (!cuenta) throw new NotFoundException('Cuenta por pagar no encontrada');
+    exigirArea(cuenta.area);
     const pagado = cuenta.pagos.reduce(
       (total, pago) => total.plus(pago.monto_pagoCuentaPorPagar),
       new Prisma.Decimal(0),
@@ -160,6 +180,7 @@ export class CuentasPorPagarService {
       });
       if (!cuenta)
         throw new NotFoundException('Cuenta por pagar no encontrada');
+      exigirArea(cuenta.area);
       const transferencia = await tx.transferenciaPanaderia.findUnique({
         where: { cuentaPorPagarId: idCuenta },
       });
@@ -171,6 +192,21 @@ export class CuentasPorPagarService {
         throw new ConflictException('La mercancia ya fue recibida');
 
       for (const detalle of cuenta.detalles) {
+        if (detalle.articuloPanaderiaId != null) {
+          await tx.$queryRaw`SELECT id FROM "ArticuloPanaderia" WHERE id = ${detalle.articuloPanaderiaId} FOR UPDATE`;
+          const articulo = await tx.articuloPanaderia.findUniqueOrThrow({ where: { id: detalle.articuloPanaderiaId } });
+          const actor = accessContext.getStore()?.user;
+          if (!articulo.activo || (actor?.rolNombre === 'CAJERO' && articulo.tipo !== 'EXTERNO'))
+            throw new ConflictException('No tienes permiso para recibir este artículo');
+          await tx.movimientoPanaderia.create({ data: {
+            articuloId: articulo.id, usuarioId: idUsuario, tipo: 'RECEPCION',
+            cantidad: detalle.cantidad_detalleCuenta, existenciaAntes: articulo.existencia,
+            existenciaDespues: articulo.existencia.plus(detalle.cantidad_detalleCuenta),
+            concepto: `Recepción factura de proveedor #${idCuenta}`,
+          } });
+          await tx.articuloPanaderia.update({ where: { id: articulo.id }, data: { existencia: { increment: detalle.cantidad_detalleCuenta } } });
+          continue;
+        }
         if (detalle.id_ingrediente_detalleCuenta === null) continue;
         await tx.movimientoInventario.create({
           data: {
@@ -215,6 +251,7 @@ export class CuentasPorPagarService {
       });
       if (!cuenta)
         throw new NotFoundException('Cuenta por pagar no encontrada');
+      exigirArea(cuenta.area);
       if (
         cuenta.estado_cuentaPorPagar === 'PAGADA' ||
         cuenta.estado_cuentaPorPagar === 'ANULADA'
@@ -232,8 +269,11 @@ export class CuentasPorPagarService {
           'Debes tener un turno abierto para registrar el pago',
         );
       const caja = await tx.caja.findUniqueOrThrow({ where: { id_caja: turno.id_caja_turno } });
-      if (caja.area !== 'RESTAURANTE')
-        throw new ConflictException('Esta cuenta por pagar pertenece a restaurante');
+      await tx.$queryRaw`SELECT id_turno FROM "Turno" WHERE id_turno = ${turno.id_turno} FOR UPDATE`;
+      const actual = await tx.turno.findUniqueOrThrow({ where: { id_turno: turno.id_turno } });
+      if (actual.estado_turno !== 'ABIERTO') throw new ConflictException('El turno ya se cerró');
+      if (caja.area !== cuenta.area)
+        throw new ConflictException('La cuenta y el turno deben pertenecer a la misma área');
       const transferencia = await tx.transferenciaPanaderia.findUnique({
         where: { cuentaPorPagarId: idCuenta },
       });
@@ -246,6 +286,8 @@ export class CuentasPorPagarService {
       );
       const monto = new Prisma.Decimal(dto.monto);
       const saldo = cuenta.monto_total_cuentaPorPagar.minus(pagado);
+      const remision = await tx.remisionPanaderia.findUnique({ where: { cuentaPorPagarId: idCuenta } });
+      if (remision && !monto.equals(saldo)) throw new ConflictException('Las remisiones se pagan completas; no admiten pagos parciales');
       if (monto.greaterThan(saldo))
         throw new UnprocessableEntityException(
           `El pago supera el saldo de ${saldo.toFixed(2)}`,

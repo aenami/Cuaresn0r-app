@@ -2,11 +2,13 @@ import { Controller, Get, Post, Body, Param, ParseIntPipe } from '@nestjs/common
 import { ConceptosEmpleadoService } from './conceptos-empleado.service';
 import { CreateConceptoEmpleadoDto } from './dto/create-concepto-empleado.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Area } from '../auth/decorators/area.decorator';
 
 // Otorgar bonos/deducciones toca directamente lo que se le debe a un
 // empleado: solo ADMIN.
 @Roles('ADMIN')
 @Controller('/payroll/empleados/:idEmpleado/conceptos')
+@Area('AMBAS')
 export class ConceptosEmpleadoController {
   constructor(private readonly conceptosEmpleadoService: ConceptosEmpleadoService) {}
 

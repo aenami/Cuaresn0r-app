@@ -235,7 +235,7 @@ export class ReportsService {
     const metodos = new Map<string, { metodo: string; monto: number; cuenta: number }>();
     const articulos = new Map<number, { nombre: string; unidades: number; ingresos: number }>();
     const categorias = new Map<string, { categoria: string; unidades: number; ingresos: number }>();
-    const nombresCategoria = { PANADERIA: 'Panaderia', EXTERNO: 'Bebidas y externos', INSUMO: 'Insumos' };
+    const nombresCategoria = { PANADERIA: 'Panadería', PASTELERIA: 'Pastelería', EXTERNO: 'Bebidas y externos', INSUMO: 'Insumos' };
     for (const venta of ventas) {
       const dia = porDia.get(claveDiaLocal(venta.fecha));
       if (dia) { dia.total += num(venta.total); dia.cuentas += 1; }

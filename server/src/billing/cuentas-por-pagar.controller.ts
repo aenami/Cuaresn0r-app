@@ -1,11 +1,13 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Req } from '@nestjs/common';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Area } from '../auth/decorators/area.decorator';
 import { AuthenticatedRequest } from '../auth/types/authenticated-request';
 import { CuentasPorPagarService } from './cuentas-por-pagar.service';
 import { CrearCuentaPorPagarDto } from './dto/crear-cuenta-por-pagar.dto';
 import { PagarCuentaPorPagarDto } from './dto/pagar-cuenta-por-pagar.dto';
 
 @Roles('ADMIN', 'CAJERO')
+@Area('AMBAS')
 @Controller('/billing/cuentas-por-pagar')
 export class CuentasPorPagarController {
   constructor(private readonly cuentas: CuentasPorPagarService) {}
@@ -21,7 +23,7 @@ export class CuentasPorPagarController {
   }
 
   @Post()
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'CAJERO')
   crear(@Body() dto: CrearCuentaPorPagarDto) {
     return this.cuentas.crear(dto);
   }

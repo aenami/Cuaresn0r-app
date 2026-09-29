@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '../generated/prisma/client';
 import { CreatePagoNominaDto } from './dto/create-pago-nomina.dto';
+import { areaActual, exigirArea } from '../auth/access-context';
 
 type DevengoConSaldo = {
   devengo: Prisma.DevengoNominaGetPayload<{
@@ -28,6 +29,7 @@ export class PagosNominaService {
       where: { id_empleado: idEmpleado },
     });
     if (!empleado) throw new NotFoundException('Empleado no encontrado');
+    exigirArea(empleado.area);
     return empleado;
   }
 
@@ -102,6 +104,7 @@ export class PagosNominaService {
     idUsuario: number,
     dto: CreatePagoNominaDto,
   ) {
+    await this.findEmpleado(this.prisma, idEmpleado);
     return this.prisma.$transaction(async (tx) => {
       // Lock del empleado: dos pagos concurrentes leerian los mismos
       // pendientes y los cubririan dos veces.
@@ -252,10 +255,12 @@ export class PagosNominaService {
     const cero = new Prisma.Decimal(0);
     const [devengos, pagos] = await Promise.all([
       this.prisma.devengoNomina.groupBy({
+        where: { empleado: { area: areaActual() } },
         by: ['id_empleado_devengoNomina'],
         _sum: { monto_devengoNomina: true },
       }),
       this.prisma.pagoNomina.groupBy({
+        where: { empleado: { area: areaActual() } },
         by: ['id_empleado_pagoNomina'],
         _sum: { monto_pagoNomina: true },
       }),

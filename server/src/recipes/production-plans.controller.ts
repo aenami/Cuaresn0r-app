@@ -4,8 +4,10 @@ import { AuthenticatedRequest } from '../auth/types/authenticated-request';
 import { CreateProductionPlanDto } from './dto/create-production-plan.dto';
 import { UpdateProductionPlanStatusDto } from './dto/update-production-plan-status.dto';
 import { ProductionPlansService } from './production-plans.service';
+import { esAdministrador } from '../auth/access-context';
 
 @Controller('/recipes/production-plans')
+@Roles('ADMIN', 'CAJERO', 'COCINERO')
 export class ProductionPlansController {
   constructor(private readonly productionPlans: ProductionPlansService) {}
 
@@ -26,7 +28,7 @@ export class ProductionPlansController {
     @Body() dto: UpdateProductionPlanStatusDto,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.productionPlans.actualizarEstado(id, dto.estado, req.user.id, req.user.rolNombre === 'ADMIN');
+    return this.productionPlans.actualizarEstado(id, dto.estado, req.user.id, esAdministrador(req.user.rolNombre));
   }
 
   @Roles('ADMIN')

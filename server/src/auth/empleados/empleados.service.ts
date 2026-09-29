@@ -7,6 +7,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateEmpleadoDto } from './dto/create-empleado.dto';
 import { UpdateEmpleadoDto } from './dto/update-empleado.dto';
 import { EstadoEmpleado, Prisma } from '../../generated/prisma/client';
+import { accessContext, areaActual, esGlobal, exigirArea } from '../access-context';
 
 @Injectable()
 export class EmpleadosService {
@@ -15,6 +16,7 @@ export class EmpleadosService {
   async create(dto: CreateEmpleadoDto) {
     return this.prisma.empleado.create({
       data: {
+        area: areaActual(),
         nombre_empleado: dto.nombre,
         apellido_empleado: dto.apellido,
         fecha_ingreso_empleado: dto.fechaIngreso
@@ -26,7 +28,7 @@ export class EmpleadosService {
 
   async findAll(estado?: EstadoEmpleado) {
     return this.prisma.empleado.findMany({
-      where: estado ? { estado_empleado: estado } : undefined,
+      where: { area: areaActual(), ...(estado && { estado_empleado: estado }) },
       orderBy: { id_empleado: 'asc' },
     });
   }
@@ -36,11 +38,13 @@ export class EmpleadosService {
       where: { id_empleado: id },
     });
     if (!empleado) throw new NotFoundException('Empleado no encontrado');
+    exigirArea(empleado.area);
     return empleado;
   }
 
   async update(id: number, dto: UpdateEmpleadoDto) {
     await this.findOne(id);
+    await this.exigirGestionPermitida(id);
     return this.prisma.empleado.update({
       where: { id_empleado: id },
       data: {
@@ -55,11 +59,13 @@ export class EmpleadosService {
 
   // Revoca de inmediato el acceso del Usuario asociado (se valida estado_empleado en el login).
   async deactivate(id: number) {
+    await this.findOne(id);
+    await this.exigirGestionPermitida(id);
     return this.prisma.$transaction(async (tx) => {
       // Mismo bloqueo compartido con UsuariosService: serializa desactivaciones,
       // eliminaciones y cambios de rol que puedan retirar acceso administrativo.
       const filasRol = await tx.$queryRaw<{ id_rol: number }[]>`
-        SELECT id_rol FROM "Rol" WHERE nombre_rol = 'ADMIN' FOR UPDATE
+        SELECT id_rol FROM "Rol" WHERE nombre_rol IN ('ADMIN_GLOBAL', 'ADMIN') ORDER BY id_rol FOR UPDATE
       `;
       if (!filasRol[0])
         throw new ConflictException(
@@ -75,13 +81,13 @@ export class EmpleadosService {
       // esta ACTIVO, desactivarlo revocaria su acceso de inmediato.
       if (empleado.estado_empleado === 'ACTIVO') {
         const usuarioAdmin = await tx.usuario.findFirst({
-          where: { id_empleado_usuario: id, rol: { nombre_rol: 'ADMIN' } },
+          where: { id_empleado_usuario: id, rol: { nombre_rol: { in: ['ADMIN_GLOBAL', 'ADMIN'] } } },
           select: { id_usuario: true },
         });
         if (usuarioAdmin) {
           const adminsActivos = await tx.usuario.count({
             where: {
-              rol: { nombre_rol: 'ADMIN' },
+              rol: { nombre_rol: { in: ['ADMIN_GLOBAL', 'ADMIN'] } },
               empleado: { estado_empleado: 'ACTIVO' },
             },
           });
@@ -105,9 +111,16 @@ export class EmpleadosService {
 
   async reactivate(id: number) {
     await this.findOne(id);
+    await this.exigirGestionPermitida(id);
     return this.prisma.empleado.update({
       where: { id_empleado: id },
       data: { estado_empleado: 'ACTIVO', fecha_retiro_empleado: null },
     });
+  }
+  private async exigirGestionPermitida(id: number) {
+    const actor = accessContext.getStore()?.user;
+    if (!actor || esGlobal(actor.rolNombre)) return;
+    const global = await this.prisma.usuario.findFirst({ where: { id_empleado_usuario: id, rol: { nombre_rol: { in: ['ADMIN_GLOBAL', 'ADMIN'] } } } });
+    if (global) throw new ConflictException('Solo el administrador global puede gestionar al personal con acceso global');
   }
 }

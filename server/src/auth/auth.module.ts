@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { AccessContextInterceptor } from './access-context.interceptor';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { EmpleadosController } from './empleados/empleados.controller';
@@ -15,6 +16,7 @@ import { TokenModule } from '../common/token/token.module';
   imports: [CryptoModule, TokenModule],
   controllers: [AuthController, EmpleadosController, UsuariosController],
   providers: [
+    { provide: APP_INTERCEPTOR, useClass: AccessContextInterceptor },
     AuthService,
     EmpleadosService,
     UsuariosService,

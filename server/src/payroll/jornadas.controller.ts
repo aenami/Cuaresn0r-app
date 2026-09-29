@@ -2,12 +2,14 @@ import { Controller, Get, Post, Body, Param, Patch, Delete, ParseIntPipe, Query 
 import { JornadasService } from './jornadas.service';
 import { MarcarDto } from './dto/marcar.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Area } from '../auth/decorators/area.decorator';
 import { EstadoJornada } from '../generated/prisma/client';
 
 // El cajero de turno es quien registra entradas/salidas del personal
 // (seccion 11: la trazabilidad de quien marco queda implicita en el turno).
-@Roles('ADMIN', 'CAJERO')
+@Roles('ADMIN')
 @Controller('/payroll/jornadas')
+@Area('AMBAS')
 export class JornadasController {
   constructor(private readonly jornadasService: JornadasService) {}
 

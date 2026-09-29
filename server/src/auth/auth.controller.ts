@@ -11,6 +11,7 @@ import { TokenService } from '../common/token/token.service';
 import { CryptoService } from '../common/crypto/crypto.service';
 import { Public } from './decorators/public.decorator';
 import { Roles } from './decorators/roles.decorator';
+import { Area } from './decorators/area.decorator';
 
 @Controller('/auth')
 export class AuthController {
@@ -46,6 +47,7 @@ export class AuthController {
   // Solo lectura: los roles del sistema son fijos (ver roles.constants.ts).
   // Este listado existe para elegir idRol al crear/editar usuarios.
   @Roles('ADMIN')
+  @Area('AMBAS')
   @Get('/roles')
   findRoles() {
     return this.authService.findRoles();

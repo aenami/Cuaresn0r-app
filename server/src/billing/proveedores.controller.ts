@@ -1,9 +1,11 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Area } from '../auth/decorators/area.decorator';
 import { CrearProveedorDto } from './dto/crear-proveedor.dto';
 import { ProveedoresService } from './proveedores.service';
 
 @Controller('/billing/proveedores')
+@Area('AMBAS')
 export class ProveedoresController {
   constructor(private readonly proveedores: ProveedoresService) {}
 
@@ -14,7 +16,7 @@ export class ProveedoresController {
   }
 
   @Post()
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'CAJERO')
   crear(@Body() dto: CrearProveedorDto) {
     return this.proveedores.crear(dto);
   }

@@ -18,6 +18,10 @@ export class DetalleCompraDto {
   @ValidateIf((_, valor) => valor !== undefined)
   @IsInt()
   @IsPositive()
+  articuloPanaderiaId?: number;
+  @ValidateIf((_, valor) => valor !== undefined)
+  @IsInt()
+  @IsPositive()
   idIngrediente?: number;
 
   @ValidateIf((_, valor) => valor !== undefined)

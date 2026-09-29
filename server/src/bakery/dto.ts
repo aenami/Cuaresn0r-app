@@ -205,3 +205,13 @@ export class PagarTransferenciaRestauranteDto {
   @IsIn(['EFECTIVO', 'TRANSFERENCIA'])
   metodo!: 'EFECTIVO' | 'TRANSFERENCIA';
 }
+
+export class EntregaRemisionDto {
+  @IsUUID() claveOperacion!: string;
+  @IsIn(['TURNO', 'DIA']) modalidad!: 'TURNO' | 'DIA';
+  @IsInt() @Min(1) articuloId!: number;
+  @IsInt() @Min(1) ingredienteDestinoId!: number;
+  @IsNumber({ maxDecimalPlaces: 4 }) @Min(0.0001) cantidad!: number;
+  @IsInt() @Min(1) precioUnitario!: number;
+  @IsString() @IsNotEmpty() @MaxLength(150) concepto!: string;
+}
