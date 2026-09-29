@@ -610,3 +610,43 @@ alcance o feature terminada.
 - No se publicaron cambios en Neon, Render ni Vercel. Continúan pendientes
   la validación operativa con el negocio, el NIT/numeración fiscal y la prueba
   física de las impresoras.
+
+### 2026-09-29 — Apertura del conteo e informe por fechas
+
+- Al añadir por primera vez un ingrediente del Restaurante a la lista fija,
+  el saldo inicial se guarda a partir del inventario. Se reconstruye la
+  apertura del día con los movimientos ya registrados para no duplicar
+  entradas ni ignorar salidas anteriores al alta. El último conteo físico
+  confirmado prevalece; retirar y reactivar el mismo día conserva la base.
+- Los productos de carta del Restaurante no tienen existencias propias y
+  conservan el saldo inicial manual, tal como se acordó. El formulario solo
+  solicita ese dato para productos; para ingredientes indica la base automática.
+- Panadería abre el primer conteo desde sus existencias y movimientos reales.
+  Si hay un conteo anterior, el nuevo día parte de ese físico más los
+  movimientos posteriores, sin duplicar `AJUSTE_CONTEO`. La proyección y el
+  conteo guardado utilizan la misma apertura; volver a contar ese día no la
+  recalcula. Una fecha histórica sin registros suficientes ya no muestra el
+  stock actual como si fuera el saldo antiguo.
+- El análisis monetario en Inventario permite cualquier rango inclusivo de
+  fechas de Colombia de hasta 366 días; ofrece Hoy, Últimos 7 días y Este mes.
+  Agrupa por artículo y área, separando ingreso estimado de productos a precio
+  de venta, costo consumido de ingredientes y pérdidas estimadas por faltantes.
+  Mantiene referencias históricas congeladas y excluye conteos pendientes,
+  por recontar, no comparables, sin costo y anteriores a la valoración. La API
+  mensual sigue disponible para compatibilidad.
+- Las tarjetas diarias ahora priorizan cifras, diferencias y acciones; se
+  quitaron las explicaciones repetidas y un rótulo poco visible. Los
+  conceptos necesarios para interpretar el dinero quedan en el análisis y
+  la guía. No se crearon ventas, cobros ni ajustes de existencias al calcular
+  importes.
+- Verificación: servidor y cliente compilan; lint del cliente aprobado;
+  25 suites / 366 pruebas unitarias y 92 comprobaciones HTTP en PostgreSQL
+  temporal local. Las bases temporales se eliminaron y se verificó que no
+  quedara ninguna. La base `POS` real no se modificó; no hay migración nueva.
+- Interfaz: 27 controles con API simulada, cinco capturas de escritorio/móvil
+  y revisión final de las tres correcciones de presentación resuelta. Las
+  capturas no sustituyen la prueba HTTP real; ambas verificaciones se hicieron
+  por separado. Se conservó la identidad visual existente.
+- Cambios en commits locales; sin despliegue en Neon, Render ni Vercel. La
+  prueba física de las impresoras y las definiciones fiscales siguen
+  pendientes.

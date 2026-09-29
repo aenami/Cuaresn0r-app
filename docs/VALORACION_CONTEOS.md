@@ -1,6 +1,14 @@
 # Valoración de conteos
 
-La valoración de Inventario sirve para revisar salidas y diferencias físicas en Panadería y Restaurante. Se consulta junto al conteo diario y en **Valoración mensual del inventario**. Todos los importes se expresan en COP; no registran ventas, cobros, utilidad ni movimientos de stock.
+La valoración de Inventario sirve para revisar salidas y diferencias físicas en Panadería y Restaurante. Se consulta junto al conteo diario y en **Análisis del conteo por fechas**. Todos los importes se expresan en COP; no registran ventas, cobros, utilidad ni movimientos de stock.
+
+## Fijar y continuar el saldo de apertura
+
+En Panadería se cuentan todos los artículos activos. Si todavía no hay un conteo anterior, **Inicio del día** parte del inventario del artículo: cuando hubo movimientos hoy, toma la existencia anterior al primero; si no los hubo, usa la existencia actual. Después de un conteo, la siguiente apertura encadena el último saldo físico con los movimientos reales posteriores, sin volver a sumar `AJUSTE_CONTEO`. Una fecha histórica sin conteo previo ni movimientos suficientes muestra la apertura como desconocida (`—`); no se rellena con el stock de hoy.
+
+En Restaurante, el administrador configura la **Lista fija del conteo diario**. Para un `INGREDIENTE` sin cierre previo, el saldo inicial se obtiene automáticamente de `stock_ingrediente` y se revierten los movimientos reales que ya ocurrieron ese día, de modo que las entradas del día no se dupliquen al calcular el disponible. No se pide un saldo inicial manual. Un `PRODUCTO` no tiene ese stock propio: si no existe un conteo físico anterior, se indica manualmente un saldo inicial entero. En los días siguientes se usa el último conteo físico confirmado; retirar un elemento de la lista no borra sus cierres anteriores.
+
+Marcar una meta del plan diario de Restaurante como `PRODUCIDO` ya incorpora su cantidad a las entradas del conteo de ese día, pero no incrementa por sí solo el caché `stock_ingrediente`. Verifica el origen antes de registrar una `ENTRADA` manual: no registres dos veces la misma producción.
 
 ## Leer los importes
 
@@ -25,15 +33,17 @@ Con 2 kg de consumo corroborado a un costo de $4.500/kg y 0,5 kg adicionales sin
 
 Los productos usan su precio de venta. Los ingredientes de Restaurante usan el costo existente. En Panadería, el `INSUMO` admite un `costoReferencia` opcional en COP por la unidad del artículo, con hasta cuatro decimales. Dejarlo vacío (`null`) significa que no hay referencia y excluye ese conteo de los importes; un costo explícito de `0` sí es una referencia válida.
 
-Al confirmar, se guarda una valoración JSON con precio o costo, cantidades, artículo, unidad e importes de ese momento. Cambiar después un precio o costo no modifica los conteos ya confirmados. Un conteo antiguo sin valoración guardada no se reconstruye con precios actuales.
+Al confirmar, se guarda una valoración JSON con precio o costo, cantidades, nombre del artículo, unidad e importes de ese momento. Cambiar después un precio o costo no modifica los conteos ya confirmados. Un conteo antiguo sin valoración guardada no se reconstruye con precios actuales.
 
 Si reabres un conteo, se elimina su valoración guardada. Si hay movimientos posteriores, pasa a **RECONTAR** y sus importes dejan de sumar. Registra el nuevo conteo físico y confirma otra vez para guardar una valoración vigente.
 
-## Consultar el mes
+## Consultar un período
 
-El resumen agrupa por artículo, área y mes de Colombia. Mantiene separadas las tablas **Productos · precio de venta** e **Ingredientes · costo unitario** y muestra los días valorados, ingreso estimado o costo consumido, pérdida por faltantes y sobrante valorado. No suma costo consumido con ingreso de productos como una cifra de ventas.
+Debajo del conteo diario, **Análisis del conteo por fechas** comienza con los últimos siete días, incluido hoy en Colombia. Los accesos **Hoy**, **Últimos 7 días** y **Este mes** aplican el período de inmediato. Para un intervalo propio, elige **Desde** y **Hasta** y pulsa **Consultar**; cambiar una fecha sin consultar conserva el resultado anterior. Ambos extremos se incluyen. Se admiten fechas válidas entre 2000 y 9998 y un máximo de **366 días** contando ambos extremos.
 
-El resumen mensual está disponible para administradores: el global elige el área desde su selector y el administrador local consulta únicamente la propia. Inventario usa referencias mínimas de artículos y no necesita abrir Catálogos. En móvil, la tabla permite desplazarse horizontalmente para consultar los importes.
+El resumen agrupa por artículo y área dentro del período elegido. Mantiene separadas las tablas **Productos · precio de venta** e **Ingredientes · costo unitario** y muestra los días valorados, ingreso estimado o costo consumido, pérdida por faltantes y sobrante valorado. Las pérdidas de productos e ingredientes se muestran por separado; el costo consumido no se suma al ingreso estimado como ventas. Los importes proceden de las valoraciones históricas guardadas en cada conteo.
+
+Esta consulta está disponible para administradores: el global elige el área desde su selector y el administrador local consulta únicamente la propia. Inventario usa referencias mínimas de artículos y no necesita abrir Catálogos. En móvil, cada tabla permite desplazarse horizontalmente para consultar los importes. La interfaz consulta `/recipes/inventory-valuation/range`; la API `/recipes/inventory-valuation/monthly` sigue disponible por compatibilidad.
 
 Solo suman conteos con valoración guardada, válida y vigente. El resumen informa la cantidad excluida por cada causa:
 
@@ -45,7 +55,7 @@ Solo suman conteos con valoración guardada, válida y vigente. El resumen infor
 | **SIN_REFERENCIA** | Configurar el costo por unidad y confirmar de nuevo; no se supone un costo de cero. |
 | **SIN_VALORACION_HISTORICA** | Mantener el registro antiguo fuera de los importes; no asignarle precios actuales. |
 
-Si todavía no hay conteos vigentes, el resumen muestra un estado vacío. Si falla la consulta, usa **Reintentar**. Estos estados no modifican caja ni inventario.
+Si todavía no hay conteos vigentes en el período, el resumen muestra un estado vacío. Si falla la consulta, usa **Reintentar**. Estos estados no modifican caja ni inventario.
 
 ## Alcance instalado
 
