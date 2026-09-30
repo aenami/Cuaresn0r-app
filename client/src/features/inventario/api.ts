@@ -56,11 +56,13 @@ export function planProduccionQuery(fecha: string) {
   })
 }
 
-export function conteoInventarioQuery(fecha: string) {
+export function conteoInventarioQuery(fecha: string, prepararHoy: boolean) {
   return queryOptions({
     queryKey: ['inventario', 'conteo-diario', fecha],
-    // Operación idempotente: prepara únicamente hoy; otras fechas son de consulta.
-    queryFn: () => api.post<ConteoInventarioDiario[]>(`/recipes/inventory-counts/prepare?date=${fecha}`),
+    // Solo la jornada actual se prepara. Consultar el historial nunca escribe datos.
+    queryFn: () => prepararHoy
+      ? api.post<ConteoInventarioDiario[]>(`/recipes/inventory-counts/prepare?date=${fecha}`)
+      : api.get<ConteoInventarioDiario[]>(`/recipes/inventory-counts?date=${fecha}`),
     refetchInterval: 15_000,
   })
 }

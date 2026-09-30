@@ -17,6 +17,11 @@ export const Route = createFileRoute('/_auth/inventario')({
 })
 
 type Pestana = 'produccion' | 'conteo' | 'ingredientes' | 'recetas'
+type VistaConteo = 'registro' | 'analisis'
+const VISTAS_CONTEO: { id: VistaConteo; etiqueta: string }[] = [
+  { id: 'registro', etiqueta: 'Registro diario' },
+  { id: 'analisis', etiqueta: 'Análisis por fechas' },
+]
 
 const PESTANAS: { id: Pestana; etiqueta: string }[] = [
   { id: 'produccion', etiqueta: 'Produccion diaria' },
@@ -64,18 +69,73 @@ function PaginaInventario() {
 
       <div className="mt-8">
         {area === 'PANADERIA' ? pestanaVisible === 'recetas' ? <RecetasPanaderia esAdmin={esAdmin} />
-          : <InventarioPanaderia esAdmin={esAdmin && !esGlobal} vista={pestanaVisible === 'ingredientes' ? 'ingredientes' : 'conteo'} />
+          : pestanaVisible === 'conteo' ? <VistaInternaConteo key={area} area={area} esAdmin={esAdmin} esGlobal={esGlobal} />
+          : <InventarioPanaderia esAdmin={esAdmin && !esGlobal} vista="ingredientes" />
           : pestanaVisible === 'produccion' ? (
           <SeccionProduccion esAdmin={esAdmin} />
         ) : pestanaVisible === 'conteo' ? (
-          <SeccionConteoDiario esAdmin={esAdmin} />
+          <VistaInternaConteo key={area} area={area} esAdmin={esAdmin} esGlobal={esGlobal} />
         ) : pestanaVisible === 'ingredientes' ? (
           <SeccionIngredientes esAdmin={esAdmin} />
         ) : (
           <SeccionRecetas esAdmin={esAdmin} />
         )}
       </div>
-      {pestanaVisible === 'conteo' && esAdmin && <ResumenMonetarioPorFechas />}
     </div>
+  )
+}
+
+function VistaInternaConteo({ area, esAdmin, esGlobal }: {
+  area: 'RESTAURANTE' | 'PANADERIA'
+  esAdmin: boolean
+  esGlobal: boolean
+}) {
+  const [vista, setVista] = useState<VistaConteo>('registro')
+
+  return (
+    <section aria-label="Conteo diario">
+      {esAdmin ? (
+        <div role="tablist" aria-label="Secciones del conteo diario" className="mb-6 flex w-fit max-w-full gap-1 overflow-x-auto rounded-lg bg-surface-low p-1">
+          {VISTAS_CONTEO.map((opcion) => (
+            <button
+              key={opcion.id}
+              id={`conteo-tab-${opcion.id}`}
+              type="button"
+              role="tab"
+              aria-selected={vista === opcion.id}
+              aria-controls={`conteo-panel-${opcion.id}`}
+              tabIndex={vista === opcion.id ? 0 : -1}
+              onClick={() => setVista(opcion.id)}
+              onKeyDown={(evento) => {
+                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(evento.key)) return
+                evento.preventDefault()
+                const siguiente = evento.key === 'Home' ? 'registro'
+                  : evento.key === 'End' ? 'analisis'
+                    : vista === 'registro' ? 'analisis' : 'registro'
+                setVista(siguiente)
+                document.getElementById(`conteo-tab-${siguiente}`)?.focus()
+              }}
+              className={cn(
+                'shrink-0 rounded-md px-4 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                vista === opcion.id ? 'bg-surface-high text-primary' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {opcion.etiqueta}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      <div id="conteo-panel-registro" role={esAdmin ? 'tabpanel' : undefined} aria-labelledby={esAdmin ? 'conteo-tab-registro' : undefined} hidden={vista !== 'registro'}>
+        {vista === 'registro' ? area === 'PANADERIA'
+          ? <InventarioPanaderia esAdmin={esAdmin && !esGlobal} vista="conteo" />
+          : <SeccionConteoDiario esAdmin={esAdmin} /> : null}
+      </div>
+      {esAdmin ? (
+        <div id="conteo-panel-analisis" role="tabpanel" aria-labelledby="conteo-tab-analisis" hidden={vista !== 'analisis'}>
+          {vista === 'analisis' ? <ResumenMonetarioPorFechas /> : null}
+        </div>
+      ) : null}
+    </section>
   )
 }

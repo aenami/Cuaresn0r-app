@@ -520,6 +520,90 @@ describe('Lista permanente de conteo', () => {
 });
 
 describe('InventoryCountsService', () => {
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-14T15:00:00Z'));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('recupera el conteo persistido de una fecha pasada sin crear filas nuevas', async () => {
+    const historico = {
+      id_conteoInventario: 19,
+      fecha_conteoInventario: new Date('2026-09-13'),
+      fecha_anterior_conteoInventario: null,
+      tipo_objetivo_conteoInventario: TipoObjetivoProduccion.INGREDIENTE,
+      id_ingrediente_conteoInventario: 8,
+      id_producto_conteoInventario: null,
+      nombre_objetivo_conteoInventario: 'Queso',
+      unidad_objetivo_conteoInventario: 'kg',
+      cantidad_anterior_conteoInventario: new Prisma.Decimal(10),
+      cantidad_salida_conteoInventario: new Prisma.Decimal(3),
+      cantidad_fisica_conteoInventario: new Prisma.Decimal(7),
+      estado_conteoInventario: EstadoConteoInventario.FINALIZADO,
+      fecha_finalizacion_conteoInventario: new Date('2026-09-13T22:00:00Z'),
+      valoracion: null,
+    };
+    const { service, spies, prisma, tx } = setup();
+    jest.spyOn(prisma.conteoInventarioDiario, 'findMany').mockResolvedValue([historico] as never);
+    Object.assign(prisma, {
+      detalleComanda: tx.detalleComanda,
+      transferenciaRestaurantePanaderia: tx.transferenciaRestaurantePanaderia,
+      movimientoInventario: tx.movimientoInventario,
+      planProduccionDiaria: tx.planProduccionDiaria,
+      detalleCuentaPorPagar: tx.detalleCuentaPorPagar,
+    });
+    const filas = await service.findAll('2026-09-13');
+    expect(filas).toEqual([expect.objectContaining({ id_conteoInventario: 19 })]);
+    expect(prisma.conteoInventarioDiario.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { fecha_conteoInventario: new Date('2026-09-13') } }),
+    );
+    expect(spies.crear).not.toHaveBeenCalled();
+  });
+
+  it.each(['2026-09-13', '2026-09-15'])(
+    'no crea conteos fuera del dia actual: %s',
+    async (fecha) => {
+      const { service, spies } = setup();
+      await expect(service.create({
+        fecha,
+        tipo: TipoObjetivoProduccion.INGREDIENTE,
+        idObjetivo: 8,
+        cantidadInicial: 10,
+      }, 2)).rejects.toBeInstanceOf(BadRequestException);
+      expect(spies.crear).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['2026-09-13', '2026-09-15'])(
+    'no finaliza conteos almacenados fuera del dia actual: %s',
+    async (fecha) => {
+      const { service, spies } = setup({
+        conteo: {
+          id_conteoInventario: 4,
+          fecha_conteoInventario: new Date(fecha),
+          estado_conteoInventario: EstadoConteoInventario.PENDIENTE,
+        },
+      });
+      await expect(service.finalize(4, 5, 2)).rejects.toBeInstanceOf(BadRequestException);
+      expect(spies.actualizar).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['2026-09-13', '2026-09-15'])(
+    'no reabre ni elimina conteos almacenados fuera del dia actual: %s',
+    async (fecha) => {
+      const { service, spies } = setup({
+        conteo: {
+          id_conteoInventario: 4,
+          fecha_conteoInventario: new Date(fecha),
+          estado_conteoInventario: EstadoConteoInventario.PENDIENTE,
+        },
+      });
+      await expect(service.reopen(4)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.remove(4)).rejects.toBeInstanceOf(BadRequestException);
+      expect(spies.actualizar).not.toHaveBeenCalled();
+    },
+  );
+
   it('exige un saldo inicial cuando no existe un cierre anterior', async () => {
     const { service } = setup();
 

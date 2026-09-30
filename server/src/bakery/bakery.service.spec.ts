@@ -1,5 +1,7 @@
 import { Prisma } from '../generated/prisma/client';
+import { BadRequestException } from '@nestjs/common';
 import { BakeryService, resumenConteo } from './bakery.service';
+import { BakeryController } from './bakery.controller';
 import { PrismaService } from '../prisma/prisma.service';
 
 const decimal = (valor: number) => new Prisma.Decimal(valor);
@@ -319,17 +321,12 @@ describe('conciliacion de inventario de panaderia', () => {
     );
   });
 
-  it('solo consulta conteos previos que ya existían al iniciar la fecha seleccionada', async () => {
+  it('no reconstruye saldos con la lista actual al consultar una fecha pasada', async () => {
     const { servicio, tx } = conteoFixture();
     await servicio.estadoConteo(new Date('2026-09-28'));
-    expect(tx.conteoPanaderia.findMany).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        where: {
-          articuloId: { in: [1] },
-          fecha: { lt: new Date('2026-09-28') },
-          fechaRegistro: { lte: new Date('2026-09-28T05:00:00Z') },
-        },
-      }),
+    expect(tx.conteoPanaderia.findMany).toHaveBeenCalledTimes(1);
+    expect(tx.conteoPanaderia.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { fecha: new Date('2026-09-28') } }),
     );
   });
 
@@ -413,9 +410,80 @@ describe('conciliacion de inventario de panaderia', () => {
       const estado = await new BakeryService(prisma).estadoConteo(
         new Date(fecha),
       );
-      expect(estado.proyeccion[0].cantidadInicial).toBeNull();
+      if (fecha === '2026-09-28') {
+        expect(estado.proyeccion).toEqual([]);
+      } else {
+        expect(estado.proyeccion[0].cantidadInicial).toBeNull();
+      }
     },
   );
+
+  it('usa las fotos contadas, incluso de articulos hoy inactivos, al consultar un dia pasado', async () => {
+    const articuloContado = { id: 2, nombre: 'Pan antiguo', activo: false };
+    const conteo = {
+      articuloId: 2,
+      articulo: articuloContado,
+      cantidadInicial: decimal(12),
+      entradas: decimal(3),
+      ventasRegistradas: decimal(4),
+      transferencias: decimal(0),
+      mermas: decimal(0),
+      consumoReceta: decimal(0),
+      cantidadFisica: decimal(11),
+      precioReferencia: decimal(2500),
+      fechaRegistro: new Date('2026-09-28T22:00:00Z'),
+    };
+    const prisma = {
+      articuloPanaderia: {
+        findMany: jest.fn().mockResolvedValue([{ id: 1, nombre: 'Pan nuevo', activo: true }]),
+      },
+      conteoPanaderia: { findMany: jest.fn().mockResolvedValue([conteo]) },
+      movimientoPanaderia: { findMany: jest.fn().mockResolvedValue([{
+        articuloId: 2,
+        tipo: 'VENTA',
+        fecha: new Date('2026-09-28T22:30:00Z'),
+      }]) },
+    } as unknown as PrismaService;
+    const estado = await new BakeryService(prisma).estadoConteo(new Date('2026-09-28'));
+    expect(estado.detalle).toHaveLength(1);
+    expect(estado.detalle[0].articulo.nombre).toBe('Pan antiguo');
+    expect(estado.detalle[0].requiereReconteo).toBe(true);
+    expect(estado.recontar).toEqual(['Pan antiguo']);
+    expect(estado.proyeccion).toEqual([expect.objectContaining({
+      articuloId: 2,
+      cantidadInicial: decimal(12),
+      entradas: decimal(3),
+      ventasRegistradas: decimal(4),
+    })]);
+    expect(prisma.conteoPanaderia.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.movimientoPanaderia.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ articuloId: { in: [2] } }),
+    }));
+  });
+
+  it('proyecta la lista vigente para una fecha futura sin calcular saldos ni escribir conteos', async () => {
+    const prisma = {
+      articuloPanaderia: {
+        findMany: jest.fn().mockResolvedValue([{ id: 1, nombre: 'Pan', activo: true, existencia: decimal(12) }]),
+      },
+      conteoPanaderia: { findMany: jest.fn().mockResolvedValue([]), upsert: jest.fn() },
+      movimientoPanaderia: { findMany: jest.fn() },
+    } as unknown as PrismaService;
+    const estado = await new BakeryService(prisma).estadoConteo(new Date('2026-09-30'));
+    expect(estado.proyeccion).toEqual([expect.objectContaining({ articuloId: 1, cantidadInicial: null })]);
+    expect(prisma.conteoPanaderia.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.conteoPanaderia.upsert).not.toHaveBeenCalled();
+    expect(prisma.movimientoPanaderia.findMany).not.toHaveBeenCalled();
+  });
+
+  it('valida la fecha de la consulta de conteos de panaderia', async () => {
+    const servicio = { estadoConteo: jest.fn().mockResolvedValue({ detalle: [] }) };
+    const controller = new BakeryController(servicio as unknown as BakeryService);
+    await expect(controller.estadoConteo('2026-09-28')).resolves.toEqual({ detalle: [] });
+    expect(servicio.estadoConteo).toHaveBeenCalledWith(new Date('2026-09-28'));
+    expect(() => controller.estadoConteo('2026-02-30')).toThrow(BadRequestException);
+    expect(() => controller.estadoConteo('30/09/2026')).toThrow(BadRequestException);
+  });
 
   it('la proyección de hoy sin movimientos usa existencia, sin escribir un conteo', async () => {
     const prisma = {
@@ -527,6 +595,6 @@ describe('conciliacion de inventario de panaderia', () => {
     );
     expect(estado.completo).toBe(false);
     expect(estado.recontar).toEqual(['Pan']);
-    expect(estado.proyeccion[0].cantidadInicial.toString()).toBe('12');
+    expect(estado.proyeccion[0].cantidadInicial!.toString()).toBe('12');
   });
 });

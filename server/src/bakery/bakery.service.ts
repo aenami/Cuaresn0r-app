@@ -360,6 +360,9 @@ export class BakeryService {
   }
 
   async estadoConteo(fecha = fechaColombia(), cliente: Cliente = this.prisma) {
+    const hoy = fechaColombia();
+    const esPasado = fecha.getTime() < hoy.getTime();
+    const esFuturo = fecha.getTime() > hoy.getTime();
     const articulos = await cliente.articuloPanaderia.findMany({
       where: { activo: true }, orderBy: { nombre: 'asc' },
     });
@@ -367,15 +370,22 @@ export class BakeryService {
       where: { fecha }, include: { articulo: true },
     });
     const conteoPorArticulo = new Map(conteos.map((conteo) => [conteo.articuloId, conteo]));
-    const saldosPrevios = await this.saldosDesdeConteoPrevio(
-      cliente, articulos.filter((articulo) => !conteoPorArticulo.has(articulo.id)).map((articulo) => articulo.id), fecha,
-    );
+    const saldosPrevios = esPasado || esFuturo
+      ? new Map<number, Prisma.Decimal>()
+      : await this.saldosDesdeConteoPrevio(
+          cliente, articulos.filter((articulo) => !conteoPorArticulo.has(articulo.id)).map((articulo) => articulo.id), fecha,
+        );
     const faltantes = articulos.filter((articulo) => !conteoPorArticulo.has(articulo.id)).map((a) => a.nombre);
     const { inicio, fin } = rangoDia(fecha);
-    const movimientos = await cliente.movimientoPanaderia.findMany({
-      where: { articuloId: { in: articulos.map((articulo) => articulo.id) }, fecha: { gte: inicio, lt: fin } },
-      orderBy: [{ fecha: 'asc' }, { id: 'asc' }],
-    });
+    const idsConMovimientos = esPasado
+      ? conteos.map((conteo) => conteo.articuloId)
+      : articulos.map((articulo) => articulo.id);
+    const movimientos = esFuturo
+      ? []
+      : await cliente.movimientoPanaderia.findMany({
+          where: { articuloId: { in: idsConMovimientos }, fecha: { gte: inicio, lt: fin } },
+          orderBy: [{ fecha: 'asc' }, { id: 'asc' }],
+        });
     const movimientosPorArticulo = new Map<number, typeof movimientos>();
     for (const movimiento of movimientos) {
       const lista = movimientosPorArticulo.get(movimiento.articuloId) ?? [];
@@ -387,28 +397,39 @@ export class BakeryService {
       if (movimiento.tipo !== 'AJUSTE_CONTEO')
         ultimaFecha.set(movimiento.articuloId, movimiento.fecha);
     }
-    const recontar = articulos.filter((articulo) => {
-      const conteo = conteoPorArticulo.get(articulo.id);
-      const ultima = ultimaFecha.get(articulo.id);
-      return conteo && ultima && ultima > conteo.fechaRegistro;
-    }).map((articulo) => articulo.nombre);
+    const recontarIds = new Set(conteos.filter((conteo) => {
+      const ultima = ultimaFecha.get(conteo.articuloId);
+      return ultima && ultima > conteo.fechaRegistro;
+    }).map((conteo) => conteo.articuloId));
+    const recontar = conteos.filter((conteo) => recontarIds.has(conteo.articuloId))
+      .map((conteo) => conteo.articulo.nombre);
     const detalle = conteos.map((conteo) => ({
       ...conteo,
       conciliacion: resumenConteo(conteo),
-      requiereReconteo: recontar.includes(conteo.articulo.nombre),
-      valoracion: presentarValoracion(conteo.valoracion, recontar.includes(conteo.articulo.nombre) ? 'RECONTAR' : undefined),
+      requiereReconteo: recontarIds.has(conteo.articuloId),
+      valoracion: presentarValoracion(conteo.valoracion, recontarIds.has(conteo.articuloId) ? 'RECONTAR' : undefined),
     }));
     const valorDiferencia = detalle.reduce(
       (total, conteo) => total.plus(conteo.conciliacion.valorDiferencia), cero,
     );
-    const proyeccion = articulos.map((articulo) => {
+    // Para una fecha pasada solo se conocen con certeza los artículos que
+    // realmente fueron contados; la lista activa de hoy no es su foto histórica.
+    const proyeccion = esPasado ? conteos.map((conteo) => ({
+      articuloId: conteo.articuloId,
+      cantidadInicial: conteo.cantidadInicial,
+      entradas: conteo.entradas,
+      ventasRegistradas: conteo.ventasRegistradas,
+      transferencias: conteo.transferencias,
+      mermas: conteo.mermas,
+      consumoReceta: conteo.consumoReceta,
+    })) : articulos.map((articulo) => {
       const movimientosArticulo = movimientosPorArticulo.get(articulo.id) ?? [];
       const suma = (...tipos: string[]) => movimientosArticulo
         .filter((movimiento) => tipos.includes(movimiento.tipo))
         .reduce((total, movimiento) => total.plus(movimiento.cantidad), cero);
       return {
         articuloId: articulo.id,
-        cantidadInicial: conteoPorArticulo.get(articulo.id)?.cantidadInicial
+        cantidadInicial: esFuturo ? null : conteoPorArticulo.get(articulo.id)?.cantidadInicial
           ?? saldosPrevios.get(articulo.id)
           ?? movimientosArticulo[0]?.existenciaAntes
           // Una lectura histórica no convierte el stock de hoy en un saldo

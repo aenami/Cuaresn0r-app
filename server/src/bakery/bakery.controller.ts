@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -93,7 +94,17 @@ export class BakeryController {
   }
 
   @Get('conteo')
-  estadoConteo() { return this.bakery.estadoConteo(); }
+  estadoConteo(@Query('date') fecha?: string) {
+    if (!fecha) return this.bakery.estadoConteo();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      throw new BadRequestException('La fecha debe tener formato AAAA-MM-DD');
+    }
+    const dia = new Date(`${fecha}T00:00:00.000Z`);
+    if (Number.isNaN(dia.getTime()) || dia.toISOString().slice(0, 10) !== fecha) {
+      throw new BadRequestException('La fecha no es valida');
+    }
+    return this.bakery.estadoConteo(dia);
+  }
 
   @Post('conteo/:id')
   registrarConteo(

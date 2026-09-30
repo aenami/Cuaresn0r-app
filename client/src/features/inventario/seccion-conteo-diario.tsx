@@ -59,9 +59,10 @@ function fechaLarga(fecha: string) {
 }
 
 function fechaCorta(fecha: string) {
-  return new Date(fecha).toLocaleDateString('es-CO', {
+  return new Date(`${fecha.slice(0, 10)}T12:00:00Z`).toLocaleDateString('es-CO', {
     day: 'numeric',
     month: 'short',
+    timeZone: 'UTC',
   })
 }
 
@@ -80,7 +81,19 @@ function nombreUsuario(conteo: ConteoInventarioDiario) {
 export function SeccionConteoDiario({ esAdmin }: { esAdmin: boolean }) {
   const [fecha, setFecha] = useState(() => fechaLocalIso())
   const [dialogoAbierto, setDialogoAbierto] = useState(false)
-  const { data: conteos, isPending, error } = useQuery(conteoInventarioQuery(fecha))
+  const esHoy = fecha === fechaLocalIso()
+  const esFuturo = fecha > fechaLocalIso()
+  const { data: conteos, isPending, error } = useQuery({
+    ...conteoInventarioQuery(fecha, esHoy),
+    enabled: !esFuturo,
+  })
+  const { data: elementosFuturos, isPending: cargandoElementos, error: errorElementos } = useQuery({
+    ...elementosConteoQuery,
+    enabled: esFuturo,
+  })
+  const listaFutura = (elementosFuturos ?? []).filter((elemento) =>
+    elemento.tipo !== 'PRODUCTO' || elemento.producto?.habilitado_producto !== false,
+  )
   const resumen = useMemo(() => {
     const lista = conteos ?? []
     return {
@@ -91,8 +104,6 @@ export function SeccionConteoDiario({ esAdmin }: { esAdmin: boolean }) {
       diferencias: lista.filter(item => item.conciliacion?.estado === 'DIFERENCIA' || item.conciliacion?.estado === 'NO_COMPARABLE' || item.conciliacion?.requiereReconteo).length,
     }
   }, [conteos])
-  const esHoy = fecha === fechaLocalIso()
-
   return (
     <div>
       <section className="relative overflow-hidden rounded-xl bg-surface-low p-5 sm:p-6">
@@ -144,7 +155,7 @@ export function SeccionConteoDiario({ esAdmin }: { esAdmin: boolean }) {
                 Hoy
               </Button>
             ) : null}
-            {esAdmin ? (
+            {esAdmin && esHoy ? (
               <Button type="button" className="btn-heat gap-2" onClick={() => setDialogoAbierto(true)}>
                 <ClipboardList className="size-4" /> Configurar lista fija
               </Button>
@@ -152,15 +163,47 @@ export function SeccionConteoDiario({ esAdmin }: { esAdmin: boolean }) {
           </div>
         </div>
 
-        <div className="relative mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Indicador etiqueta="Por contar" valor={resumen.pendientes} clase="text-tertiary" />
-          <Indicador etiqueta="Finalizados" valor={resumen.finalizados} clase="text-emerald-300" />
-          <Indicador etiqueta="Por revisar" valor={resumen.diferencias} clase="text-rose-300" />
-          <Indicador etiqueta="Elementos" valor={resumen.total} clase="text-foreground" />
-        </div>
+        {esFuturo ? (
+          <p className="relative mt-5 text-sm text-tertiary" role="status">
+            Vista previa · {listaFutura.length} elementos de la lista fija actual. Podrán cambiar antes de esta fecha; no es posible ingresar valores todavía.
+          </p>
+        ) : (
+          <div className="relative mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Indicador etiqueta="Por contar" valor={resumen.pendientes} clase="text-tertiary" />
+            <Indicador etiqueta="Finalizados" valor={resumen.finalizados} clase="text-emerald-300" />
+            <Indicador etiqueta="Por revisar" valor={resumen.diferencias} clase="text-rose-300" />
+            <Indicador etiqueta="Elementos" valor={resumen.total} clase="text-foreground" />
+          </div>
+        )}
       </section>
 
-      {isPending ? (
+      {!esHoy && !esFuturo && resumen.total > 0 ? (
+        <p className="mt-4 text-sm text-muted-foreground">Historial de esta fecha · solo lectura.</p>
+      ) : null}
+
+      {esFuturo ? cargandoElementos ? (
+        <p className="mt-6 text-sm text-muted-foreground">Cargando lista fija…</p>
+      ) : errorElementos ? (
+        <p role="alert" className="mt-6 text-sm text-destructive">{textoError(errorElementos)}</p>
+      ) : listaFutura.length === 0 ? (
+        <div className="mt-6 rounded-xl bg-surface-low p-8 text-center text-sm text-muted-foreground">
+          No hay elementos en la lista fija actual para mostrar en esta fecha.
+        </div>
+      ) : (
+        <ul className="mt-6 grid gap-3 xl:grid-cols-2" aria-label="Vista previa de la lista fija">
+          {listaFutura.map((elemento) => (
+            <li key={elemento.id} className="flex items-center justify-between gap-3 rounded-xl bg-surface-low p-4">
+              <div className="min-w-0">
+                <p className="truncate font-heading text-base font-semibold">
+                  {elemento.producto?.nombre_producto ?? elemento.ingrediente?.nombre_ingrediente}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">{elemento.tipo === 'PRODUCTO' ? 'Producto' : 'Ingrediente'}</p>
+              </div>
+              <span className="shrink-0 rounded-full bg-surface-high px-3 py-1 text-xs font-medium text-muted-foreground">Programado</span>
+            </li>
+          ))}
+        </ul>
+      ) : isPending ? (
         <p className="mt-6 text-sm text-muted-foreground">Cargando hoja de conteo…</p>
       ) : error ? (
         <p role="alert" className="mt-6 text-sm text-destructive">{textoError(error)}</p>
@@ -171,13 +214,13 @@ export function SeccionConteoDiario({ esAdmin }: { esAdmin: boolean }) {
           <p className="mx-auto mt-1 max-w-lg text-sm text-muted-foreground">
             {esHoy
               ? 'El administrador configura la lista fija una sola vez. Sus elementos aparecerán automáticamente cada día para ingresar el conteo físico.'
-              : 'No hay conteos registrados para esta fecha. La lista automática se prepara en la jornada actual.'}
+              : 'No se registraron conteos ese día. La lista fija actual no modifica el historial.'}
           </p>
         </div>
       ) : (
         <ul className="mt-6 grid gap-3 xl:grid-cols-2">
           {conteos?.map((conteo) => (
-            <TarjetaConteo key={conteo.id_conteoInventario} conteo={conteo} esAdmin={esAdmin} />
+            <TarjetaConteo key={conteo.id_conteoInventario} conteo={conteo} esAdmin={esAdmin} soloLectura={!esHoy} />
           ))}
         </ul>
       )}
@@ -198,7 +241,7 @@ function Indicador({ etiqueta, valor, clase }: { etiqueta: string; valor: number
   )
 }
 
-function TarjetaConteo({ conteo, esAdmin }: { conteo: ConteoInventarioDiario; esAdmin: boolean }) {
+function TarjetaConteo({ conteo, esAdmin, soloLectura }: { conteo: ConteoInventarioDiario; esAdmin: boolean; soloLectura: boolean }) {
   const [cantidadFisica, setCantidadFisica] = useState('')
   const finalizar = useFinalizarConteoInventario()
   const reabrir = useReabrirConteoInventario()
@@ -284,6 +327,8 @@ function TarjetaConteo({ conteo, esAdmin }: { conteo: ConteoInventarioDiario; es
               clase={(salida ?? 0) < 0 ? 'text-rose-300' : 'text-tertiary'}
             />
           </div>
+        ) : soloLectura ? (
+          <p className="rounded-lg bg-surface-high p-3 text-sm text-muted-foreground">No se confirmó un conteo físico en esta fecha.</p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
             <div>
@@ -366,7 +411,7 @@ function TarjetaConteo({ conteo, esAdmin }: { conteo: ConteoInventarioDiario; es
               ? `Confirmado por ${nombreUsuario(conteo) ?? 'un trabajador'}`
               : 'Pendiente de confirmar'}
           </p>
-          {esAdmin ? (
+          {esAdmin && !soloLectura ? (
             <div className="flex gap-1">
               {finalizado ? (
                 <Button

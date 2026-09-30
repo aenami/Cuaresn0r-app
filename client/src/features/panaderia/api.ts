@@ -156,6 +156,11 @@ export const conteoQuery = queryOptions({
   queryFn: () => api.get<EstadoConteoPanaderia>('/bakery/conteo'),
   refetchInterval: 15_000,
 })
+export const conteoPorFechaQuery = (fecha: string, esHoy: boolean) => queryOptions({
+  queryKey: [...bakeryKeys.conteo, fecha] as const,
+  queryFn: () => api.get<EstadoConteoPanaderia>(`/bakery/conteo?date=${encodeURIComponent(fecha)}`),
+  refetchInterval: esHoy ? 15_000 : false,
+})
 export const ventasQuery = queryOptions({
   queryKey: bakeryKeys.ventas,
   queryFn: () => api.get<VentaPanaderia[]>('/bakery/ventas'),

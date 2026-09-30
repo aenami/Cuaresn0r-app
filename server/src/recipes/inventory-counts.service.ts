@@ -279,6 +279,7 @@ export class InventoryCountsService {
     db: Prisma.TransactionClient = this.prisma,
   ) {
     const fecha = this.parsearFecha(dto.fecha);
+    this.exigirFechaActual(fecha);
     const objetivo = await this.obtenerObjetivo(dto.tipo, dto.idObjetivo, db);
     const filtroObjetivo = this.filtroObjetivo(dto.tipo, dto.idObjetivo);
     const anterior = await db.conteoInventarioDiario.findFirst({
@@ -356,6 +357,7 @@ export class InventoryCountsService {
       if (!conteo) {
         throw new NotFoundException('Conteo de inventario no encontrado');
       }
+      this.exigirFechaActual(conteo.fecha_conteoInventario);
       if (
         conteo.estado_conteoInventario === EstadoConteoInventario.FINALIZADO
       ) {
@@ -504,6 +506,7 @@ export class InventoryCountsService {
       if (!conteo) {
         throw new NotFoundException('Conteo de inventario no encontrado');
       }
+      this.exigirFechaActual(conteo.fecha_conteoInventario);
       if (conteo.estado_conteoInventario === EstadoConteoInventario.PENDIENTE) {
         return tx.conteoInventarioDiario.findUniqueOrThrow({
           where: { id_conteoInventario: id },
@@ -551,6 +554,7 @@ export class InventoryCountsService {
     if (!conteo) {
       throw new NotFoundException('Conteo de inventario no encontrado');
     }
+    this.exigirFechaActual(conteo.fecha_conteoInventario);
     if (conteo.estado_conteoInventario !== EstadoConteoInventario.PENDIENTE) {
       throw new ConflictException(
         'Un conteo finalizado debe reabrirse antes de eliminarlo',
@@ -769,6 +773,14 @@ export class InventoryCountsService {
     return this.parsearFecha(
       `${valor('year')}-${valor('month')}-${valor('day')}`,
     );
+  }
+
+  private exigirFechaActual(fecha: Date) {
+    if (fecha.getTime() !== this.fechaDeHoy().getTime()) {
+      throw new BadRequestException(
+        'Solo se puede registrar o modificar el conteo del dia actual',
+      );
+    }
   }
 
   private parsearFecha(fecha: string) {

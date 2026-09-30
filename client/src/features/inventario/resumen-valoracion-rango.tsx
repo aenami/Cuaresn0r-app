@@ -65,7 +65,7 @@ export function ResumenMonetarioPorFechas() {
   }
 
   return (
-    <section aria-labelledby="valoracion-rango-titulo" className="mt-8 rounded-lg bg-surface-low p-4 sm:p-6">
+    <section aria-labelledby="valoracion-rango-titulo" className="rounded-lg bg-surface-low p-4 sm:p-6">
       <header>
         <h2 id="valoracion-rango-titulo" className="font-heading text-xl font-semibold">Análisis del conteo por fechas</h2>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Ventas estimadas a precio de venta e ingredientes consumidos a costo. Las pérdidas se muestran por separado, sin modificar la caja.</p>
