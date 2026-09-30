@@ -24,7 +24,6 @@ import {
   UserCog,
   Users,
   Wallet,
-  ArrowRightLeft,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { SesionUsuario } from "@/stores/auth.store";
@@ -105,13 +104,6 @@ const NAVEGACION: ItemNav[] = [
     icono: Croissant,
     soloCaja: true,
     area: "PANADERIA",
-  },
-  {
-    etiqueta: "Traslados",
-    to: "/traslados",
-    icono: ArrowRightLeft,
-    soloCaja: true,
-    area: "RESTAURANTE",
   },
   {
     etiqueta: "Caja",

@@ -57,7 +57,6 @@ export function puedeRuta(
     return area === 'RESTAURANTE' && puedeCobrar(rol)
   if (ruta === 'panaderia') return area === 'PANADERIA' && puedeCobrar(rol)
   if (ruta === 'cobro') return area === 'RESTAURANTE' && puedeCobrar(rol)
-  if (ruta === 'traslados') return area === 'RESTAURANTE' && puedeCobrar(rol)
   if (ruta === 'mesas' || ruta === 'pedidos')
     return (
       area === 'RESTAURANTE' &&
