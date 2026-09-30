@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Lock } from 'lucide-react'
 import type { TurnoResumen } from '@/types/api'
 import { useEsAdmin, useEsCaja, useEsGlobal, useAreaTrabajo } from '@/stores/auth.store'
-import { turnoActualQuery } from '@/features/billing/api'
+import { turnoActualQuery, turnoQuery } from '@/features/billing/api'
 import { cn } from '@/lib/utils'
 import { horaCorta } from '@/features/billing/caja-comun'
 import { AbrirTurnoForm, FlujoEfectivo } from '@/features/billing/flujo-efectivo'
@@ -31,6 +31,16 @@ function PaginaCaja() {
   const area = useAreaTrabajo()
   const { data: turno, isPending, error, refetch } = useQuery({ ...turnoActualQuery, enabled: esCaja })
   const [vista, setVista] = useState<Vista>('flujo')
+  const [idTurnoAjeno, setIdTurnoAjeno] = useState<number | null>(null)
+  const {
+    data: turnoAjeno,
+    isPending: cargandoTurnoAjeno,
+    error: errorTurnoAjeno,
+    refetch: reintentarTurnoAjeno,
+  } = useQuery({
+    ...turnoQuery(idTurnoAjeno ?? 0),
+    enabled: esAdmin && !esGlobal && vista === 'cuadre' && !turno && idTurnoAjeno !== null,
+  })
 
   if (esGlobal) return <div className="p-6 md:p-10"><p className="mb-5 text-sm text-muted-foreground">Cierres de {area === 'PANADERIA' ? 'panadería' : 'restaurante'} · vista de supervisión</p><CuadreCaja turno={null} /></div>
   if (!esCaja) {
@@ -63,13 +73,32 @@ function PaginaCaja() {
       ) : error ? (
         <div role="alert" className="space-y-3 text-sm"><p className="text-destructive">{errorApi(error)}</p><Button variant="secondary" onClick={() => void refetch()}>Reintentar consulta del turno</Button></div>
       ) : vista === 'cuadre' ? (
-        isPending ? <div className="h-72 animate-pulse rounded-2xl bg-surface-high" /> : <CuadreCaja turno={turno ?? null} />
+        isPending || (!turno && idTurnoAjeno !== null && cargandoTurnoAjeno) ? (
+          <div className="h-72 animate-pulse rounded-2xl bg-surface-high" />
+        ) : !turno && idTurnoAjeno !== null && errorTurnoAjeno ? (
+          <div role="alert" className="space-y-3 text-sm">
+            <p className="text-destructive">No se pudo cargar el turno ocupado: {errorApi(errorTurnoAjeno)}</p>
+            <Button variant="secondary" onClick={() => void reintentarTurnoAjeno()}>Reintentar</Button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {!turno && idTurnoAjeno !== null ? (
+              <Button variant="ghost" size="sm" onClick={() => { setIdTurnoAjeno(null); setVista('flujo') }}>
+                ← Volver a apertura de caja
+              </Button>
+            ) : null}
+            <CuadreCaja turno={turno ?? (turnoAjeno?.estado_turno === 'ABIERTO' ? turnoAjeno : null)} />
+          </div>
+        )
       ) : isPending ? (
         <div className="h-72 animate-pulse rounded-2xl bg-surface-high" />
       ) : turno ? (
         <FlujoEfectivo turno={turno} />
       ) : (
-        <AbrirTurnoForm />
+        <AbrirTurnoForm
+          esAdmin={esAdmin && !esGlobal}
+          onRevisarTurno={(idTurno) => { setIdTurnoAjeno(idTurno); setVista('cuadre') }}
+        />
       )}
     </div>
   )

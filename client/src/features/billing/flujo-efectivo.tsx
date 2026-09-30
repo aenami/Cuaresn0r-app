@@ -372,14 +372,24 @@ function MovimientoDialog({ abierto, onCambiar }: { abierto: boolean; onCambiar:
 
 // ---- Abrir turno (sin turno activo) ----
 
-export function AbrirTurnoForm() {
-  const { data: cajas } = useQuery(cajasQuery)
+export function AbrirTurnoForm({
+  esAdmin,
+  onRevisarTurno,
+}: {
+  esAdmin: boolean
+  onRevisarTurno: (idTurno: number) => void
+}) {
+  const { data: cajas, isPending: cargandoCajas, error: errorCajas, refetch: reintentarCajas } = useQuery({
+    ...cajasQuery,
+    refetchInterval: 20_000,
+  })
   const abrir = useAbrirTurno()
   const [idCaja, setIdCaja] = useState<string>('')
   const [tipo, setTipo] = useState<TipoTurno | ''>('')
 
   const cajasLibres = (cajas ?? []).filter((c) => (c.turnos ?? []).length === 0)
-  const valido = idCaja !== '' && tipo !== ''
+  const cajasOcupadas = (cajas ?? []).filter((c) => (c.turnos ?? []).length > 0)
+  const valido = tipo !== '' && cajasLibres.some((caja) => String(caja.id_caja) === idCaja)
 
   function abrirTurno() {
     if (!valido || !tipo) return
@@ -404,7 +414,7 @@ export function AbrirTurnoForm() {
       <div className="space-y-4">
         <div className="space-y-1.5">
           <Label>Caja</Label>
-          <Select value={idCaja} onValueChange={setIdCaja}>
+          <Select value={idCaja} onValueChange={setIdCaja} disabled={cargandoCajas || !!errorCajas || !cajas?.length}>
             <SelectTrigger className="w-full">
               <SelectValue placeholder="Elige una caja libre" />
             </SelectTrigger>
@@ -420,9 +430,46 @@ export function AbrirTurnoForm() {
               })}
             </SelectContent>
           </Select>
-          {cajasLibres.length === 0 && (cajas ?? []).length > 0 && (
-            <p className="text-xs text-destructive">Todas las cajas tienen un turno abierto.</p>
-          )}
+          {cargandoCajas ? <p className="text-sm text-muted-foreground" role="status">Consultando cajas disponibles…</p> : null}
+          {errorCajas ? (
+            <div className="flex flex-wrap items-center gap-2" role="alert">
+              <p className="text-sm text-destructive">No se pudieron consultar las cajas: {errorApi(errorCajas)}</p>
+              <Button variant="secondary" size="sm" onClick={() => void reintentarCajas()}>Reintentar</Button>
+            </div>
+          ) : null}
+          {cajas?.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No hay cajas configuradas para esta área. Solicita a un administrador que cree una en Ajustes.</p>
+          ) : null}
+          {cajasLibres.length === 0 && cajasOcupadas.length > 0 ? (
+            <div className="space-y-3 rounded-lg border border-tertiary/30 bg-tertiary/10 p-3" role="status">
+              <p className="text-sm font-semibold text-foreground">No hay cajas libres en esta área</p>
+              <ul className="space-y-3 text-sm">
+                {cajasOcupadas.flatMap((caja) =>
+                  (caja.turnos ?? []).map((turno) => (
+                    <li key={turno.id_turno} className="space-y-1 border-t border-border/70 pt-3 first:border-t-0 first:pt-0">
+                      <p className="font-medium text-foreground">{caja.nombre_caja} · turno #{turno.id_turno}</p>
+                      <p className="text-muted-foreground">
+                        Abierto por {turno.usuario?.email_usuario ?? `usuario #${turno.id_usuario_turno}`} el{' '}
+                        {new Date(turno.fecha_apertura_turno).toLocaleString('es-CO', {
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                          timeZone: 'America/Bogota',
+                        })}.
+                      </p>
+                      {esAdmin ? (
+                        <Button variant="secondary" size="sm" onClick={() => onRevisarTurno(turno.id_turno)}>
+                          Ir al cuadre del turno
+                        </Button>
+                      ) : null}
+                    </li>
+                  )),
+                )}
+              </ul>
+              {!esAdmin ? (
+                <p className="text-xs text-muted-foreground">Pide al responsable o al administrador local que complete el cuadre y cierre su turno antes de abrir otro.</p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <SelectorTipoTurno valor={tipo} onCambiar={setTipo} />
