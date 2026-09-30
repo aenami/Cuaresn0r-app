@@ -650,3 +650,51 @@ alcance o feature terminada.
 - Cambios en commits locales; sin despliegue en Neon, Render ni Vercel. La
   prueba física de las impresoras y las definiciones fiscales siguen
   pendientes.
+
+### 2026-09-29 — Historial del conteo, vista futura y apertura de caja
+
+- Restaurante ya no muestra la sección **Traslados**: se retiraron su ruta,
+  entrada del menú, permiso de navegación y componente exclusivo. No se
+  eliminaron registros históricos ni el flujo de remisiones de Panadería.
+- **Conteo diario** separa internamente **Registro diario** y **Análisis por
+  fechas** para ambas áreas. El informe ya no queda debajo de todas las
+  tarjetas de la lista fija.
+- Cambiar a una fecha pasada consulta únicamente los conteos guardados,
+  en solo lectura. En Restaurante se corrigió la llamada del cliente que
+  intentaba ejecutar `prepare` al consultar días anteriores. Panadería
+  consulta por fecha e incluye conteos de artículos hoy desactivados sin
+  presentar el stock actual como histórico.
+- Una fecha futura presenta los elementos de la lista fija actual de
+  Restaurante o los artículos activos de Panadería como vista previa. No
+  permite ingresar, confirmar ni editar cantidades; el servidor de
+  Restaurante también rechaza crear, cerrar, reabrir o borrar conteos de
+  fechas distintas de hoy. No se generan registros futuros por navegar.
+- Se verificó que el bloqueo de apertura de la única caja de Restaurante
+  es real: el turno **#8** permanece abierto desde el 23 de septiembre,
+  asociado al usuario `admin@pos.local`, que hoy es administrador global.
+  No se cerró ni alteró. La pantalla ahora identifica el turno, responsable
+  y apertura; un administrador local puede acceder a su cuadre y cierre
+  ordinario con todas las validaciones, mientras el cajero recibe una
+  instrucción para solicitar ese cierre.
+- Por autorización del usuario, se creó un respaldo privado del POS local
+  `server/backups/pos-before-inventory-valuation-1790734164303.dump`
+  (340044 bytes) antes de cargar ejemplos. Se insertaron exclusivamente en
+  `POS` local un producto de carta deshabilitado, un ingrediente sin stock y
+  un artículo de Panadería inactivo, todos marcados `[PRUEBA]`, con conteos
+  ilustrativos del **26 y 27 de septiembre de 2026**: Restaurante producto
+  #21 e ingrediente #24; Panadería artículo #1. El informe de esas fechas
+  fue verificado en ambas áreas: Restaurante muestra pérdidas ilustrativas
+  de $10.500 en producto y $2.000 en ingrediente; Panadería, $31.500 de
+  ingreso estimado y $10.500 de faltante. Estos importes son **datos de
+  prueba, no operación real**; no se crearon pedidos, facturas, ventas,
+  pagos, turnos ni movimientos de stock por la carga. Una lectura de los
+  días 26 y 27 mostró ese historial en ambas áreas; consultar el 30 de
+  septiembre no creó conteos futuros.
+- Verificación técnica: 25 suites / 376 pruebas del servidor, compilaciones
+  de servidor y cliente, y lint del cliente sin errores. La interfaz pasó
+  23 comprobaciones con API simulada en escritorio y móvil, incluyendo
+  fechas pasadas y futuras, navegación interna y caja ocupada. Se validó
+  también el formato legible del respaldo privado con `pg_restore --list`.
+- Sin migraciones nuevas ni cambios en Neon, Render o Vercel. El turno #8
+  requiere un cuadre real antes de abrir otro en esa caja. Continúan
+  pendientes la prueba física de las impresoras y la definición fiscal.

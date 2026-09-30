@@ -39,7 +39,9 @@ Si reabres un conteo, se elimina su valoración guardada. Si hay movimientos pos
 
 ## Consultar un período
 
-Debajo del conteo diario, **Análisis del conteo por fechas** comienza con los últimos siete días, incluido hoy en Colombia. Los accesos **Hoy**, **Últimos 7 días** y **Este mes** aplican el período de inmediato. Para un intervalo propio, elige **Desde** y **Hasta** y pulsa **Consultar**; cambiar una fecha sin consultar conserva el resultado anterior. Ambos extremos se incluyen. Se admiten fechas válidas entre 2000 y 9998 y un máximo de **366 días** contando ambos extremos.
+En Inventario → **Conteo diario**, cambia de **Registro diario** a **Análisis por fechas**. Esta vista separada comienza con los últimos siete días, incluido hoy en Colombia; no es necesario desplazarse hasta el final de la lista fija. Los accesos **Hoy**, **Últimos 7 días** y **Este mes** aplican el período de inmediato. Para un intervalo propio, elige **Desde** y **Hasta** y pulsa **Consultar**; cambiar una fecha sin consultar conserva el resultado anterior. Ambos extremos se incluyen. Se admiten fechas válidas entre 2000 y 9998 y un máximo de **366 días** contando ambos extremos.
+
+En **Registro diario** puedes cambiar la fecha para ver los conteos guardados de días anteriores, incluso si el artículo ya no está activo en Panadería o fue retirado de la lista fija de Restaurante. El pasado es de solo lectura y no se reconstruye con la lista ni el stock actuales. En una fecha futura se muestra una vista previa de los elementos que están en la lista fija actual (o los artículos activos de Panadería); no se pueden ingresar ni confirmar cantidades hasta que llegue ese día.
 
 El resumen agrupa por artículo y área dentro del período elegido. Mantiene separadas las tablas **Productos · precio de venta** e **Ingredientes · costo unitario** y muestra los días valorados, ingreso estimado o costo consumido, pérdida por faltantes y sobrante valorado. Las pérdidas de productos e ingredientes se muestran por separado; el costo consumido no se suma al ingreso estimado como ventas. Los importes proceden de las valoraciones históricas guardadas en cada conteo.
 

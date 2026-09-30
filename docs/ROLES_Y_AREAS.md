@@ -75,9 +75,7 @@ El estado de pago de Restaurante y la confirmación de ingreso de Panadería son
 
 ## Conservar traslados y recepciones anteriores
 
-En Remisiones, **Entradas desde restaurante y traslados anteriores** conserva el acceso al flujo anterior y su historial. No recrees esos documentos como remisiones nuevas ni reimportes su stock.
-
-Para enviar ingredientes de Restaurante a Panadería, conserva el flujo de traslado: Restaurante solo envía ingredientes con stock disponible. En Panadería, el panadero o administrador confirma la recepción pendiente en Inventario. El destino es un insumo no vendible de la misma unidad y conserva fracciones cuando corresponde. Esta recepción es distinta de la entrega de productos de Panadería a Restaurante.
+La sección **Traslados** se retiró por completo de Restaurante. Los documentos anteriores no se borraron: Panadería conserva su historial en **Remisiones → Entradas desde restaurante y traslados anteriores**. No inicies nuevos traslados mediante el flujo antiguo ni recrees sus movimientos como remisiones o entradas manuales. Las remisiones de Panadería hacia Restaurante siguen funcionando por separado.
 
 ## Comprobantes y facturación fiscal
 
