@@ -103,12 +103,26 @@ export function ResumenMonetarioPorFechas() {
               {data.excluidos.noComparables} {data.excluidos.noComparables === 1 ? 'no comparable' : 'no comparables'}.
             </p>}
             {data.filas.length === 0 ? <p className="mt-4 text-sm text-muted-foreground">No hay conteos con valoración vigente en este rango. Prueba otras fechas o confirma los conteos pendientes.</p>
-              : <div className="mt-5 space-y-6">
-                <TablaPeriodo titulo="Productos · precio de venta" filas={data.filas.filter(f => f.tipoReferencia === 'PRECIO_VENTA')} ingrediente={false}
-                  reconocido={data.totales.ingresoEstimado} perdida={data.totales.perdidaProductos} />
-                <TablaPeriodo titulo="Ingredientes · costo unitario" filas={data.filas.filter(f => f.tipoReferencia === 'COSTO_UNITARIO')} ingrediente
-                  reconocido={data.totales.costoConsumido} perdida={data.totales.perdidaIngredientes} />
-              </div>}
+              : <>
+                <dl className="mt-5 grid gap-5 bg-surface-high/60 p-4 sm:grid-cols-2 sm:gap-8" aria-label="Totales del período seleccionado">
+                  <div>
+                    <dt className="text-sm font-medium text-muted-foreground">Ingreso estimado total del período</dt>
+                    <dd className="mt-1 font-heading text-2xl font-semibold tabular-nums text-emerald-300">{formatearPrecio(data.totales.ingresoEstimado)}</dd>
+                    <p className="mt-1 text-xs text-muted-foreground">Salidas corroboradas de productos en todos los días valorados.</p>
+                  </div>
+                  <div>
+                    <dt className="text-sm font-medium text-muted-foreground">Pérdida estimada total por faltantes</dt>
+                    <dd className={`mt-1 font-heading text-2xl font-semibold tabular-nums ${Number(data.totales.perdidaEstimada) > 0 ? 'text-rose-300' : 'text-muted-foreground'}`}>{formatearPrecio(data.totales.perdidaEstimada)}</dd>
+                    <p className="mt-1 text-xs text-muted-foreground">Suma de productos a precio de venta e ingredientes a costo.</p>
+                  </div>
+                </dl>
+                <div className="mt-6 space-y-6">
+                  <TablaPeriodo titulo="Productos · precio de venta" filas={data.filas.filter(f => f.tipoReferencia === 'PRECIO_VENTA')} ingrediente={false}
+                    reconocido={data.totales.ingresoEstimado} perdida={data.totales.perdidaProductos} />
+                  <TablaPeriodo titulo="Ingredientes · costo unitario" filas={data.filas.filter(f => f.tipoReferencia === 'COSTO_UNITARIO')} ingrediente
+                    reconocido={data.totales.costoConsumido} perdida={data.totales.perdidaIngredientes} />
+                </div>
+              </>}
             <p className="mt-4 max-w-2xl text-xs text-muted-foreground">Se conservan los precios y costos registrados en cada conteo. El ingreso estimado corresponde a salidas corroboradas, no a recaudo ni utilidad; el consumo de ingredientes no es ingreso. Los sobrantes no compensan pérdidas.</p>
           </> : null}
     </section>
