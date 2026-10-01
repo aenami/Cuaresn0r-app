@@ -184,17 +184,21 @@ export class BakeryService {
       throw new UnprocessableEntityException('El costo de referencia corresponde solo a insumos');
     if (dto.categoriaId !== undefined)
       await this.validarCategoria(this.prisma, dto.tipo, dto.categoriaId);
-    return this.prisma.articuloPanaderia.create({
-      data: {
-        nombre: dto.nombre.trim(),
-        tipo: dto.tipo,
-        categoriaId: dto.categoriaId,
-        unidad: dto.unidad ?? 'UNIDADES',
-        precioVenta: dto.precioVenta,
-        costoReferencia: dto.costoReferencia,
-      },
-      include: { categoria: true },
-    });
+    try {
+      return await this.prisma.articuloPanaderia.create({
+        data: {
+          nombre: dto.nombre.trim(),
+          tipo: dto.tipo,
+          categoriaId: dto.categoriaId,
+          unidad: dto.unidad ?? 'UNIDADES',
+          precioVenta: dto.precioVenta,
+          costoReferencia: dto.costoReferencia,
+        },
+        include: { categoria: true },
+      });
+    } catch (error) {
+      return this.traducirCategoriaEliminada(error);
+    }
   }
 
   async actualizarArticulo(id: number, dto: ActualizarArticuloPanaderiaDto) {
@@ -206,18 +210,28 @@ export class BakeryService {
         await this.validarCategoria(tx, articulo.tipo, dto.categoriaId);
       if (dto.activo === false && articulo.existencia.greaterThan(0))
         throw new ConflictException('Cuenta o traslada las existencias antes de desactivar el articulo');
-      return tx.articuloPanaderia.update({
-        where: { id },
-        data: {
-          ...(dto.nombre !== undefined && { nombre: dto.nombre.trim() }),
-          ...(dto.precioVenta !== undefined && { precioVenta: dto.precioVenta }),
-          ...(dto.costoReferencia !== undefined && { costoReferencia: dto.costoReferencia }),
-          ...(dto.categoriaId !== undefined && { categoriaId: dto.categoriaId }),
-          ...(dto.activo !== undefined && { activo: dto.activo }),
-        },
-        include: { categoria: true },
-      });
+      try {
+        return await tx.articuloPanaderia.update({
+          where: { id },
+          data: {
+            ...(dto.nombre !== undefined && { nombre: dto.nombre.trim() }),
+            ...(dto.precioVenta !== undefined && { precioVenta: dto.precioVenta }),
+            ...(dto.costoReferencia !== undefined && { costoReferencia: dto.costoReferencia }),
+            ...(dto.categoriaId !== undefined && { categoriaId: dto.categoriaId }),
+            ...(dto.activo !== undefined && { activo: dto.activo }),
+          },
+          include: { categoria: true },
+        });
+      } catch (error) {
+        return this.traducirCategoriaEliminada(error);
+      }
     });
+  }
+
+  private traducirCategoriaEliminada(error: unknown): never {
+    if ((error as { code?: string }).code === 'P2003')
+      throw new ConflictException('La categoría ya no existe; selecciona otra');
+    throw error;
   }
 
   private async validarCategoria(cliente: Cliente, tipo: string, categoriaId: number | null) {
@@ -225,8 +239,8 @@ export class BakeryService {
     if (tipo === 'INSUMO')
       throw new UnprocessableEntityException('Los insumos no pertenecen al catalogo de productos');
     const categoria = await cliente.categoriaPanaderia.findUnique({ where: { id: categoriaId } });
-    if (!categoria || !categoria.activa || categoria.tipo !== tipo)
-      throw new UnprocessableEntityException('Selecciona una categoria activa del mismo tipo de articulo');
+    if (!categoria?.activa)
+      throw new UnprocessableEntityException('Selecciona una categoria activa');
   }
 
   async registrarEntrada(id: number, usuarioId: number, dto: EntradaPanaderiaDto) {
@@ -258,8 +272,8 @@ export class BakeryService {
     if (!articulo.categoriaId)
       throw new ConflictException('Asigna una categoria al producto antes de producirlo');
     const categoria = await tx.categoriaPanaderia.findUnique({ where: { id: articulo.categoriaId } });
-    if (!categoria?.activa || categoria.tipo !== articulo.tipo)
-      throw new ConflictException('La categoria del producto debe estar activa y corresponder a panes o postres');
+    if (!categoria?.activa)
+      throw new ConflictException('La categoria del producto debe estar activa');
     if (!Number.isInteger(cantidad) || cantidad <= 0)
       throw new UnprocessableEntityException('La hornada se registra en unidades enteras positivas');
     const receta = await tx.recetaPanaderia.findFirst({

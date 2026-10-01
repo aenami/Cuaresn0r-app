@@ -8,7 +8,6 @@ export type UnidadInventario = 'UNIDADES' | 'kg' | 'g' | 'dg' | 'mg' | 'ml' | 'L
 export interface CategoriaPanaderia {
   id: number
   nombre: string
-  tipo: 'PANADERIA' | 'PASTELERIA' | 'EXTERNO'
   activa: boolean
   fechaCreacion: string
 }
@@ -210,8 +209,9 @@ export const historialPanaderiaQuery = queryOptions({
 })
 
 export const bakeryApi = {
-  crearCategoria: (body: { nombre: string; tipo: CategoriaPanaderia['tipo'] }) => api.post<CategoriaPanaderia>('/bakery/categorias', body),
+  crearCategoria: (body: { nombre: string }) => api.post<CategoriaPanaderia>('/bakery/categorias', body),
   actualizarCategoria: (id: number, body: { nombre?: string; activa?: boolean }) => api.patch<CategoriaPanaderia>(`/bakery/categorias/${id}`, body),
+  eliminarCategoria: (id: number) => api.delete(`/bakery/categorias/${id}`),
   crearArticulo: (body: { nombre: string; tipo: TipoArticulo; unidad: UnidadInventario; precioVenta: number; categoriaId?: number; costoReferencia?: number | null }) => api.post<ArticuloPanaderia>('/bakery/articulos', body),
   crearReceta: (body: { articuloId: number; nombre: string; detalles: { insumoId: number; cantidadUnidad: number }[] }) => api.post<RecetaPanaderia>('/bakery/recetas', body),
   desactivarReceta: (id: number) => api.patch(`/bakery/recetas/${id}/desactivar`),

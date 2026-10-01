@@ -8,13 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { errorApi } from '@/features/billing/caja-comun'
 
-const grupos = [
-  { tipo: 'PANADERIA', titulo: 'Panes' },
-  { tipo: 'PASTELERIA', titulo: 'Pastelería' },
-  { tipo: 'EXTERNO', titulo: 'Productos externos' },
-] as const
-
-type Editor = { id?: number; nombre: string; tipo: CategoriaPanaderia['tipo'] }
+type Editor = { id?: number; nombre: string }
 
 export function CategoriasPanaderia({
   categorias,
@@ -25,6 +19,7 @@ export function CategoriasPanaderia({
 }) {
   const queryClient = useQueryClient()
   const [editor, setEditor] = useState<Editor | null>(null)
+  const [confirmarEliminar, setConfirmarEliminar] = useState<number | null>(null)
   const [guardando, setGuardando] = useState(false)
   const productosPorCategoria = new Map<number, number>()
   for (const articulo of articulos) {
@@ -43,7 +38,7 @@ export function CategoriasPanaderia({
       if (editor.id) {
         await bakeryApi.actualizarCategoria(editor.id, { nombre: editor.nombre.trim() })
       } else {
-        await bakeryApi.crearCategoria({ nombre: editor.nombre.trim(), tipo: editor.tipo })
+        await bakeryApi.crearCategoria({ nombre: editor.nombre.trim() })
       }
       await queryClient.invalidateQueries({ queryKey: bakeryKeys.all })
       setEditor(null)
@@ -68,16 +63,31 @@ export function CategoriasPanaderia({
     }
   }
 
+  async function eliminar(categoria: CategoriaPanaderia) {
+    setGuardando(true)
+    try {
+      await bakeryApi.eliminarCategoria(categoria.id)
+      await queryClient.invalidateQueries({ queryKey: bakeryKeys.all })
+      setConfirmarEliminar(null)
+      toast.success('Categoría eliminada')
+    } catch (error) {
+      toast.error(errorApi(error))
+    } finally {
+      setGuardando(false)
+    }
+  }
+
   return (
     <section className="space-y-5" aria-label="Categorías de panadería">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="font-heading text-xl font-semibold">Categorías de productos</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Organiza panes, postres y productos externos. Desactivar una categoría no borra sus productos.
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+            Todas están al mismo nivel. El tipo —pan, postre o externo— se define por separado al crear el producto.
+            Para eliminar una categoría en uso, reasigna primero sus productos.
           </p>
         </div>
-        <Button onClick={() => setEditor({ nombre: '', tipo: 'PANADERIA' })}>
+        <Button onClick={() => { setConfirmarEliminar(null); setEditor({ nombre: '' }) }}>
           Nueva categoría
         </Button>
       </div>
@@ -88,38 +98,17 @@ export function CategoriasPanaderia({
           onSubmit={(event) => { event.preventDefault(); void guardar() }}
         >
           <h3 className="font-semibold">{editor.id ? 'Editar categoría' : 'Nueva categoría'}</h3>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <Label htmlFor="pan-categoria-nombre">Nombre</Label>
-              <Input
-                id="pan-categoria-nombre"
-                autoFocus
-                required
-                maxLength={60}
-                placeholder="Ej. Pan integral"
-                value={editor.nombre}
-                onChange={(event) => setEditor({ ...editor, nombre: event.target.value })}
-              />
-            </div>
-            <div>
-              <Label htmlFor="pan-categoria-tipo">Tipo de producto</Label>
-              <select
-                id="pan-categoria-tipo"
-                value={editor.tipo}
-                disabled={!!editor.id}
-                onChange={(event) => setEditor({ ...editor, tipo: event.target.value as Editor['tipo'] })}
-                className="h-10 w-full rounded-md bg-surface-lowest px-3 text-sm focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-60"
-              >
-                {grupos.map((grupo) => (
-                  <option key={grupo.tipo} value={grupo.tipo}>{grupo.titulo}</option>
-                ))}
-              </select>
-              {editor.id ? (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  El tipo no se cambia para conservar el historial de inventario.
-                </p>
-              ) : null}
-            </div>
+          <div className="max-w-md">
+            <Label htmlFor="pan-categoria-nombre">Nombre</Label>
+            <Input
+              id="pan-categoria-nombre"
+              autoFocus
+              required
+              maxLength={60}
+              placeholder="Ej. Bebidas, panes integrales"
+              value={editor.nombre}
+              onChange={(event) => setEditor({ ...editor, nombre: event.target.value })}
+            />
           </div>
           <div className="flex gap-2">
             <Button disabled={guardando || !editor.nombre.trim()}>
@@ -130,55 +119,72 @@ export function CategoriasPanaderia({
         </form>
       ) : null}
 
-      <div className="grid gap-5 lg:grid-cols-3">
-        {grupos.map((grupo) => {
-          const propias = categorias.filter((categoria) => categoria.tipo === grupo.tipo)
-          return (
-            <div key={grupo.tipo} className="min-w-0 rounded-lg bg-surface-low p-4">
-              <h3 className="font-heading text-lg font-semibold">{grupo.titulo}</h3>
-              {propias.length === 0 ? (
-                <p className="mt-3 text-sm text-muted-foreground">
-                  Aún no hay categorías. Crea una para clasificar sus productos.
-                </p>
-              ) : (
-                <ul className="mt-3 divide-y divide-border/60">
-                  {propias.map((categoria) => {
-                    const cantidad = productosPorCategoria.get(categoria.id) ?? 0
-                    return (
-                      <li key={categoria.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold">{categoria.nombre}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {cantidad} {cantidad === 1 ? 'producto' : 'productos'} · {categoria.activa ? 'Activa' : 'Inactiva'}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={guardando}
-                            onClick={() => setEditor({ id: categoria.id, nombre: categoria.nombre, tipo: categoria.tipo })}
-                          >
-                            Editar
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={guardando}
-                            onClick={() => void cambiarEstado(categoria)}
-                          >
-                            {categoria.activa ? 'Desactivar' : 'Activar'}
-                          </Button>
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </div>
-          )
-        })}
-      </div>
+      {categorias.length === 0 ? (
+        <p className="rounded-lg bg-surface-low p-6 text-sm text-muted-foreground">
+          Aún no hay categorías. Crea la primera para organizar los productos del catálogo.
+        </p>
+      ) : (
+        <ul className="divide-y divide-border/60 rounded-lg bg-surface-low px-4 sm:px-5">
+          {categorias.map((categoria) => {
+            const cantidad = productosPorCategoria.get(categoria.id) ?? 0
+            const confirmando = confirmarEliminar === categoria.id
+            return (
+              <li key={categoria.id} className="py-4">
+                <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">{categoria.nombre}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {cantidad} {cantidad === 1 ? 'producto' : 'productos'} · {categoria.activa ? 'Activa' : 'Inactiva'}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={guardando}
+                      onClick={() => { setConfirmarEliminar(null); setEditor({ id: categoria.id, nombre: categoria.nombre }) }}
+                    >
+                      Editar
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={guardando}
+                      onClick={() => void cambiarEstado(categoria)}
+                    >
+                      {categoria.activa ? 'Desactivar' : 'Activar'}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive"
+                      disabled={guardando || cantidad > 0}
+                      title={cantidad > 0 ? 'Reasigna sus productos antes de eliminarla' : undefined}
+                      onClick={() => { setEditor(null); setConfirmarEliminar(categoria.id) }}
+                    >
+                      Eliminar
+                    </Button>
+                  </div>
+                </div>
+                {confirmando ? (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md bg-destructive/10 px-3 py-2" role="group" aria-label={`Confirmar eliminación de ${categoria.nombre}`}>
+                    <p className="mr-auto text-sm">¿Eliminar definitivamente «{categoria.nombre}»?</p>
+                    <Button type="button" size="sm" variant="destructive" disabled={guardando} onClick={() => void eliminar(categoria)}>
+                      {guardando ? 'Eliminando…' : 'Sí, eliminar'}
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" disabled={guardando} onClick={() => setConfirmarEliminar(null)}>
+                      Cancelar
+                    </Button>
+                  </div>
+                ) : null}
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </section>
   )
 }

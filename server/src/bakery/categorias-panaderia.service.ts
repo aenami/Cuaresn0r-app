@@ -16,16 +16,16 @@ export class CategoriasPanaderiaService {
 
   listar() {
     return this.prisma.categoriaPanaderia.findMany({
-      orderBy: [{ tipo: 'asc' }, { nombre: 'asc' }],
+      orderBy: { nombre: 'asc' },
     });
   }
 
   async crear(dto: CrearCategoriaPanaderiaDto) {
     const nombre = this.validarNombre(dto.nombre);
-    await this.exigirNombreDisponible(dto.tipo, nombre);
+    await this.exigirNombreDisponible(nombre);
     try {
       return await this.prisma.categoriaPanaderia.create({
-        data: { nombre, tipo: dto.tipo },
+        data: { nombre },
       });
     } catch (error) {
       this.traducirDuplicado(error);
@@ -37,9 +37,7 @@ export class CategoriasPanaderiaService {
     const categoria = await this.prisma.categoriaPanaderia.findUnique({ where: { id } });
     if (!categoria) throw new NotFoundException('Categoría de panadería no encontrada');
     const nombre = dto.nombre === undefined ? undefined : this.validarNombre(dto.nombre);
-    if (nombre !== undefined && nombre !== categoria.nombre) {
-      await this.exigirNombreDisponible(categoria.tipo, nombre, id);
-    }
+    if (nombre !== undefined) await this.exigirNombreDisponible(nombre, id);
     try {
       return await this.prisma.categoriaPanaderia.update({
         where: { id },
@@ -54,24 +52,42 @@ export class CategoriasPanaderiaService {
     }
   }
 
+  async eliminar(id: number) {
+    const categoria = await this.prisma.categoriaPanaderia.findUnique({ where: { id } });
+    if (!categoria) throw new NotFoundException('Categoría de panadería no encontrada');
+    if (await this.prisma.articuloPanaderia.count({ where: { categoriaId: id } }))
+      throw new ConflictException('La categoría tiene productos asociados; reasígnalos antes de eliminarla');
+    try {
+      return await this.prisma.categoriaPanaderia.delete({ where: { id } });
+    } catch (error) {
+      // La FK RESTRICT protege una asignación concurrente posterior al conteo.
+      if (['P2003', 'P2014'].includes((error as { code?: string }).code ?? ''))
+        throw new ConflictException('La categoría tiene productos asociados; reasígnalos antes de eliminarla');
+      if ((error as { code?: string }).code === 'P2025')
+        throw new NotFoundException('Categoría de panadería no encontrada');
+      throw error;
+    }
+  }
+
   private validarNombre(nombre: string) {
     const limpio = nombre.trim();
     if (!limpio) throw new UnprocessableEntityException('Ingresa el nombre de la categoría');
     return limpio;
   }
 
-  private async exigirNombreDisponible(tipo: string, nombre: string, excluirId?: number) {
-    const categorias = await this.prisma.categoriaPanaderia.findMany({
-      where: { tipo: tipo as CrearCategoriaPanaderiaDto['tipo'] },
-      select: { id: true, nombre: true },
+  private async exigirNombreDisponible(nombre: string, excluirId?: number) {
+    const categoria = await this.prisma.categoriaPanaderia.findFirst({
+      where: {
+        nombre: { equals: nombre, mode: 'insensitive' },
+        ...(excluirId !== undefined && { id: { not: excluirId } }),
+      },
+      select: { id: true },
     });
-    if (categorias.some((categoria) =>
-      categoria.id !== excluirId && categoria.nombre.toLocaleLowerCase('es-CO') === nombre.toLocaleLowerCase('es-CO')))
-      throw new ConflictException('Ya existe una categoría con ese nombre en este tipo');
+    if (categoria) throw new ConflictException('Ya existe una categoría con ese nombre');
   }
 
   private traducirDuplicado(error: unknown) {
     if ((error as { code?: string }).code === 'P2002')
-      throw new ConflictException('Ya existe una categoría con ese nombre en este tipo');
+      throw new ConflictException('Ya existe una categoría con ese nombre');
   }
 }

@@ -90,7 +90,7 @@ export function HojaProduccionPanaderia() {
   const puedeRegistrar = esPanadero && esHoy && (!hoja || hoja.estado === 'BORRADOR')
   const elegibles = (articulos ?? []).filter((articulo) =>
     articulo.activo && articulo.categoriaId !== null &&
-    categorias?.some((categoria) => categoria.id === articulo.categoriaId && categoria.activa && categoria.tipo === articulo.tipo),
+    categorias?.some((categoria) => categoria.id === articulo.categoriaId && categoria.activa),
   )
   const opciones = elegibles.filter((articulo) => articulo.tipo === grupo)
   const articulo = opciones.find((item) => item.id === Number(articuloId))

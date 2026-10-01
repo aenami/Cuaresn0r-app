@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
 import { Area } from '../auth/decorators/area.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import {
@@ -32,5 +32,10 @@ export class CategoriasPanaderiaController {
     @Body() dto: ActualizarCategoriaPanaderiaDto,
   ) {
     return this.categorias.actualizar(id, dto);
+  }
+
+  @Delete(':id')
+  eliminar(@Param('id', ParseIntPipe) id: number) {
+    return this.categorias.eliminar(id);
   }
 }

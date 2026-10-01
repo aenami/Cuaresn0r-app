@@ -105,12 +105,12 @@ async function ejecutar() {
       ] });
 
       const categoriasPan = {};
-      for (const [clave, nombre, tipo] of [
-        ['pan', '[DEMO] Panes artesanales', 'PANADERIA'],
-        ['postre', '[DEMO] Tortas y postres', 'PASTELERIA'],
-        ['externo', '[DEMO] Bebidas frías', 'EXTERNO'],
+      for (const [clave, nombre] of [
+        ['pan', '[DEMO] Panes artesanales'],
+        ['postre', '[DEMO] Tortas y postres'],
+        ['externo', '[DEMO] Bebidas frías'],
       ]) {
-        categoriasPan[clave] = await tx.categoriaPanaderia.create({ data: { nombre, tipo } });
+        categoriasPan[clave] = await tx.categoriaPanaderia.create({ data: { nombre } });
       }
       const definiciones = [
         ['pan', 'Pan campesino', 'PANADERIA', 'UNIDADES', 3500, null, 'pan'],

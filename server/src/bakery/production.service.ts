@@ -228,8 +228,8 @@ export class ProductionGoalsBakeryService {
     });
     if (!articulo || !articulo.activo || !esProductoProducido(articulo.tipo))
       throw new NotFoundException('Selecciona un pan o postre activo del catalogo');
-    if (!articulo.categoria || !articulo.categoria.activa || articulo.categoria.tipo !== articulo.tipo)
-      throw new ConflictException('El producto necesita una categoria activa de panes o postres');
+    if (!articulo.categoria?.activa)
+      throw new ConflictException('El producto necesita una categoria activa');
     try {
       return await this.prisma.metaProduccionPanaderia.create({
         data: {

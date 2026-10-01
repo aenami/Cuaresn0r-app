@@ -786,3 +786,31 @@ alcance o feature terminada.
 - Pendiente: publicar la migración y esta versión cuando se solicite un
   despliegue. La prueba física de impresoras y la definición fiscal siguen
   pendientes.
+
+### 2026-09-30 — Categorías planas y eliminación en Panadería
+
+- Las categorías de productos de Panadería ya no están subordinadas a Panes,
+  Pastelería ni Externos. Se crean en una sola lista de primer nivel; el tipo
+  operativo sigue perteneciendo al artículo y conserva las reglas de
+  producción, inventario y recepción. Las categorías existentes mantienen sus
+  identificadores y asociaciones.
+- El administrador local puede eliminar definitivamente una categoría vacía.
+  Si tiene artículos, incluso inactivos, debe reasignarlos primero desde
+  Productos; así no se interrumpen recetas ni hojas de producción. Se corrigió
+  el formulario de edición para que la reasignación realmente se guarde. El
+  servidor responde con un conflicto claro ante una asignación o eliminación
+  concurrente y mantiene la desactivación como opción separada.
+- Se verificó el respaldo privado
+  `server/backups/pos-before-flat-bakery-categories-1790829800415.dump`
+  (373597 bytes; formato custom legible por `pg_restore`) y se aplicó la
+  migración `20260930140000_categorias_panaderia_planas` **solo al POS local**.
+  La migración conserva IDs/FK y resuelve nombres repetidos entre los antiguos
+  grupos antes de imponer unicidad global; Neon, Render y Vercel no se tocaron.
+- Prueba integrada en la app local: se creó una categoría temporal, se le
+  reasignó un producto `[DEMO]`, se comprobó el bloqueo de eliminación mientras
+  estaba en uso, se devolvió el producto a su categoría y se eliminó la
+  categoría temporal. Los datos de prueba quedaron retirados. Vista de
+  escritorio y móvil sin errores de página ni desbordamiento; compilan cliente
+  y servidor, lint del cliente correcto y 29 suites/420 pruebas del servidor.
+- Pendiente: desplegar esta migración y versión cuando se solicite; continúan
+  pendientes la prueba física de impresoras y la definición fiscal.

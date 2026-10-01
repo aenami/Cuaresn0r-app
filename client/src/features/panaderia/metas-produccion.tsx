@@ -66,9 +66,9 @@ export function MetasProduccionPanaderia({ esAdmin, esGlobal }: { esAdmin: boole
   const puedeReabrir = esAdmin
   const metas = metasQuery.data ?? []
   const programados = new Set(metas.map((meta) => meta.articuloId))
-  const categoriasAptas = new Set((categoriasQueryResult.data ?? []).filter((categoria) => categoria.activa).map((categoria) => `${categoria.id}:${categoria.tipo}`))
+  const categoriasAptas = new Set((categoriasQueryResult.data ?? []).filter((categoria) => categoria.activa).map((categoria) => categoria.id))
   const elegibles = (articulosQueryResult.data ?? [])
-    .filter((articulo) => articulo.activo && articulo.categoriaId != null && categoriasAptas.has(`${articulo.categoriaId}:${articulo.tipo}`) && (articulo.tipo === 'PANADERIA' || articulo.tipo === 'PASTELERIA') && !programados.has(articulo.id))
+    .filter((articulo) => articulo.activo && articulo.categoriaId != null && categoriasAptas.has(articulo.categoriaId) && (articulo.tipo === 'PANADERIA' || articulo.tipo === 'PASTELERIA') && !programados.has(articulo.id))
     .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
   const articuloSeleccionado = elegibles.find((articulo) => String(articulo.id) === articuloId)
   const cantidadNumero = Number(cantidad)

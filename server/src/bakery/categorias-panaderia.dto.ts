@@ -1,6 +1,4 @@
-import { IsBoolean, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
-
-export const tiposCategoriaPanaderia = ['PANADERIA', 'PASTELERIA', 'EXTERNO'] as const;
+import { IsBoolean, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CrearCategoriaPanaderiaDto {
   @IsString()
@@ -8,8 +6,6 @@ export class CrearCategoriaPanaderiaDto {
   @MaxLength(60)
   nombre!: string;
 
-  @IsIn(tiposCategoriaPanaderia)
-  tipo!: (typeof tiposCategoriaPanaderia)[number];
 }
 
 export class ActualizarCategoriaPanaderiaDto {

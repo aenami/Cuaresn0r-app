@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { articulosQuery, bakeryApi, bakeryKeys, categoriasPanaderiaQuery } from "./api";
-import type { ArticuloPanaderia, CategoriaPanaderia, TipoArticulo } from "./api";
+import type { ArticuloPanaderia, TipoArticulo } from "./api";
 import { CategoriasPanaderia } from './categorias-panaderia'
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,21 +37,16 @@ export function CatalogoPanaderia() {
         .toLocaleLowerCase("es-CO")
         .includes(busqueda.toLocaleLowerCase("es-CO")),
   );
-  const categoriasActivas = (categoriasDisponibles ?? []).filter((categoria) => categoria.activa);
   const opcionesCategoria = form
     ? (categoriasDisponibles ?? []).filter((categoria) =>
-        categoria.tipo === form.tipo && (categoria.activa || categoria.id === form.categoriaId))
+        categoria.activa || categoria.id === form.categoriaId)
     : [];
-  const categoriaElegida = opcionesCategoria.find((categoria) => categoria.id === form?.categoriaId)
-    ?? opcionesCategoria.find((categoria) => categoria.activa);
+  const categoriaElegida = opcionesCategoria.find((categoria) => categoria.id === form?.categoriaId);
   const categoriaPorId = new Map((categoriasDisponibles ?? []).map((categoria) => [categoria.id, categoria]));
-  function nuevaCategoria(tipo: CategoriaPanaderia['tipo']) {
-    return categoriasActivas.find((categoria) => categoria.tipo === tipo)?.id ?? null;
-  }
   async function guardar() {
     if (!form) return;
     if (!categoriaElegida) {
-      toast.error('Crea una categoría activa para este tipo de producto');
+      toast.error('Selecciona una categoría activa para el producto');
       return;
     }
     setGuardando(true);
@@ -61,7 +56,7 @@ export function CatalogoPanaderia() {
         await bakeryApi.actualizarArticulo(form.id, {
           nombre: form.nombre.trim(),
           precioVenta,
-          ...(categoriaElegida.id !== form.categoriaId && { categoriaId: categoriaElegida.id }),
+          ...(categoriaElegida.id !== data?.find((articulo) => articulo.id === form.id)?.categoriaId && { categoriaId: categoriaElegida.id }),
         });
       else
         await bakeryApi.crearArticulo({
@@ -104,7 +99,7 @@ export function CatalogoPanaderia() {
           </p>
         </div>
         {vista === 'productos' ? (
-          <Button onClick={() => setForm({ nombre: "", precio: "", tipo: "PANADERIA", categoriaId: nuevaCategoria('PANADERIA') })}>
+          <Button onClick={() => setForm({ nombre: "", precio: "", tipo: "PANADERIA", categoriaId: null })}>
             Nuevo producto
           </Button>
         ) : null}
@@ -166,13 +161,13 @@ export function CatalogoPanaderia() {
               />
             </div>
             <div>
-              <Label htmlFor="catalogo-pan-categoria">Tipo de producto</Label>
+              <Label htmlFor="catalogo-pan-tipo">Tipo de producto</Label>
               <select
-                id="catalogo-pan-categoria"
+                id="catalogo-pan-tipo"
                 disabled={!!form.id}
                 value={form.tipo}
                 onChange={(e) =>
-                  setForm({ ...form, tipo: e.target.value as TipoArticulo, categoriaId: nuevaCategoria(e.target.value as CategoriaPanaderia['tipo']) })
+                  setForm({ ...form, tipo: e.target.value as TipoArticulo })
                 }
                 className="h-10 w-full rounded-md bg-surface-lowest px-3 text-sm focus-visible:outline-2 focus-visible:outline-primary"
               >
@@ -186,15 +181,15 @@ export function CatalogoPanaderia() {
               </select>
             </div>
             <div>
-              <Label htmlFor="catalogo-pan-subcategoria">Categoría del catálogo</Label>
+              <Label htmlFor="catalogo-pan-categoria">Categoría del catálogo</Label>
               <select
-                id="catalogo-pan-subcategoria"
+                id="catalogo-pan-categoria"
                 required
-                value={categoriaElegida?.id ?? ''}
+                value={form.categoriaId ?? ''}
                 onChange={(e) => setForm({ ...form, categoriaId: Number(e.target.value) })}
                 className="h-10 w-full rounded-md bg-surface-lowest px-3 text-sm focus-visible:outline-2 focus-visible:outline-primary"
               >
-                {opcionesCategoria.length === 0 ? <option value="">Sin categorías activas</option> : null}
+                <option value="" disabled>{opcionesCategoria.length === 0 ? 'Sin categorías activas' : 'Selecciona una categoría'}</option>
                 {opcionesCategoria.map((categoria) => (
                   <option key={categoria.id} value={categoria.id}>
                     {categoria.nombre}{categoria.activa ? '' : ' (inactiva)'}
@@ -207,7 +202,7 @@ export function CatalogoPanaderia() {
                   className="mt-1 text-xs font-semibold text-primary underline underline-offset-2"
                   onClick={() => { setForm(null); setVista('categorias') }}
                 >
-                  Crear categoría para este tipo
+                  Crear una categoría
                 </button>
               ) : null}
             </div>

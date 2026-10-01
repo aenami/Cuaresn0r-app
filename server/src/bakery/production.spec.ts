@@ -138,7 +138,7 @@ describe('hojas de produccion de panaderia', () => {
 function goalFixture() {
   const articulo = {
     id: 4, nombre: 'Pan campesino', tipo: 'PANADERIA', activo: true,
-    categoria: { id: 1, activa: true, tipo: 'PANADERIA' },
+    categoria: { id: 1, activa: true },
   };
   const meta = {
     id: 1, fecha: hoy, articuloId: 4, nombreSnapshot: 'Pan campesino',
@@ -168,7 +168,7 @@ describe('metas completas de panaderia', () => {
   beforeEach(() => jest.useFakeTimers().setSystemTime(new Date('2026-09-30T18:00:00Z')));
   afterEach(() => jest.useRealTimers());
 
-  it('crea solo metas enteras de productos activos con categoria correspondiente', async () => {
+  it('crea solo metas enteras de productos activos con categoria activa', async () => {
     const { service, prisma, articulo } = goalFixture();
     await service.crear({ fecha: '2026-09-30', articuloId: 4, cantidadObjetivo: 20 }, 9);
     expect(prisma.metaProduccionPanaderia.create).toHaveBeenCalledWith(expect.objectContaining({
@@ -221,7 +221,7 @@ function inventoryFixture(harina = 20) {
       findUniqueOrThrow: jest.fn(({ where }: { where: { id: number } }) => Promise.resolve(articulos.get(where.id))),
       update: jest.fn().mockResolvedValue({}),
     },
-    categoriaPanaderia: { findUnique: jest.fn().mockResolvedValue({ id: 1, activa: true, tipo: 'PANADERIA' }) },
+    categoriaPanaderia: { findUnique: jest.fn().mockResolvedValue({ id: 1, activa: true }) },
     recetaPanaderia: { findFirst: jest.fn().mockResolvedValue({ id: 12, detalles: [{ insumoId: 5, cantidadUnidad: decimal(0.5) }] }) },
     movimientoPanaderia: { create: jest.fn().mockResolvedValue({ id: 90 }) },
   };
@@ -263,7 +263,7 @@ describe('hornadas y receta atomicas', () => {
 
   it('exige categoria activa y receta activa para crear una hornada', async () => {
     const { bakery, tx } = inventoryFixture();
-    tx.categoriaPanaderia.findUnique.mockResolvedValueOnce({ id: 1, activa: false, tipo: 'PANADERIA' });
+    tx.categoriaPanaderia.findUnique.mockResolvedValueOnce({ id: 1, activa: false });
     await expect(bakery.registrarProduccionEnTransaccion(tx as unknown as Prisma.TransactionClient, 4, 7, 12, 'Hoja #3'))
       .rejects.toThrow(ConflictException);
     tx.recetaPanaderia.findFirst.mockResolvedValueOnce(null);
