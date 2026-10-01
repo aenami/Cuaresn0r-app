@@ -21,9 +21,9 @@ export const nombreArea = (area: AreaTrabajo) =>
   area === 'PANADERIA' ? 'Panadería' : 'Restaurante / cafetería'
 export function rutaInicial(
   usuario: SesionUsuario | null,
-): '/' | '/panaderia' | '/inventario' | '/mesas' {
+): '/' | '/panaderia' | '/inventario' | '/mesas' | '/produccion' {
   if (esAdministrador(usuario?.rolNombre)) return '/'
-  if (usuario?.rolNombre === 'PANADERO') return '/inventario'
+  if (usuario?.rolNombre === 'PANADERO') return '/produccion'
   if (usuario?.area === 'PANADERIA' && puedeCobrar(usuario.rolNombre))
     return '/panaderia'
   return '/mesas'
@@ -50,6 +50,9 @@ export function puedeRuta(
       'COCINERO',
       'PANADERO',
     ].includes(rol)
+  if (ruta === 'produccion')
+    return area === 'PANADERIA' &&
+      ['ADMIN', 'ADMIN_GLOBAL', 'ADMIN_LOCAL', 'PANADERO'].includes(rol)
   if (ruta === 'caja') return puedeCobrar(rol) || esGlobal(rol)
   if (ruta === 'cuentas-por-pagar' || ruta === 'remisiones')
     return puedeCobrar(rol) || esGlobal(rol)

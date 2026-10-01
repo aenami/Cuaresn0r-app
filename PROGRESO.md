@@ -708,8 +708,9 @@ alcance o feature terminada.
   si no existe uno anterior. El historial es de solo lectura y las fechas
   futuras muestran la lista sin admitir cantidades.
 - Inventario de Panadería tiene una sección **Productos** separada en panes,
-  postres y externos. Permite registrar hornadas con receta activa y consumo de
-  insumos, recepciones de productos externos y salidas manuales con motivo;
+  postres y externos. Las hornadas se registran ahora desde la hoja de
+  producción con receta activa y consumo de insumos; Productos conserva
+  recepciones de productos externos y salidas manuales con motivo;
   muestra existencias e historial de movimientos. Estas salidas se separan de
   las ventas, mermas y faltantes en la conciliación del conteo.
 - Inventario de Restaurante tiene **Salidas** con motivo para ingredientes con
@@ -744,3 +745,44 @@ alcance o feature terminada.
 - Pendiente: aplicar la migración al entorno desplegado solo cuando se programe
   su publicación; las impresoras aún requieren prueba física en el computador
   de caja y la definición fiscal continúa abierta.
+
+### 2026-09-30 — Plan y hoja de producción de Panadería
+
+- La tabla de **Ingredientes** de Panadería ya no muestra “Ventas POS”; los
+  insumos no se venden al público. En el análisis del conteo por rango, ambas
+  áreas muestran al comienzo el ingreso estimado total de productos y la
+  pérdida estimada total por faltantes. Los ingredientes siguen valorados a
+  costo y no se presentan como ingreso por ventas.
+- Inventario de Panadería incorpora **Producción diaria** para programar metas
+  de panes y postres existentes con categoría activa. Administradores local y
+  global crean, eliminan y reabren metas; el panadero las marca completas o
+  no producidas. Resolver una meta no mueve inventario.
+- El nuevo módulo **Producción** mantiene una hoja por panadero y día de
+  Colombia. El panadero registra panes o postres ya creados, con receta activa;
+  en una transacción se suma el producto, se consumen los insumos y se guarda
+  cantidad, precio de catálogo de ese momento, subtotal y usuario. La clave
+  idempotente evita hornadas duplicadas al reintentar. Al finalizar, la hoja
+  queda bloqueada; administradores consultan avance en vivo e informes
+  históricos con subtotales por panes/postres y valor total. La antigua ruta
+  de entrada directa para panes/postres ahora rechaza el registro y remite a
+  Producción; las recepciones de externos y salidas justificadas permanecen.
+- Se ajustó la lectura de categorías para panadero y administrador global;
+  crear o editar categorías continúa reservado al administrador local. El
+  administrador global puede programar metas, pero no registrar ni finalizar
+  hojas.
+- Se creó un respaldo privado verificado del POS local antes de migrar:
+  `server/backups/pos-before-inventory-valuation-1790826389459.dump`.
+  Se aplicó **solo en `localhost/POS`** la migración
+  `20260930120000_hojas_y_metas_produccion_panaderia`. No se modificaron Neon,
+  Render ni Vercel.
+- Prueba integrada local: con un artículo `[DEMO]` se programó una meta de 1
+  unidad, el panadero registró una hornada y finalizó su hoja; se verificaron
+  el incremento de producto, consumo exacto de insumos, reintento sin
+  duplicación, permisos por rol, bloqueo posterior al cierre e informe de
+  $3.500. Este registro es **dato de prueba en la base local**. Cliente y
+  servidor compilan; 29 suites/413 pruebas del servidor y lint del cliente
+  pasan. Se revisaron pantallas de administrador y panadero en escritorio y
+  móvil, sin desbordamiento ni errores de JavaScript.
+- Pendiente: publicar la migración y esta versión cuando se solicite un
+  despliegue. La prueba física de impresoras y la definición fiscal siguen
+  pendientes.

@@ -20,6 +20,7 @@ import {
   LogOut,
   Menu,
   Printer,
+  ClipboardList,
   ReceiptText,
   UserCog,
   Users,
@@ -134,6 +135,7 @@ const NAVEGACION: ItemNav[] = [
     area: "RESTAURANTE",
   },
   { etiqueta: "Inventario", to: "/inventario", icono: Boxes },
+  { etiqueta: "Produccion", to: "/produccion", icono: ClipboardList, area: "PANADERIA" },
   {
     etiqueta: "Impresoras",
     to: "/impresoras",

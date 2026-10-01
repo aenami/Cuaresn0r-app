@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { ArrowDownToLine, ArrowUpFromLine, Boxes, Search } from 'lucide-react'
+import { ArrowDownToLine, ArrowUpFromLine, ArrowUpRight, Boxes, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,7 +12,7 @@ import { useAuthStore } from '@/stores/auth.store'
 import { esGlobal, puedeEntradaPanaderia } from '@/lib/acceso'
 import { errorApi } from '@/features/billing/caja-comun'
 import { api } from '@/lib/api'
-import { articulosQuery, bakeryApi, bakeryKeys, recetasPanaderiaQuery } from './api'
+import { articulosQuery, bakeryApi, bakeryKeys } from './api'
 import type { ArticuloPanaderia, TipoArticulo } from './api'
 
 type Grupo = Extract<TipoArticulo, 'PANADERIA' | 'PASTELERIA' | 'EXTERNO'>
@@ -27,8 +28,8 @@ interface MovimientoProducto {
   usuario: { id_usuario: number; email_usuario: string } | null
 }
 const GRUPOS: { id: Grupo; nombre: string; descripcion: string }[] = [
-  { id: 'PANADERIA', nombre: 'Panes', descripcion: 'Horneadas y panes disponibles' },
-  { id: 'PASTELERIA', nombre: 'Postres', descripcion: 'Producción de pastelería' },
+  { id: 'PANADERIA', nombre: 'Panes', descripcion: 'Existencias y salidas de panes' },
+  { id: 'PASTELERIA', nombre: 'Postres', descripcion: 'Existencias y salidas de postres' },
   { id: 'EXTERNO', nombre: 'Externos', descripcion: 'Bebidas y mercancía recibida' },
 ]
 
@@ -36,7 +37,6 @@ export function ProductosInventarioPanaderia() {
   const rol = useAuthStore((estado) => estado.usuario?.rolNombre)
   const queryClient = useQueryClient()
   const { data: articulos, isPending, error, refetch } = useQuery(articulosQuery)
-  const { data: recetas } = useQuery(recetasPanaderiaQuery)
   const [grupo, setGrupo] = useState<Grupo>('PANADERIA')
   const [busqueda, setBusqueda] = useState('')
   const [seleccion, setSeleccion] = useState<ArticuloPanaderia | null>(null)
@@ -55,10 +55,9 @@ export function ProductosInventarioPanaderia() {
   const articuloActual = articulos?.find((articulo) => articulo.id === seleccion?.id) ?? seleccion
   const cantidadNumero = Number(cantidad)
   const cantidadValida = cantidad !== '' && Number.isInteger(cantidadNumero) && cantidadNumero > 0
-  const recetaActiva = seleccion && recetas?.some((receta) => receta.articuloId === seleccion.id && receta.activa)
-  const necesitaReceta = accion === 'entrada' && seleccion?.tipo !== 'EXTERNO' && !recetaActiva
 
   function iniciar(articulo: ArticuloPanaderia, proxima: Accion) {
+    if (proxima === 'entrada' && articulo.tipo !== 'EXTERNO') return
     setSeleccion(articulo)
     setAccion(proxima)
     setCantidad('')
@@ -66,7 +65,7 @@ export function ProductosInventarioPanaderia() {
   }
 
   async function registrar() {
-    if (!seleccion || guardando || !puedeMover(seleccion) || !cantidadValida || !motivo.trim() || necesitaReceta) return
+    if (!seleccion || guardando || !puedeMover(seleccion) || !cantidadValida || !motivo.trim() || (accion === 'entrada' && seleccion.tipo !== 'EXTERNO')) return
     setGuardando(true)
     try {
       const datos = { cantidad: cantidadNumero, concepto: motivo.trim() }
@@ -84,9 +83,14 @@ export function ProductosInventarioPanaderia() {
   }
 
   return <section className="space-y-6" aria-label="Productos de panadería">
-    <div>
-      <h2 className="font-heading text-xl font-semibold uppercase">Productos de panadería</h2>
-      <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Las entradas suman existencias. Cada salida manual descuenta unidades con un motivo y queda separada de las ventas para el conteo diario.</p>
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h2 className="font-heading text-xl font-semibold uppercase">Productos de panadería</h2>
+        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Las hornadas de panes y postres se registran en Producción, donde suman existencias y consumen insumos de la receta. Aquí se reciben productos externos y se documentan salidas manuales, separadas de las ventas.</p>
+      </div>
+      <Link to="/produccion" className="inline-flex items-center gap-1.5 rounded-md bg-surface-high px-3 py-2 text-sm font-semibold text-primary transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+        Ir a Producción <ArrowUpRight className="size-4" aria-hidden="true" />
+      </Link>
     </div>
     <div className="flex flex-wrap gap-2" role="group" aria-label="Familias de productos">
       {GRUPOS.map((opcion) => <button key={opcion.id} type="button" aria-pressed={grupo === opcion.id} onClick={() => { setGrupo(opcion.id); setSeleccion(null) }}
@@ -100,15 +104,14 @@ export function ProductosInventarioPanaderia() {
     </div>
 
     {seleccion ? <section className="space-y-4 rounded-xl bg-surface-high p-5" aria-labelledby="movimiento-producto-titulo">
-      <div><h3 id="movimiento-producto-titulo" className="font-heading text-lg font-semibold">{accion === 'entrada' ? seleccion.tipo === 'EXTERNO' ? 'Recibir mercancía' : 'Registrar hornada' : 'Registrar salida'} · {seleccion.nombre}</h3>
-        <p className="mt-1 text-sm text-muted-foreground">Existencia actual: {formatearCantidad(articuloActual?.existencia ?? seleccion.existencia)} {seleccion.unidad}. {accion === 'salida' ? 'La salida no se registrará como venta.' : seleccion.tipo === 'EXTERNO' ? 'Indica el origen o proveedor de esta recepción.' : 'La hornada consumirá los insumos de la receta activa.'}</p></div>
+      <div><h3 id="movimiento-producto-titulo" className="font-heading text-lg font-semibold">{accion === 'entrada' ? 'Recibir mercancía' : 'Registrar salida'} · {seleccion.nombre}</h3>
+        <p className="mt-1 text-sm text-muted-foreground">Existencia actual: {formatearCantidad(articuloActual?.existencia ?? seleccion.existencia)} {seleccion.unidad}. {accion === 'salida' ? 'La salida no se registrará como venta.' : 'Indica el origen o proveedor de esta recepción.'}</p></div>
       <div className="grid gap-3 sm:grid-cols-[9rem_minmax(0,1fr)]">
         <div><Label htmlFor="producto-movimiento-cantidad">Cantidad</Label><Input id="producto-movimiento-cantidad" type="number" min={1} step={1} inputMode="numeric" value={cantidad} onChange={(evento) => setCantidad(evento.target.value)} className="mt-1.5" autoFocus /></div>
-        <div><Label htmlFor="producto-movimiento-motivo">{accion === 'entrada' ? 'Concepto de entrada' : 'Motivo de salida'}</Label><Input id="producto-movimiento-motivo" value={motivo} maxLength={200} onChange={(evento) => setMotivo(evento.target.value)} placeholder={accion === 'entrada' ? 'Ej. hornada de la mañana' : 'Ej. consumo interno, daño o cortesía'} className="mt-1.5" /></div>
+        <div><Label htmlFor="producto-movimiento-motivo">{accion === 'entrada' ? 'Concepto de entrada' : 'Motivo de salida'}</Label><Input id="producto-movimiento-motivo" value={motivo} maxLength={200} onChange={(evento) => setMotivo(evento.target.value)} placeholder={accion === 'entrada' ? 'Ej. proveedor y factura' : 'Ej. consumo interno, daño o cortesía'} className="mt-1.5" /></div>
       </div>
-      {necesitaReceta ? <p role="status" className="text-sm text-tertiary">Este producto necesita una receta activa en Inventario → Recetas antes de registrar producción.</p> : null}
       {accion === 'salida' && cantidadValida && cantidadNumero > Number(articuloActual?.existencia ?? seleccion.existencia) ? <p role="alert" className="text-sm text-destructive">La cantidad supera la existencia actual.</p> : null}
-      <div className="flex flex-wrap gap-2"><Button type="button" disabled={guardando || !cantidadValida || !motivo.trim() || !!necesitaReceta || (accion === 'salida' && cantidadNumero > Number(articuloActual?.existencia ?? seleccion.existencia))} onClick={() => void registrar()}>{guardando ? 'Guardando…' : accion === 'entrada' ? 'Registrar entrada' : 'Confirmar salida'}</Button><Button type="button" variant="ghost" onClick={() => setSeleccion(null)}>Cerrar</Button></div>
+      <div className="flex flex-wrap gap-2"><Button type="button" disabled={guardando || !cantidadValida || !motivo.trim() || (accion === 'salida' && cantidadNumero > Number(articuloActual?.existencia ?? seleccion.existencia))} onClick={() => void registrar()}>{guardando ? 'Guardando…' : accion === 'entrada' ? 'Registrar entrada' : 'Confirmar salida'}</Button><Button type="button" variant="ghost" onClick={() => setSeleccion(null)}>Cerrar</Button></div>
       <div className="border-t border-border pt-4"><h4 className="text-sm font-semibold">Movimientos recientes</h4>
         {cargandoMovimientos ? <p className="mt-2 text-sm text-muted-foreground">Cargando movimientos…</p> : errorMovimientos ? <p role="alert" className="mt-2 text-sm text-destructive">No se pudo consultar el historial: {errorApi(errorMovimientos)}</p>
           : !movimientos?.length ? <p className="mt-2 text-sm text-muted-foreground">Este artículo todavía no tiene movimientos registrados.</p>
@@ -128,7 +131,7 @@ export function ProductosInventarioPanaderia() {
           {productos.map((articulo) => <li key={articulo.id} className="flex flex-wrap items-center justify-between gap-4 rounded-xl bg-surface-low p-4">
             <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="font-heading text-base font-semibold">{articulo.nombre}</h3>{!articulo.activo ? <span className="rounded-full bg-tertiary/10 px-2 py-0.5 text-xs text-tertiary">Inactivo</span> : null}</div><p className="mt-1 text-xs text-muted-foreground">{formatearPrecio(articulo.precioVenta)} por unidad</p></div>
             <div className="flex flex-wrap items-center gap-3"><div className="text-right"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Existencia</p><p className="font-heading text-xl font-semibold tabular-nums">{formatearCantidad(articulo.existencia)}</p></div>
-              {puedeMover(articulo) ? <div className="flex gap-1"><Button type="button" size="sm" variant="secondary" onClick={() => iniciar(articulo, 'entrada')}><ArrowDownToLine className="size-4" /> {grupo === 'EXTERNO' ? 'Recibir' : 'Hornada'}</Button><Button type="button" size="sm" variant="ghost" onClick={() => iniciar(articulo, 'salida')}><ArrowUpFromLine className="size-4" /> Salida</Button></div> : null}
+              {puedeMover(articulo) ? <div className="flex gap-1">{grupo === 'EXTERNO' ? <Button type="button" size="sm" variant="secondary" onClick={() => iniciar(articulo, 'entrada')}><ArrowDownToLine className="size-4" /> Recibir</Button> : null}<Button type="button" size="sm" variant="ghost" onClick={() => iniciar(articulo, 'salida')}><ArrowUpFromLine className="size-4" /> Salida</Button></div> : null}
             </div>
           </li>)}
         </ul>}

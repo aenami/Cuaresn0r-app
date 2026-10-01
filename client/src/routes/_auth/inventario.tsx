@@ -11,6 +11,7 @@ import { ConteoDiarioPanaderia } from '@/features/panaderia/conteo-diario'
 import { ProductosInventarioPanaderia } from '@/features/panaderia/productos-inventario'
 import { SalidasRestaurante } from '@/features/inventario/salidas-restaurante'
 import { RecetasPanaderia } from '@/features/panaderia/recetas'
+import { MetasProduccionPanaderia } from '@/features/panaderia/metas-produccion'
 import { cn } from '@/lib/utils'
 import { ResumenMonetarioPorFechas } from '@/features/inventario/resumen-valoracion-rango'
 
@@ -41,10 +42,10 @@ function PaginaInventario() {
   const area = useAreaTrabajo()
   const [pestana, setPestana] = useState<Pestana>('produccion')
   const pestanaVisible = area === 'PANADERIA'
-    ? pestana === 'produccion' || pestana === 'salidas' ? 'productos' : pestana
+    ? pestana === 'salidas' ? 'productos' : pestana
     : pestana === 'productos' ? 'produccion' : pestana
   const pestanas = area === 'PANADERIA'
-    ? PESTANAS.filter((p) => p.id !== 'produccion' && p.id !== 'salidas')
+    ? PESTANAS.filter((p) => p.id !== 'salidas')
     : PESTANAS.filter((p) => p.id !== 'productos')
 
   return (
@@ -77,7 +78,8 @@ function PaginaInventario() {
       </div>
 
       <div className="mt-8">
-        {area === 'PANADERIA' ? pestanaVisible === 'recetas' ? <RecetasPanaderia esAdmin={esAdmin} />
+        {area === 'PANADERIA' ? pestanaVisible === 'produccion' ? <MetasProduccionPanaderia esAdmin={esAdmin} esGlobal={esGlobal} />
+          : pestanaVisible === 'recetas' ? <RecetasPanaderia esAdmin={esAdmin} />
           : pestanaVisible === 'conteo' ? <VistaInternaConteo key={area} area={area} esAdmin={esAdmin} esGlobal={esGlobal} />
           : pestanaVisible === 'productos' ? <ProductosInventarioPanaderia />
           : <InventarioPanaderia esAdmin={esAdmin && !esGlobal} vista="ingredientes" />

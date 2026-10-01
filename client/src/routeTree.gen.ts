@@ -14,6 +14,7 @@ import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as AuthIndexRouteImport } from './routes/_auth/index'
 import { Route as AuthUsuariosRouteImport } from './routes/_auth/usuarios'
 import { Route as AuthRemisionesRouteImport } from './routes/_auth/remisiones'
+import { Route as AuthProduccionRouteImport } from './routes/_auth/produccion'
 import { Route as AuthPanaderiaRouteImport } from './routes/_auth/panaderia'
 import { Route as AuthNominaRouteImport } from './routes/_auth/nomina'
 import { Route as AuthMiNominaRouteImport } from './routes/_auth/mi-nomina'
@@ -49,6 +50,11 @@ const AuthUsuariosRoute = AuthUsuariosRouteImport.update({
 const AuthRemisionesRoute = AuthRemisionesRouteImport.update({
   id: '/remisiones',
   path: '/remisiones',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthProduccionRoute = AuthProduccionRouteImport.update({
+  id: '/produccion',
+  path: '/produccion',
   getParentRoute: () => AuthRoute,
 } as any)
 const AuthPanaderiaRoute = AuthPanaderiaRouteImport.update({
@@ -124,6 +130,7 @@ export interface FileRoutesByFullPath {
   '/mi-nomina': typeof AuthMiNominaRoute
   '/nomina': typeof AuthNominaRoute
   '/panaderia': typeof AuthPanaderiaRoute
+  '/produccion': typeof AuthProduccionRoute
   '/remisiones': typeof AuthRemisionesRoute
   '/usuarios': typeof AuthUsuariosRoute
   '/cobro/$idPedido': typeof AuthCobroIdPedidoRoute
@@ -141,6 +148,7 @@ export interface FileRoutesByTo {
   '/mi-nomina': typeof AuthMiNominaRoute
   '/nomina': typeof AuthNominaRoute
   '/panaderia': typeof AuthPanaderiaRoute
+  '/produccion': typeof AuthProduccionRoute
   '/remisiones': typeof AuthRemisionesRoute
   '/usuarios': typeof AuthUsuariosRoute
   '/': typeof AuthIndexRoute
@@ -161,6 +169,7 @@ export interface FileRoutesById {
   '/_auth/mi-nomina': typeof AuthMiNominaRoute
   '/_auth/nomina': typeof AuthNominaRoute
   '/_auth/panaderia': typeof AuthPanaderiaRoute
+  '/_auth/produccion': typeof AuthProduccionRoute
   '/_auth/remisiones': typeof AuthRemisionesRoute
   '/_auth/usuarios': typeof AuthUsuariosRoute
   '/_auth/': typeof AuthIndexRoute
@@ -182,6 +191,7 @@ export interface FileRouteTypes {
     | '/mi-nomina'
     | '/nomina'
     | '/panaderia'
+    | '/produccion'
     | '/remisiones'
     | '/usuarios'
     | '/cobro/$idPedido'
@@ -199,6 +209,7 @@ export interface FileRouteTypes {
     | '/mi-nomina'
     | '/nomina'
     | '/panaderia'
+    | '/produccion'
     | '/remisiones'
     | '/usuarios'
     | '/'
@@ -218,6 +229,7 @@ export interface FileRouteTypes {
     | '/_auth/mi-nomina'
     | '/_auth/nomina'
     | '/_auth/panaderia'
+    | '/_auth/produccion'
     | '/_auth/remisiones'
     | '/_auth/usuarios'
     | '/_auth/'
@@ -266,6 +278,13 @@ declare module '@tanstack/react-router' {
       path: '/remisiones'
       fullPath: '/remisiones'
       preLoaderRoute: typeof AuthRemisionesRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/produccion': {
+      id: '/_auth/produccion'
+      path: '/produccion'
+      fullPath: '/produccion'
+      preLoaderRoute: typeof AuthProduccionRouteImport
       parentRoute: typeof AuthRoute
     }
     '/_auth/panaderia': {
@@ -365,6 +384,7 @@ interface AuthRouteChildren {
   AuthMiNominaRoute: typeof AuthMiNominaRoute
   AuthNominaRoute: typeof AuthNominaRoute
   AuthPanaderiaRoute: typeof AuthPanaderiaRoute
+  AuthProduccionRoute: typeof AuthProduccionRoute
   AuthRemisionesRoute: typeof AuthRemisionesRoute
   AuthUsuariosRoute: typeof AuthUsuariosRoute
   AuthIndexRoute: typeof AuthIndexRoute
@@ -383,6 +403,7 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthMiNominaRoute: AuthMiNominaRoute,
   AuthNominaRoute: AuthNominaRoute,
   AuthPanaderiaRoute: AuthPanaderiaRoute,
+  AuthProduccionRoute: AuthProduccionRoute,
   AuthRemisionesRoute: AuthRemisionesRoute,
   AuthUsuariosRoute: AuthUsuariosRoute,
   AuthIndexRoute: AuthIndexRoute,
