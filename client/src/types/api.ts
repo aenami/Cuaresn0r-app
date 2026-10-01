@@ -137,6 +137,7 @@ export interface ConteoInventarioDiario {
   valoracion?: import('@/features/inventario/valoracion-types').ValoracionConteo | null
   conciliacion?: {
     cantidadSistema: string
+    cantidadJustificada?: string
     diferencia: string | null
     estado: 'PENDIENTE' | 'COINCIDE' | 'DIFERENCIA' | 'RECONTAR' | 'NO_COMPARABLE'
     motivoNoComparable: string | null

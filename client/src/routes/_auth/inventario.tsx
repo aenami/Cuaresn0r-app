@@ -7,6 +7,9 @@ import { SeccionRecetas } from '@/features/inventario/seccion-recetas'
 import { SeccionProduccion } from '@/features/inventario/seccion-produccion'
 import { SeccionConteoDiario } from '@/features/inventario/seccion-conteo-diario'
 import { InventarioPanaderia } from '@/features/panaderia/inventario'
+import { ConteoDiarioPanaderia } from '@/features/panaderia/conteo-diario'
+import { ProductosInventarioPanaderia } from '@/features/panaderia/productos-inventario'
+import { SalidasRestaurante } from '@/features/inventario/salidas-restaurante'
 import { RecetasPanaderia } from '@/features/panaderia/recetas'
 import { cn } from '@/lib/utils'
 import { ResumenMonetarioPorFechas } from '@/features/inventario/resumen-valoracion-rango'
@@ -16,7 +19,7 @@ export const Route = createFileRoute('/_auth/inventario')({
   component: PaginaInventario,
 })
 
-type Pestana = 'produccion' | 'conteo' | 'ingredientes' | 'recetas'
+type Pestana = 'produccion' | 'productos' | 'conteo' | 'ingredientes' | 'salidas' | 'recetas'
 type VistaConteo = 'registro' | 'analisis'
 const VISTAS_CONTEO: { id: VistaConteo; etiqueta: string }[] = [
   { id: 'registro', etiqueta: 'Registro diario' },
@@ -25,8 +28,10 @@ const VISTAS_CONTEO: { id: VistaConteo; etiqueta: string }[] = [
 
 const PESTANAS: { id: Pestana; etiqueta: string }[] = [
   { id: 'produccion', etiqueta: 'Produccion diaria' },
+  { id: 'productos', etiqueta: 'Productos' },
   { id: 'conteo', etiqueta: 'Conteo diario' },
   { id: 'ingredientes', etiqueta: 'Ingredientes' },
+  { id: 'salidas', etiqueta: 'Salidas' },
   { id: 'recetas', etiqueta: 'Recetas' },
 ]
 
@@ -35,8 +40,12 @@ function PaginaInventario() {
   const esGlobal = useEsGlobal()
   const area = useAreaTrabajo()
   const [pestana, setPestana] = useState<Pestana>('produccion')
-  const pestanaVisible = area === 'PANADERIA' && pestana === 'produccion' ? 'conteo' : pestana
-  const pestanas = area === 'PANADERIA' ? PESTANAS.filter((p) => p.id !== 'produccion') : PESTANAS
+  const pestanaVisible = area === 'PANADERIA'
+    ? pestana === 'produccion' || pestana === 'salidas' ? 'productos' : pestana
+    : pestana === 'productos' ? 'produccion' : pestana
+  const pestanas = area === 'PANADERIA'
+    ? PESTANAS.filter((p) => p.id !== 'produccion' && p.id !== 'salidas')
+    : PESTANAS.filter((p) => p.id !== 'productos')
 
   return (
     <div className="p-6 md:p-10">
@@ -70,6 +79,7 @@ function PaginaInventario() {
       <div className="mt-8">
         {area === 'PANADERIA' ? pestanaVisible === 'recetas' ? <RecetasPanaderia esAdmin={esAdmin} />
           : pestanaVisible === 'conteo' ? <VistaInternaConteo key={area} area={area} esAdmin={esAdmin} esGlobal={esGlobal} />
+          : pestanaVisible === 'productos' ? <ProductosInventarioPanaderia />
           : <InventarioPanaderia esAdmin={esAdmin && !esGlobal} vista="ingredientes" />
           : pestanaVisible === 'produccion' ? (
           <SeccionProduccion esAdmin={esAdmin} />
@@ -77,6 +87,8 @@ function PaginaInventario() {
           <VistaInternaConteo key={area} area={area} esAdmin={esAdmin} esGlobal={esGlobal} />
         ) : pestanaVisible === 'ingredientes' ? (
           <SeccionIngredientes esAdmin={esAdmin} />
+        ) : pestanaVisible === 'salidas' ? (
+          <SalidasRestaurante puedeRegistrar={!esGlobal} />
         ) : (
           <SeccionRecetas esAdmin={esAdmin} />
         )}
@@ -128,7 +140,7 @@ function VistaInternaConteo({ area, esAdmin, esGlobal }: {
 
       <div id="conteo-panel-registro" role={esAdmin ? 'tabpanel' : undefined} aria-labelledby={esAdmin ? 'conteo-tab-registro' : undefined} hidden={vista !== 'registro'}>
         {vista === 'registro' ? area === 'PANADERIA'
-          ? <InventarioPanaderia esAdmin={esAdmin && !esGlobal} vista="conteo" />
+          ? <ConteoDiarioPanaderia esAdmin={esAdmin} soloLectura={esGlobal} />
           : <SeccionConteoDiario esAdmin={esAdmin} /> : null}
       </div>
       {esAdmin ? (

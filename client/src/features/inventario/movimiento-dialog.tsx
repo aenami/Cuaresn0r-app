@@ -35,19 +35,20 @@ import {
 const TIPOS = [
   { valor: 'ENTRADA', etiqueta: 'Entrada (compra)' },
   { valor: 'MERMA', etiqueta: 'Merma' },
+  { valor: 'SALIDA_MANUAL', etiqueta: 'Salida con motivo' },
   { valor: 'AJUSTE_POSITIVO', etiqueta: 'Ajuste positivo' },
   { valor: 'AJUSTE_NEGATIVO', etiqueta: 'Ajuste negativo' },
 ] as const
 
 const esquema = z
   .object({
-    tipo: z.enum(['ENTRADA', 'MERMA', 'AJUSTE_POSITIVO', 'AJUSTE_NEGATIVO']),
+    tipo: z.enum(['ENTRADA', 'MERMA', 'SALIDA_MANUAL', 'AJUSTE_POSITIVO', 'AJUSTE_NEGATIVO']),
     cantidad: z.coerce.number<number>().positive('La cantidad debe ser mayor a 0'),
     motivo: z.string().max(150, 'Maximo 150 caracteres').optional(),
   })
   .refine((v) => v.tipo === 'ENTRADA' || Boolean(v.motivo?.trim()), {
     path: ['motivo'],
-    error: 'Las mermas y ajustes requieren un motivo',
+    error: 'Las salidas y ajustes requieren un motivo',
   })
 
 type Valores = z.infer<typeof esquema>

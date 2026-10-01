@@ -5,6 +5,14 @@ import type { MetodoPago, TurnoResumen, Turno, TipoTurno, Producto, Ingrediente 
 export type TipoArticulo = 'PANADERIA' | 'PASTELERIA' | 'EXTERNO' | 'INSUMO'
 export type UnidadInventario = 'UNIDADES' | 'kg' | 'g' | 'dg' | 'mg' | 'ml' | 'L'
 
+export interface CategoriaPanaderia {
+  id: number
+  nombre: string
+  tipo: 'PANADERIA' | 'PASTELERIA' | 'EXTERNO'
+  activa: boolean
+  fechaCreacion: string
+}
+
 export interface ArticuloPanaderia {
   id: number
   nombre: string
@@ -14,6 +22,7 @@ export interface ArticuloPanaderia {
   costoReferencia?: string | null
   existencia: string
   activo: boolean
+  categoriaId: number | null
 }
 
 export interface ConteoPanaderia {
@@ -25,6 +34,7 @@ export interface ConteoPanaderia {
   ventasRegistradas: string
   transferencias: string
   mermas: string
+  salidasJustificadas?: string
   consumoReceta: string
   cantidadFisica: string
   precioReferencia: string
@@ -53,6 +63,7 @@ export interface EstadoConteoPanaderia {
     ventasRegistradas: string
     transferencias: string
     mermas: string
+    salidasJustificadas?: string
     consumoReceta: string
   }[]
   detalle: ConteoPanaderia[]
@@ -141,11 +152,16 @@ export const bakeryKeys = {
   turno: ['bakery', 'turno'] as const,
   historial: ['bakery', 'historial'] as const,
   recetas: ['bakery', 'recetas'] as const,
+  categorias: ['bakery', 'categorias'] as const,
 }
 
 export const articulosQuery = queryOptions({
   queryKey: bakeryKeys.articulos,
   queryFn: () => api.get<ArticuloPanaderia[]>('/bakery/articulos'),
+})
+export const categoriasPanaderiaQuery = queryOptions({
+  queryKey: bakeryKeys.categorias,
+  queryFn: () => api.get<CategoriaPanaderia[]>('/bakery/categorias'),
 })
 export const recetasPanaderiaQuery = queryOptions({
   queryKey: bakeryKeys.recetas,
@@ -194,10 +210,12 @@ export const historialPanaderiaQuery = queryOptions({
 })
 
 export const bakeryApi = {
-  crearArticulo: (body: { nombre: string; tipo: TipoArticulo; unidad: UnidadInventario; precioVenta: number; costoReferencia?: number | null }) => api.post<ArticuloPanaderia>('/bakery/articulos', body),
+  crearCategoria: (body: { nombre: string; tipo: CategoriaPanaderia['tipo'] }) => api.post<CategoriaPanaderia>('/bakery/categorias', body),
+  actualizarCategoria: (id: number, body: { nombre?: string; activa?: boolean }) => api.patch<CategoriaPanaderia>(`/bakery/categorias/${id}`, body),
+  crearArticulo: (body: { nombre: string; tipo: TipoArticulo; unidad: UnidadInventario; precioVenta: number; categoriaId?: number; costoReferencia?: number | null }) => api.post<ArticuloPanaderia>('/bakery/articulos', body),
   crearReceta: (body: { articuloId: number; nombre: string; detalles: { insumoId: number; cantidadUnidad: number }[] }) => api.post<RecetaPanaderia>('/bakery/recetas', body),
   desactivarReceta: (id: number) => api.patch(`/bakery/recetas/${id}/desactivar`),
-  actualizarArticulo: (id: number, body: { nombre?: string; precioVenta?: number; activo?: boolean; costoReferencia?: number | null }) => api.patch<ArticuloPanaderia>(`/bakery/articulos/${id}`, body),
+  actualizarArticulo: (id: number, body: { nombre?: string; precioVenta?: number; activo?: boolean; costoReferencia?: number | null; categoriaId?: number | null }) => api.patch<ArticuloPanaderia>(`/bakery/articulos/${id}`, body),
   entrada: (id: number, body: { cantidad: number; concepto: string }) => api.post(`/bakery/articulos/${id}/entradas`, body),
   merma: (id: number, body: { cantidad: number; concepto: string }) => api.post(`/bakery/articulos/${id}/mermas`, body),
   venta: (body: { claveOperacion: string; lineas: { articuloId: number; cantidad: number }[]; pagos: { metodo: MetodoPago; monto: number }[] }) => api.post<VentaPanaderia>('/bakery/ventas', body),

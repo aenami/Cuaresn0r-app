@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { articulosQuery, bakeryApi, bakeryKeys } from "./api";
-import type { ArticuloPanaderia, TipoArticulo } from "./api";
+import { articulosQuery, bakeryApi, bakeryKeys, categoriasPanaderiaQuery } from "./api";
+import type { ArticuloPanaderia, CategoriaPanaderia, TipoArticulo } from "./api";
+import { CategoriasPanaderia } from './categorias-panaderia'
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,13 +18,16 @@ const categorias = {
 };
 export function CatalogoPanaderia() {
   const { data, isPending, isError, refetch } = useQuery(articulosQuery);
+  const { data: categoriasDisponibles, isPending: cargandoCategorias, isError: errorCategorias, refetch: recargarCategorias } = useQuery(categoriasPanaderiaQuery);
   const queryClient = useQueryClient();
   const [busqueda, setBusqueda] = useState("");
+  const [vista, setVista] = useState<'productos' | 'categorias'>('productos');
   const [form, setForm] = useState<{
     id?: number;
     nombre: string;
     precio: string;
     tipo: TipoArticulo;
+    categoriaId: number | null;
   } | null>(null);
   const [guardando, setGuardando] = useState(false);
   const productos = data?.filter(
@@ -33,8 +37,23 @@ export function CatalogoPanaderia() {
         .toLocaleLowerCase("es-CO")
         .includes(busqueda.toLocaleLowerCase("es-CO")),
   );
+  const categoriasActivas = (categoriasDisponibles ?? []).filter((categoria) => categoria.activa);
+  const opcionesCategoria = form
+    ? (categoriasDisponibles ?? []).filter((categoria) =>
+        categoria.tipo === form.tipo && (categoria.activa || categoria.id === form.categoriaId))
+    : [];
+  const categoriaElegida = opcionesCategoria.find((categoria) => categoria.id === form?.categoriaId)
+    ?? opcionesCategoria.find((categoria) => categoria.activa);
+  const categoriaPorId = new Map((categoriasDisponibles ?? []).map((categoria) => [categoria.id, categoria]));
+  function nuevaCategoria(tipo: CategoriaPanaderia['tipo']) {
+    return categoriasActivas.find((categoria) => categoria.tipo === tipo)?.id ?? null;
+  }
   async function guardar() {
     if (!form) return;
+    if (!categoriaElegida) {
+      toast.error('Crea una categoría activa para este tipo de producto');
+      return;
+    }
     setGuardando(true);
     try {
       const precioVenta = Number(form.precio);
@@ -42,6 +61,7 @@ export function CatalogoPanaderia() {
         await bakeryApi.actualizarArticulo(form.id, {
           nombre: form.nombre.trim(),
           precioVenta,
+          ...(categoriaElegida.id !== form.categoriaId && { categoriaId: categoriaElegida.id }),
         });
       else
         await bakeryApi.crearArticulo({
@@ -49,6 +69,7 @@ export function CatalogoPanaderia() {
           tipo: form.tipo,
           precioVenta,
           unidad: "UNIDADES",
+          categoriaId: categoriaElegida.id,
         });
       await queryClient.invalidateQueries({ queryKey: bakeryKeys.all });
       setForm(null);
@@ -82,12 +103,38 @@ export function CatalogoPanaderia() {
             ni modifica el catálogo del restaurante.
           </p>
         </div>
-        <Button
-          onClick={() => setForm({ nombre: "", precio: "", tipo: "PANADERIA" })}
-        >
-          Nuevo producto
-        </Button>
+        {vista === 'productos' ? (
+          <Button onClick={() => setForm({ nombre: "", precio: "", tipo: "PANADERIA", categoriaId: nuevaCategoria('PANADERIA') })}>
+            Nuevo producto
+          </Button>
+        ) : null}
       </header>
+      <nav aria-label="Secciones del catálogo de panadería" className="flex gap-5 border-b border-border">
+        {([['productos', 'Productos'], ['categorias', 'Categorías']] as const).map(([id, titulo]) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={vista === id}
+            onClick={() => { setVista(id); setForm(null) }}
+            className={`-mb-px border-b-2 pb-3 text-sm font-semibold uppercase tracking-wide transition-colors ${vista === id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          >
+            {titulo}
+          </button>
+        ))}
+      </nav>
+      {errorCategorias ? (
+        <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-destructive">
+          <span>No se pudieron cargar las categorías.</span>
+          <Button size="sm" variant="secondary" onClick={() => void recargarCategorias()}>Reintentar</Button>
+        </div>
+      ) : null}
+      {vista === 'categorias' ? (
+        cargandoCategorias || isPending ? (
+          <div className="h-40 animate-pulse rounded-lg bg-surface-high" />
+        ) : errorCategorias || isError ? null : (
+          <CategoriasPanaderia categorias={categoriasDisponibles ?? []} articulos={data ?? []} />
+        )
+      ) : <>
       <Input
         aria-label="Buscar producto de panadería"
         placeholder="Buscar panes, postres o bebidas…"
@@ -106,7 +153,7 @@ export function CatalogoPanaderia() {
           <h2 className="font-semibold">
             {form.id ? "Editar producto" : "Nuevo producto"}
           </h2>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <div>
               <Label htmlFor="catalogo-pan-nombre">Nombre</Label>
               <Input
@@ -119,13 +166,13 @@ export function CatalogoPanaderia() {
               />
             </div>
             <div>
-              <Label htmlFor="catalogo-pan-categoria">Categoría</Label>
+              <Label htmlFor="catalogo-pan-categoria">Tipo de producto</Label>
               <select
                 id="catalogo-pan-categoria"
                 disabled={!!form.id}
                 value={form.tipo}
                 onChange={(e) =>
-                  setForm({ ...form, tipo: e.target.value as TipoArticulo })
+                  setForm({ ...form, tipo: e.target.value as TipoArticulo, categoriaId: nuevaCategoria(e.target.value as CategoriaPanaderia['tipo']) })
                 }
                 className="h-10 w-full rounded-md bg-surface-lowest px-3 text-sm focus-visible:outline-2 focus-visible:outline-primary"
               >
@@ -137,6 +184,32 @@ export function CatalogoPanaderia() {
                   ),
                 )}
               </select>
+            </div>
+            <div>
+              <Label htmlFor="catalogo-pan-subcategoria">Categoría del catálogo</Label>
+              <select
+                id="catalogo-pan-subcategoria"
+                required
+                value={categoriaElegida?.id ?? ''}
+                onChange={(e) => setForm({ ...form, categoriaId: Number(e.target.value) })}
+                className="h-10 w-full rounded-md bg-surface-lowest px-3 text-sm focus-visible:outline-2 focus-visible:outline-primary"
+              >
+                {opcionesCategoria.length === 0 ? <option value="">Sin categorías activas</option> : null}
+                {opcionesCategoria.map((categoria) => (
+                  <option key={categoria.id} value={categoria.id}>
+                    {categoria.nombre}{categoria.activa ? '' : ' (inactiva)'}
+                  </option>
+                ))}
+              </select>
+              {opcionesCategoria.length === 0 ? (
+                <button
+                  type="button"
+                  className="mt-1 text-xs font-semibold text-primary underline underline-offset-2"
+                  onClick={() => { setForm(null); setVista('categorias') }}
+                >
+                  Crear categoría para este tipo
+                </button>
+              ) : null}
             </div>
             <div>
               <Label htmlFor="catalogo-pan-precio">Precio de venta COP</Label>
@@ -158,7 +231,8 @@ export function CatalogoPanaderia() {
                 !form.nombre.trim() ||
                 form.precio === "" ||
                 !Number.isInteger(Number(form.precio)) ||
-                Number(form.precio) < 0
+                Number(form.precio) < 0 ||
+                !categoriaElegida
               }
             >
               {guardando ? "Guardando…" : "Guardar producto"}
@@ -188,10 +262,11 @@ export function CatalogoPanaderia() {
             Desliza la tabla para ver precios, estado y acciones →
           </p>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[36rem] text-sm">
+            <table className="w-full min-w-[42rem] text-sm">
               <thead className="text-left text-muted-foreground">
                 <tr>
                   <th className="p-3">Producto</th>
+                  <th className="p-3">Tipo</th>
                   <th className="p-3">Categoría</th>
                   <th className="p-3 text-right">Precio</th>
                   <th className="p-3">Estado</th>
@@ -203,6 +278,7 @@ export function CatalogoPanaderia() {
                   <tr key={a.id} className="border-t border-border">
                     <td className="p-3 font-semibold">{a.nombre}</td>
                     <td className="p-3">{categorias[a.tipo]}</td>
+                    <td className="p-3">{a.categoriaId ? (categoriaPorId.get(a.categoriaId)?.nombre ?? 'Sin categoría') : 'Sin categoría'}</td>
                     <td className="p-3 text-right tabular-nums">
                       {formatearPrecio(a.precioVenta)}
                     </td>
@@ -217,6 +293,7 @@ export function CatalogoPanaderia() {
                             nombre: a.nombre,
                             tipo: a.tipo,
                             precio: a.precioVenta,
+                            categoriaId: a.categoriaId,
                           })
                         }
                       >
@@ -238,6 +315,7 @@ export function CatalogoPanaderia() {
           </div>
         </div>
       )}
+      </>}
     </div>
   );
 }

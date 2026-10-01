@@ -40,6 +40,26 @@ export function movimientosQuery(idIngrediente: number) {
   })
 }
 
+export interface SalidaRestaurante {
+  id: string
+  tipo: 'PRODUCTO' | 'INGREDIENTE'
+  clase?: 'MERMA' | 'SALIDA_MANUAL'
+  objetivoId: number
+  nombre: string
+  cantidad: string
+  unidad: UnidadIngrediente
+  motivo: string
+  fecha: string
+  usuario: string
+}
+
+export function salidasRestauranteQuery(fecha: string) {
+  return queryOptions({
+    queryKey: ['inventario', 'salidas', fecha],
+    queryFn: () => api.get<SalidaRestaurante[]>(`/recipes/inventory-exits?date=${fecha}`),
+  })
+}
+
 export interface IngredientePayload {
   name: string
   units: UnidadIngrediente
@@ -89,7 +109,7 @@ export function useRetirarElementoConteo() {
 }
 
 export interface MovimientoPayload {
-  tipo: 'ENTRADA' | 'MERMA' | 'AJUSTE_POSITIVO' | 'AJUSTE_NEGATIVO'
+  tipo: 'ENTRADA' | 'MERMA' | 'SALIDA_MANUAL' | 'AJUSTE_POSITIVO' | 'AJUSTE_NEGATIVO'
   cantidad: number
   motivo?: string
 }
@@ -141,6 +161,15 @@ export function useRegistrarMovimiento() {
   return useMutation({
     mutationFn: ({ idIngrediente, ...payload }: MovimientoPayload & { idIngrediente: number }) =>
       api.post<MovimientoInventario>(`/recipes/ingredients/${idIngrediente}/movements`, payload),
+    onSuccess: invalidar,
+  })
+}
+
+export function useRegistrarSalidaProducto() {
+  const invalidar = useInvalidarInventario()
+  return useMutation({
+    mutationFn: (payload: { productoId: number; cantidad: number; motivo: string }) =>
+      api.post('/recipes/inventory-exits/products', payload),
     onSuccess: invalidar,
   })
 }

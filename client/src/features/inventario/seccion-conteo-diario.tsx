@@ -115,7 +115,7 @@ export function SeccionConteoDiario({ esAdmin }: { esAdmin: boolean }) {
             </h2>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
               Compara la salida física (saldo anterior + entradas − conteo) con los productos entregados,
-              pagados o no. Para ingredientes se usa el consumo registrado de sus recetas.
+              pagados o no. También se consideran las salidas justificadas; no se presentan como ventas ni faltantes.
             </p>
           </div>
 
@@ -255,6 +255,7 @@ function TarjetaConteo({ conteo, esAdmin, soloLectura }: { conteo: ConteoInventa
   const salida = salidaFinal ?? salidaVista
   const finalizado = conteo.estado_conteoInventario === 'FINALIZADO'
   const conciliacion = conteo.conciliacion
+  const cantidadJustificada = Number(conciliacion?.cantidadJustificada ?? 0)
   const diferenciaEntregas = conciliacion?.diferencia === null || conciliacion?.diferencia === undefined
     ? null : Number(conciliacion.diferencia)
   const unidad = conteo.unidad_objetivo_conteoInventario
@@ -377,9 +378,13 @@ function TarjetaConteo({ conteo, esAdmin, soloLectura }: { conteo: ConteoInventa
 
         {conciliacion ? <div className="mt-4 space-y-2 border-t border-border pt-3 text-sm">
           <p className="flex flex-wrap justify-between gap-2">
-            <span>{conteo.tipo_objetivo_conteoInventario === 'PRODUCTO' ? 'Entregado en el sistema' : 'Salidas registradas'}</span>
+            <span>Salidas registradas en el sistema</span>
             <span className="font-semibold tabular-nums">{formatearCantidad(conciliacion.cantidadSistema)} {unidad}</span>
           </p>
+          {cantidadJustificada > 0 ? <p className="flex flex-wrap justify-between gap-2 text-muted-foreground">
+            <span>De ellas, salidas con motivo (sin venta)</span>
+            <span className="tabular-nums">{formatearCantidad(cantidadJustificada)} {unidad}</span>
+          </p> : null}
           {conciliacion.motivoNoComparable ? <p className="text-tertiary">Sin base comparable</p>
             : conciliacion.requiereReconteo ? <p className="text-rose-300" role="status">Requiere reabrir y volver a contar</p>
             : finalizado && diferenciaEntregas !== null ? <p className={diferenciaEntregas === 0 ? 'text-emerald-300' : 'text-rose-300'}>
