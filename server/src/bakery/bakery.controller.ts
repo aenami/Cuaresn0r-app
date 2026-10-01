@@ -49,11 +49,11 @@ export class BakeryController {
     return this.bakery.recibirTransferenciaRestaurante(id, req.user.id);
   }
 
-  @Roles('ADMIN')
+  @Roles('ADMIN_LOCAL')
   @Post('recetas')
   crearReceta(@Body() dto: CrearRecetaPanaderiaDto) { return this.bakery.crearReceta(dto); }
 
-  @Roles('ADMIN')
+  @Roles('ADMIN_LOCAL')
   @Patch('recetas/:id/desactivar')
   desactivarReceta(@Param('id', ParseIntPipe) id: number) { return this.bakery.desactivarReceta(id); }
 

@@ -13,6 +13,9 @@ import { CategoriasPanaderiaService } from './categorias-panaderia.service';
 export class CategoriasPanaderiaController {
   constructor(private readonly categorias: CategoriasPanaderiaService) {}
 
+  // Producción necesita leer la categoría de cada artículo; la gestión
+  // permanece reservada al administrador local.
+  @Roles('PANADERO', 'ADMIN_LOCAL', 'ADMIN_GLOBAL', 'ADMIN')
   @Get()
   listar() {
     return this.categorias.listar();

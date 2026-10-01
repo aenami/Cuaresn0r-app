@@ -9,7 +9,7 @@ import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { fechaColombia, rangoDia } from '../recipes/inventory-reconciliation';
 import { crearValoracion, presentarValoracion } from '../recipes/inventory-valuation';
-import { accessContext, esAdministrador } from '../auth/access-context';
+import { accessContext, esAdministrador, esGlobal } from '../auth/access-context';
 import {
   CrearArticuloPanaderiaDto,
   CrearRecetaPanaderiaDto,
@@ -234,32 +234,55 @@ export class BakeryService {
       const articulo = await this.bloquearArticulo(tx, id);
       if (!articulo.activo) throw new ConflictException('El articulo esta desactivado');
       this.exigirEntradaPermitida(articulo.tipo);
-      const receta = await tx.recetaPanaderia.findFirst({
-        where: { articuloId: id, activa: true }, include: { detalles: true },
-      });
-      const articulos = new Map<number, Awaited<ReturnType<typeof this.bloquearArticulo>>>();
-      for (const insumoId of (receta?.detalles.map((detalle) => detalle.insumoId) ?? []).sort((a, b) => a - b))
-        articulos.set(insumoId, await this.bloquearArticulo(tx, insumoId));
+      if (esProducido(articulo.tipo))
+        throw new ConflictException('Registra las hornadas de panes y postres en Produccion, dentro de tu hoja diaria');
       if (articulo.unidad === 'UNIDADES' && !Number.isInteger(dto.cantidad))
         throw new UnprocessableEntityException('Este articulo se cuenta en unidades enteras');
-      if (esProducido(articulo.tipo)) {
-        if (!receta || receta.detalles.length === 0)
-          throw new ConflictException('Crea una receta activa antes de registrar una hornada');
-        for (const detalle of receta.detalles) {
-          const insumo = articulos.get(detalle.insumoId)!;
-          if (!insumo.activo || insumo.tipo !== 'INSUMO')
-            throw new ConflictException(`${insumo.nombre} ya no es un insumo activo`);
-          const consumo = detalle.cantidadUnidad.times(dto.cantidad);
-          if (insumo.unidad === 'UNIDADES' && !consumo.isInteger())
-            throw new UnprocessableEntityException(`${insumo.nombre} requiere unidades enteras para esta hornada`);
-          await this.mover(tx, insumo, consumo.negated(), usuarioId, 'CONSUMO_RECETA',
-            `Receta #${receta.id} · ${dto.concepto.trim()}`.slice(0, 200), { recetaId: receta.id });
-        }
-      }
-      return this.mover(tx, articulo, dto.cantidad, usuarioId,
-        esProducido(articulo.tipo) ? 'PRODUCCION' : 'RECEPCION',
-        dto.concepto.trim(), receta ? { recetaId: receta.id } : undefined);
+      return this.mover(tx, articulo, dto.cantidad, usuarioId, 'RECEPCION', dto.concepto.trim());
     });
+  }
+
+  // Se invoca unicamente desde la hoja y dentro de la misma transaccion que
+  // crea su linea. No abrir aqui otra transaccion: ante cualquier fallo debe
+  // revertirse tanto la hornada como todos los consumos de la receta.
+  async registrarProduccionEnTransaccion(
+    tx: Prisma.TransactionClient,
+    articuloId: number,
+    usuarioId: number,
+    cantidad: number,
+    concepto: string,
+  ) {
+    const articulo = await this.bloquearArticulo(tx, articuloId);
+    if (!articulo.activo || !esProducido(articulo.tipo))
+      throw new ConflictException('Selecciona un pan o postre activo del catalogo');
+    if (!articulo.categoriaId)
+      throw new ConflictException('Asigna una categoria al producto antes de producirlo');
+    const categoria = await tx.categoriaPanaderia.findUnique({ where: { id: articulo.categoriaId } });
+    if (!categoria?.activa || categoria.tipo !== articulo.tipo)
+      throw new ConflictException('La categoria del producto debe estar activa y corresponder a panes o postres');
+    if (!Number.isInteger(cantidad) || cantidad <= 0)
+      throw new UnprocessableEntityException('La hornada se registra en unidades enteras positivas');
+    const receta = await tx.recetaPanaderia.findFirst({
+      where: { articuloId, activa: true }, include: { detalles: true },
+    });
+    if (!receta || receta.detalles.length === 0)
+      throw new ConflictException('Crea una receta activa antes de registrar una hornada');
+    const insumos = new Map<number, typeof articulo>();
+    for (const insumoId of receta.detalles.map((detalle) => detalle.insumoId).sort((a, b) => a - b))
+      insumos.set(insumoId, await this.bloquearArticulo(tx, insumoId));
+    for (const detalle of receta.detalles) {
+      const insumo = insumos.get(detalle.insumoId)!;
+      if (!insumo.activo || insumo.tipo !== 'INSUMO')
+        throw new ConflictException(`${insumo.nombre} ya no es un insumo activo`);
+      const consumo = detalle.cantidadUnidad.times(cantidad);
+      if (insumo.unidad === 'UNIDADES' && !consumo.isInteger())
+        throw new UnprocessableEntityException(`${insumo.nombre} requiere unidades enteras para esta hornada`);
+      await this.mover(tx, insumo, consumo.negated(), usuarioId, 'CONSUMO_RECETA',
+        `Receta #${receta.id} · ${concepto}`.slice(0, 200), { recetaId: receta.id });
+    }
+    const movimiento = await this.mover(tx, articulo, cantidad, usuarioId,
+      'PRODUCCION', concepto.slice(0, 200), { recetaId: receta.id });
+    return { articulo, movimiento };
   }
 
   async registrarMerma(id: number, usuarioId: number, dto: EntradaPanaderiaDto) {
@@ -290,7 +313,10 @@ export class BakeryService {
 
   private exigirEntradaPermitida(tipo: string) {
     const actor = accessContext.getStore()?.user;
-    if (!actor || esAdministrador(actor.rolNombre)) return;
+    if (!actor) return;
+    if (esGlobal(actor.rolNombre))
+      throw new ForbiddenException('El administrador global solo puede consultar el inventario');
+    if (esAdministrador(actor.rolNombre)) return;
     const permitido = actor.rolNombre === 'PANADERO' ? tipo !== 'EXTERNO' : actor.rolNombre === 'CAJERO' && tipo === 'EXTERNO';
     if (!permitido) throw new ForbiddenException('El panadero recibe insumos y registra producción; el cajero recibe productos externos');
   }

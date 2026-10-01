@@ -154,6 +154,11 @@ enum EstadoMetaProduccion {
   NO_PRODUCIDO
 }
 
+enum EstadoHojaProduccionPanaderia {
+  BORRADOR
+  FINALIZADA
+}
+
 enum EstadoConteoInventario {
   PENDIENTE
   FINALIZADO
@@ -303,6 +308,9 @@ model Usuario {
   conteosInventarioCreados  ConteoInventarioDiario[] @relation("ConteoInventarioCreador")
   conteosInventarioCerrados ConteoInventarioDiario[] @relation("ConteoInventarioCerradoPor")
   movimientosPanaderia     MovimientoPanaderia[]
+  hojasProduccionPanaderia HojaProduccionPanaderia[] @relation("HojaProduccionPanadero")
+  metasPanaderiaCreadas MetaProduccionPanaderia[] @relation("MetaPanaderiaCreador")
+  metasPanaderiaResueltas MetaProduccionPanaderia[] @relation("MetaPanaderiaResueltoPor")
   conteosPanaderia         ConteoPanaderia[]
   transferenciasRestauranteEnviadas TransferenciaRestaurantePanaderia[] @relation("TrasladoRestauranteEnvio")
   transferenciasRestauranteRecibidas TransferenciaRestaurantePanaderia[] @relation("TrasladoRestauranteRecepcion")
@@ -1295,6 +1303,8 @@ model ArticuloPanaderia {
   transferenciasRecibidas TransferenciaRestaurantePanaderia[]
   recetasPanaderia RecetaPanaderia[] @relation("ProductoRecetaPanaderia")
   usosRecetaPanaderia DetalleRecetaPanaderia[] @relation("InsumoRecetaPanaderia")
+  entradasHojaProduccion EntradaHojaProduccion[]
+  metasProduccionPanaderia MetaProduccionPanaderia[]
 
   @@index([categoriaId])
 }
@@ -1373,12 +1383,74 @@ model MovimientoPanaderia {
   transferencia TransferenciaPanaderia?  @relation(fields: [transferenciaId], references: [id])
   transferenciaRestaurante TransferenciaRestaurantePanaderia? @relation(fields: [transferenciaRestauranteId], references: [id])
   receta        RecetaPanaderia?       @relation(fields: [recetaId], references: [id])
+  entradaHojaProduccion EntradaHojaProduccion?
 
   @@index([articuloId, fecha])
   @@index([ventaId])
   @@index([transferenciaId])
   @@index([transferenciaRestauranteId])
   @@index([recetaId])
+}
+
+// Una hoja por panadero y dia de Colombia. Cada linea queda vinculada con el
+// movimiento de produccion que ya desconto su receta de forma atomica.
+model HojaProduccionPanaderia {
+  id                Int                           @id @default(autoincrement())
+  fecha             DateTime                      @db.Date
+  panaderoId        Int
+  estado            EstadoHojaProduccionPanaderia @default(BORRADOR)
+  fechaCreacion     DateTime                      @default(now()) @db.Timestamp(6)
+  fechaFinalizacion DateTime?                     @db.Timestamp(6)
+
+  panadero Usuario                 @relation("HojaProduccionPanadero", fields: [panaderoId], references: [id_usuario], onDelete: Restrict)
+  entradas EntradaHojaProduccion[]
+
+  @@unique([fecha, panaderoId])
+  @@index([fecha, estado])
+}
+
+model EntradaHojaProduccion {
+  id                    Int                    @id @default(autoincrement())
+  hojaId                Int
+  articuloId            Int
+  movimientoId          Int                    @unique
+  claveOperacion        String                 @unique @db.VarChar(50)
+  nombreArticuloSnapshot String               @db.VarChar(80)
+  tipoSnapshot          TipoArticuloPanaderia
+  cantidad              Decimal                @db.Decimal(20, 4)
+  precioUnitarioSnapshot Decimal               @db.Decimal(20, 4)
+  subtotal              Decimal                @db.Decimal(20, 4)
+  fechaRegistro         DateTime               @default(now()) @db.Timestamp(6)
+
+  hoja HojaProduccionPanaderia @relation(fields: [hojaId], references: [id], onDelete: Restrict)
+  articulo ArticuloPanaderia @relation(fields: [articuloId], references: [id], onDelete: Restrict)
+  movimiento MovimientoPanaderia @relation(fields: [movimientoId], references: [id], onDelete: Restrict)
+
+  @@index([hojaId, fechaRegistro])
+  @@index([articuloId, fechaRegistro])
+}
+
+// La meta no mueve inventario. Es la indicacion de una cantidad completa a
+// preparar; las hornadas reales se registran exclusivamente en la hoja.
+model MetaProduccionPanaderia {
+  id                 Int                  @id @default(autoincrement())
+  fecha              DateTime             @db.Date
+  articuloId         Int
+  nombreSnapshot     String               @db.VarChar(80)
+  tipoSnapshot       TipoArticuloPanaderia
+  cantidadObjetivo   Int
+  estado             EstadoMetaProduccion @default(PENDIENTE)
+  usuarioCreaId      Int
+  usuarioResuelveId  Int?
+  fechaCreacion      DateTime             @default(now()) @db.Timestamp(6)
+  fechaResolucion    DateTime?            @db.Timestamp(6)
+
+  articulo ArticuloPanaderia @relation(fields: [articuloId], references: [id], onDelete: Restrict)
+  usuarioCrea Usuario @relation("MetaPanaderiaCreador", fields: [usuarioCreaId], references: [id_usuario], onDelete: Restrict)
+  usuarioResuelve Usuario? @relation("MetaPanaderiaResueltoPor", fields: [usuarioResuelveId], references: [id_usuario], onDelete: Restrict)
+
+  @@unique([fecha, articuloId])
+  @@index([fecha, estado])
 }
 
 model VentaPanaderia {
