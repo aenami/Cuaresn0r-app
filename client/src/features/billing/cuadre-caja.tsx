@@ -27,7 +27,7 @@ import type {
 import { estadoConteoCierreQuery, turnoQuery, turnosQuery, useCerrarTurno } from '@/features/billing/api'
 import { SelectorTipoTurno } from './tipo-turno'
 import { nombresTurno } from './tipos-turno'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { formatearPrecio } from '@/lib/formato'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -65,8 +65,8 @@ function resultadoCuadre(diferencia: number) {
   return { texto: 'Faltante', estilo: 'text-destructive', fondo: 'border-destructive/30 bg-destructive/10' }
 }
 
-export function CuadreCaja({ turno }: { turno: TurnoResumen | null }) {
-  return turno ? <CuadreActivo turno={turno} /> : <HistorialCuadres />
+export function CuadreCaja({ turno, turnoHistorial }: { turno: TurnoResumen | null; turnoHistorial?: number }) {
+  return turno ? <CuadreActivo turno={turno} /> : <HistorialCuadres turnoInicial={turnoHistorial} />
 }
 
 function CuadreActivo({ turno }: { turno: TurnoResumen }) {
@@ -271,13 +271,13 @@ function InformeCuadre({ turno }: { turno: TurnoResumen }) {
         </p>
       </section>
 
-      <TablaNomina pagos={turno.detallePagosNomina} />
+      <TablaNomina pagos={turno.detallePagosNomina} idTurno={turno.id_turno} />
       {turno.conteo_panaderia_cierre_turno ? <section className="rounded-lg bg-surface-high p-4 text-sm"><h2 className="font-semibold">Inventario de panadería al cerrar</h2><p className="mt-1">Diferencia valorizada: {formatearPrecio(turno.conteo_panaderia_cierre_turno.valorDiferencia)}. Se conserva para revisión; no crea ventas ni pagos automáticos.</p></section> : null}
       {turno.conteo_inventario_cierre_turno ? <section className="rounded-lg bg-surface-high p-4 text-sm">
         <h2 className="font-semibold">Inventario verificado al cerrar</h2>
         <p className="mt-1">{turno.conteo_inventario_cierre_turno.fecha} · {turno.conteo_inventario_cierre_turno.total} elementos contados · {turno.conteo_inventario_cierre_turno.inconsistencias} diferencias registradas.</p>
       </section> : null}
-      <TablaProveedores pagos={turno.detallePagosProveedores} />
+      <TablaProveedores pagos={turno.detallePagosProveedores} idTurno={turno.id_turno} />
       <FacturasPendientes
         cuentas={resumen.facturasPendientes.cuentas}
         total={Number(resumen.facturasPendientes.total)}
@@ -335,7 +335,8 @@ function TituloSeccion({ icono: Icono, titulo, total }: { icono: typeof UserRoun
   )
 }
 
-function TablaNomina({ pagos }: { pagos: PagoNominaCuadre[] }) {
+function TablaNomina({ pagos, idTurno }: { pagos: PagoNominaCuadre[]; idTurno: number }) {
+  const navigate = useNavigate()
   const total = pagos.reduce((suma, pago) => suma + Number(pago.monto), 0)
   return (
     <section className="overflow-hidden rounded-xl border border-border bg-surface-high">
@@ -350,11 +351,25 @@ function TablaNomina({ pagos }: { pagos: PagoNominaCuadre[] }) {
           </tr></thead>
           <tbody>
             {pagos.length === 0 ? <FilaVacia texto="No hubo pagos a empleados en este turno." /> : pagos.map((pago) => (
-              <tr key={pago.id} className="border-t border-border/60">
-                <td className="px-5 py-3 font-medium">{pago.empleado}</td>
+              <tr
+                key={pago.id}
+                className="cursor-pointer border-t border-border/60 transition-colors hover:bg-surface-lowest focus-within:bg-surface-lowest"
+                onClick={() => void navigate({ to: '/caja/pagos/$idTurno/$tipo/$idPago', params: { idTurno: String(idTurno), tipo: 'nomina', idPago: String(pago.id) } })}
+              >
+                <td className="px-5 py-3 font-medium">
+                  <button
+                    type="button"
+                    className="rounded-sm text-left underline-offset-4 hover:text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    aria-label={`Ver detalle del pago a ${pago.empleado} por ${formatearPrecio(pago.monto)}`}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      void navigate({ to: '/caja/pagos/$idTurno/$tipo/$idPago', params: { idTurno: String(idTurno), tipo: 'nomina', idPago: String(pago.id) } })
+                    }}
+                  >{pago.empleado}</button>
+                </td>
                 <td className="px-3 py-3 text-muted-foreground">{pago.concepto}</td>
                 <td className="px-3 py-3"><MedioPago metodo={pago.metodo} /></td>
-                <td className="px-5 py-3 text-right font-semibold tabular-nums">{formatearPrecio(pago.monto)}</td>
+                <td className="px-5 py-3 text-right font-semibold tabular-nums">{formatearPrecio(pago.monto)} <ChevronRight aria-hidden="true" className="ml-1 inline size-3.5 text-primary" /></td>
               </tr>
             ))}
           </tbody>
@@ -364,11 +379,13 @@ function TablaNomina({ pagos }: { pagos: PagoNominaCuadre[] }) {
   )
 }
 
-function TablaProveedores({ pagos }: { pagos: PagoProveedorCuadre[] }) {
+function TablaProveedores({ pagos, idTurno }: { pagos: PagoProveedorCuadre[]; idTurno: number }) {
+  const navigate = useNavigate()
   const total = pagos.reduce((suma, pago) => suma + Number(pago.monto), 0)
+  const incluyeTraslados = pagos.some((pago) => pago.origen === 'TRASLADO_INTERNO')
   return (
     <section className="overflow-hidden rounded-xl border border-border bg-surface-high">
-      <TituloSeccion icono={Landmark} titulo="Pagos a proveedores" total={total} />
+      <TituloSeccion icono={Landmark} titulo={incluyeTraslados ? 'Pagos a proveedores y traslados' : 'Pagos a proveedores'} total={total} />
       <div className="overflow-x-auto">
         <table className="w-full min-w-[38rem] text-sm">
           <thead><tr className="bg-surface-lowest text-left">
@@ -379,13 +396,27 @@ function TablaProveedores({ pagos }: { pagos: PagoProveedorCuadre[] }) {
           </tr></thead>
           <tbody>
             {pagos.length === 0 ? <FilaVacia texto="No hubo pagos a proveedores en este turno." /> : pagos.map((pago) => (
-              <tr key={pago.id} className="border-t border-border/60">
-                <td className="px-5 py-3 font-medium">{pago.proveedor}</td>
+              <tr
+                key={`${pago.origen}-${pago.id}`}
+                className="cursor-pointer border-t border-border/60 transition-colors hover:bg-surface-lowest focus-within:bg-surface-lowest"
+                onClick={() => void navigate({ to: '/caja/pagos/$idTurno/$tipo/$idPago', params: { idTurno: String(idTurno), tipo: pago.origen === 'TRASLADO_INTERNO' ? 'traslado' : 'proveedor', idPago: String(pago.id) } })}
+              >
+                <td className="px-5 py-3 font-medium">
+                  <button
+                    type="button"
+                    className="rounded-sm text-left underline-offset-4 hover:text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    aria-label={`Ver detalle del pago a ${pago.proveedor} por ${formatearPrecio(pago.monto)}`}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      void navigate({ to: '/caja/pagos/$idTurno/$tipo/$idPago', params: { idTurno: String(idTurno), tipo: pago.origen === 'TRASLADO_INTERNO' ? 'traslado' : 'proveedor', idPago: String(pago.id) } })
+                    }}
+                  >{pago.proveedor}</button>
+                </td>
                 <td className="px-3 py-3 text-muted-foreground">
                   {pago.concepto}{pago.documento ? <span className="block text-[11px]">Doc. {pago.documento}</span> : null}
                 </td>
                 <td className="px-3 py-3"><MedioPago metodo={pago.metodo} /></td>
-                <td className="px-5 py-3 text-right font-semibold tabular-nums">{formatearPrecio(pago.monto)}</td>
+                <td className="px-5 py-3 text-right font-semibold tabular-nums">{formatearPrecio(pago.monto)} <ChevronRight aria-hidden="true" className="ml-1 inline size-3.5 text-primary" /></td>
               </tr>
             ))}
           </tbody>
@@ -565,10 +596,12 @@ function FilaCalculo({ etiqueta, valor, secundario = false }: { etiqueta: string
   )
 }
 
-function HistorialCuadres() {
+function HistorialCuadres({ turnoInicial }: { turnoInicial?: number }) {
   const { data: turnos, isPending } = useQuery(turnosQuery('CERRADO'))
   const [seleccionado, setSeleccionado] = useState<number | null>(null)
-  const idSeleccionado = seleccionado ?? turnos?.[0]?.id_turno ?? 0
+  const idSolicitado = seleccionado ?? turnoInicial
+  const idSeleccionado = turnos?.find((turno) => turno.id_turno === idSolicitado)?.id_turno
+    ?? turnos?.[0]?.id_turno ?? 0
   const { data: detalle, isPending: cargandoDetalle } = useQuery({
     ...turnoQuery(idSeleccionado),
     enabled: idSeleccionado > 0,

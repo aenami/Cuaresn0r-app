@@ -347,6 +347,7 @@ export interface ConfiguracionNegocio {
 export interface Caja {
   id_caja: number
   nombre_caja: string
+  area: 'RESTAURANTE' | 'PANADERIA'
   // El backend incluye solo los turnos ABIERTOS de la caja.
   turnos?: Turno[]
 }
@@ -455,6 +456,14 @@ export interface PagoLedger {
 
 export interface PagoNominaCuadre {
   id: number
+  idEmpleado: number
+  observacion: string | null
+  desglose: {
+    idDevengo: number
+    concepto: string
+    montoAplicado: string
+    fechaDevengo: string
+  }[]
   empleado: string
   concepto: string
   metodo: 'EFECTIVO' | 'TRANSFERENCIA'
@@ -464,6 +473,15 @@ export interface PagoNominaCuadre {
 
 export interface PagoProveedorCuadre {
   id: number
+  origen: 'CUENTA_POR_PAGAR' | 'TRASLADO_INTERNO'
+  idCuenta: number | null
+  traslado: {
+    ingrediente: string
+    unidad: UnidadIngrediente
+    cantidad: string
+    precioUnitario: string
+    fechaSalida: string
+  } | null
   proveedor: string
   concepto: string
   documento: string | null

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Lock } from 'lucide-react'
+import { z } from 'zod'
 import type { TurnoResumen } from '@/types/api'
 import { useEsAdmin, useEsCaja, useEsGlobal, useAreaTrabajo } from '@/stores/auth.store'
 import { turnoActualQuery, turnoQuery } from '@/features/billing/api'
@@ -17,6 +18,7 @@ import { errorApi } from '@/features/billing/caja-comun'
 import { Button } from '@/components/ui/button'
 
 export const Route = createFileRoute('/_auth/caja')({
+  validateSearch: z.object({ turno: z.coerce.number().int().positive().optional() }),
   component: PaginaCaja,
 })
 
@@ -25,12 +27,13 @@ export const Route = createFileRoute('/_auth/caja')({
 type Vista = 'flujo' | 'cuadre' | 'cuentas' | 'ajustes' | 'personal'
 
 function PaginaCaja() {
+  const { turno: turnoHistorial } = Route.useSearch()
   const esAdmin = useEsAdmin()
   const esCaja = useEsCaja()
   const esGlobal = useEsGlobal()
   const area = useAreaTrabajo()
   const { data: turno, isPending, error, refetch } = useQuery({ ...turnoActualQuery, enabled: esCaja })
-  const [vista, setVista] = useState<Vista>('flujo')
+  const [vista, setVista] = useState<Vista>(turnoHistorial ? 'cuadre' : 'flujo')
   const [idTurnoAjeno, setIdTurnoAjeno] = useState<number | null>(null)
   const {
     data: turnoAjeno,
@@ -42,7 +45,7 @@ function PaginaCaja() {
     enabled: esAdmin && !esGlobal && vista === 'cuadre' && !turno && idTurnoAjeno !== null,
   })
 
-  if (esGlobal) return <div className="p-6 md:p-10"><p className="mb-5 text-sm text-muted-foreground">Cierres de {area === 'PANADERIA' ? 'panadería' : 'restaurante'} · vista de supervisión</p><CuadreCaja turno={null} /></div>
+  if (esGlobal) return <div className="p-6 md:p-10"><p className="mb-5 text-sm text-muted-foreground">Cierres de {area === 'PANADERIA' ? 'panadería' : 'restaurante'} · vista de supervisión</p><CuadreCaja turno={null} turnoHistorial={turnoHistorial} /></div>
   if (!esCaja) {
     return (
       <div className="grid min-h-full place-items-center p-10 text-center">
@@ -87,7 +90,7 @@ function PaginaCaja() {
                 ← Volver a apertura de caja
               </Button>
             ) : null}
-            <CuadreCaja turno={turno ?? (turnoAjeno?.estado_turno === 'ABIERTO' ? turnoAjeno : null)} />
+            <CuadreCaja turno={turnoHistorial ? null : turno ?? (turnoAjeno?.estado_turno === 'ABIERTO' ? turnoAjeno : null)} turnoHistorial={turnoHistorial} />
           </div>
         )
       ) : isPending ? (

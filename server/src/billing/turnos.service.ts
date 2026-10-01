@@ -416,7 +416,17 @@ export class TurnosService {
       }),
       this.prisma.transferenciaRestaurantePanaderia.findMany({
         where: { turnoPagoId: idTurno },
-        select: { id: true, concepto: true, montoTotal: true, metodoPago: true, fechaPago: true },
+        select: {
+          id: true,
+          concepto: true,
+          montoTotal: true,
+          metodoPago: true,
+          fechaPago: true,
+          fechaSalida: true,
+          cantidad: true,
+          precioUnitario: true,
+          ingrediente: { select: { nombre_ingrediente: true, unidades_ingrediente: true } },
+        },
       }),
       this.prisma.transferenciaRestaurantePanaderia.findMany({
         where: { turnoIngresoId: idTurno },
@@ -450,6 +460,7 @@ export class TurnosService {
         where: { id_turno_pagoNomina: idTurno },
         select: {
           id_pagoNomina: true,
+          id_empleado_pagoNomina: true,
           monto_pagoNomina: true,
           fecha_pagoNomina: true,
           metodo_pagoNomina: true,
@@ -459,8 +470,11 @@ export class TurnosService {
           },
           detalles: {
             select: {
+              id_devengoNomina_pnd: true,
+              monto_aplicado_pnd: true,
               devengoNomina: {
                 select: {
+                  fecha_devengoNomina: true,
                   conceptoNominaEmpleado: {
                     select: {
                       concepto: { select: { nombre_conceptoNomina: true } },
@@ -477,6 +491,7 @@ export class TurnosService {
         where: { id_turno_pagoCuentaPorPagar: idTurno },
         select: {
           id_pagoCuentaPorPagar: true,
+          id_cuentaPorPagar_pago: true,
           monto_pagoCuentaPorPagar: true,
           fecha_pagoCuentaPorPagar: true,
           metodo_pagoCuentaPorPagar: true,
@@ -569,6 +584,15 @@ export class TurnosService {
           conceptos.add(pago.observacion_pagoNomina);
         return {
           id: pago.id_pagoNomina,
+          idEmpleado: pago.id_empleado_pagoNomina,
+          observacion: pago.observacion_pagoNomina,
+          desglose: pago.detalles.map((detalle) => ({
+            idDevengo: detalle.id_devengoNomina_pnd,
+            concepto: detalle.devengoNomina.conceptoNominaEmpleado?.concepto
+              .nombre_conceptoNomina ?? 'Pago de jornada',
+            montoAplicado: detalle.monto_aplicado_pnd,
+            fechaDevengo: detalle.devengoNomina.fecha_devengoNomina,
+          })),
           empleado:
             `${pago.empleado.nombre_empleado} ${pago.empleado.apellido_empleado}`.trim(),
           concepto: [...conceptos].join(' · ') || 'Pago de nomina',
@@ -577,23 +601,35 @@ export class TurnosService {
           fecha: pago.fecha_pagoNomina,
         };
       }),
-      detallePagosProveedores: pagosProveedores.map((pago) => ({
+      detallePagosProveedores: [...pagosProveedores.map((pago) => ({
         id: pago.id_pagoCuentaPorPagar,
+        origen: 'CUENTA_POR_PAGAR' as const,
+        idCuenta: pago.id_cuentaPorPagar_pago,
+        traslado: null,
         proveedor: pago.cuentaPorPagar.proveedor.nombre_proveedor,
         concepto: pago.cuentaPorPagar.concepto_cuentaPorPagar,
         documento: pago.cuentaPorPagar.documento_cuentaPorPagar,
         metodo: pago.metodo_pagoCuentaPorPagar,
         monto: pago.monto_pagoCuentaPorPagar,
         fecha: pago.fecha_pagoCuentaPorPagar,
-      })).concat(trasladosPagadosPanaderia.map((t) => ({
+      })), ...trasladosPagadosPanaderia.map((t) => ({
         id: t.id,
+        origen: 'TRASLADO_INTERNO' as const,
+        idCuenta: null,
+        traslado: {
+          ingrediente: t.ingrediente.nombre_ingrediente,
+          unidad: t.ingrediente.unidades_ingrediente,
+          cantidad: t.cantidad,
+          precioUnitario: t.precioUnitario,
+          fechaSalida: t.fechaSalida,
+        },
         proveedor: 'Restaurante / cafeteria',
         concepto: t.concepto,
         documento: `TR-RES-${t.id}`,
         metodo: t.metodoPago === 'TRANSFERENCIA' ? 'TRANSFERENCIA' as const : 'EFECTIVO' as const,
         monto: t.montoTotal,
         fecha: t.fechaPago ?? new Date(),
-      }))),
+      }))],
       pagosPorMetodo: porMetodo.map((m) => ({
         metodo: m.metodo_pago,
         cantidad: m._count.id_pago,

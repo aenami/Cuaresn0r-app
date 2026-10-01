@@ -27,6 +27,7 @@ import { Route as AuthCajaRouteImport } from './routes/_auth/caja'
 import { Route as AuthPedidosIdPedidoRouteImport } from './routes/_auth/pedidos.$idPedido'
 import { Route as AuthEmpleadosIdRouteImport } from './routes/_auth/empleados.$id'
 import { Route as AuthCobroIdPedidoRouteImport } from './routes/_auth/cobro.$idPedido'
+import { Route as AuthCajaPagosIdTurnoTipoIdPagoRouteImport } from './routes/_auth/caja_.pagos.$idTurno.$tipo.$idPago'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -117,6 +118,12 @@ const AuthCobroIdPedidoRoute = AuthCobroIdPedidoRouteImport.update({
   path: '/cobro/$idPedido',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthCajaPagosIdTurnoTipoIdPagoRoute =
+  AuthCajaPagosIdTurnoTipoIdPagoRouteImport.update({
+    id: '/caja_/pagos/$idTurno/$tipo/$idPago',
+    path: '/caja/pagos/$idTurno/$tipo/$idPago',
+    getParentRoute: () => AuthRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthIndexRoute
@@ -136,6 +143,7 @@ export interface FileRoutesByFullPath {
   '/cobro/$idPedido': typeof AuthCobroIdPedidoRoute
   '/empleados/$id': typeof AuthEmpleadosIdRoute
   '/pedidos/$idPedido': typeof AuthPedidosIdPedidoRoute
+  '/caja/pagos/$idTurno/$tipo/$idPago': typeof AuthCajaPagosIdTurnoTipoIdPagoRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -155,6 +163,7 @@ export interface FileRoutesByTo {
   '/cobro/$idPedido': typeof AuthCobroIdPedidoRoute
   '/empleados/$id': typeof AuthEmpleadosIdRoute
   '/pedidos/$idPedido': typeof AuthPedidosIdPedidoRoute
+  '/caja/pagos/$idTurno/$tipo/$idPago': typeof AuthCajaPagosIdTurnoTipoIdPagoRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -176,6 +185,7 @@ export interface FileRoutesById {
   '/_auth/cobro/$idPedido': typeof AuthCobroIdPedidoRoute
   '/_auth/empleados/$id': typeof AuthEmpleadosIdRoute
   '/_auth/pedidos/$idPedido': typeof AuthPedidosIdPedidoRoute
+  '/_auth/caja_/pagos/$idTurno/$tipo/$idPago': typeof AuthCajaPagosIdTurnoTipoIdPagoRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -197,6 +207,7 @@ export interface FileRouteTypes {
     | '/cobro/$idPedido'
     | '/empleados/$id'
     | '/pedidos/$idPedido'
+    | '/caja/pagos/$idTurno/$tipo/$idPago'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -216,6 +227,7 @@ export interface FileRouteTypes {
     | '/cobro/$idPedido'
     | '/empleados/$id'
     | '/pedidos/$idPedido'
+    | '/caja/pagos/$idTurno/$tipo/$idPago'
   id:
     | '__root__'
     | '/_auth'
@@ -236,6 +248,7 @@ export interface FileRouteTypes {
     | '/_auth/cobro/$idPedido'
     | '/_auth/empleados/$id'
     | '/_auth/pedidos/$idPedido'
+    | '/_auth/caja_/pagos/$idTurno/$tipo/$idPago'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -371,6 +384,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthCobroIdPedidoRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/caja_/pagos/$idTurno/$tipo/$idPago': {
+      id: '/_auth/caja_/pagos/$idTurno/$tipo/$idPago'
+      path: '/caja/pagos/$idTurno/$tipo/$idPago'
+      fullPath: '/caja/pagos/$idTurno/$tipo/$idPago'
+      preLoaderRoute: typeof AuthCajaPagosIdTurnoTipoIdPagoRouteImport
+      parentRoute: typeof AuthRoute
+    }
   }
 }
 
@@ -391,6 +411,7 @@ interface AuthRouteChildren {
   AuthCobroIdPedidoRoute: typeof AuthCobroIdPedidoRoute
   AuthEmpleadosIdRoute: typeof AuthEmpleadosIdRoute
   AuthPedidosIdPedidoRoute: typeof AuthPedidosIdPedidoRoute
+  AuthCajaPagosIdTurnoTipoIdPagoRoute: typeof AuthCajaPagosIdTurnoTipoIdPagoRoute
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
@@ -410,6 +431,7 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthCobroIdPedidoRoute: AuthCobroIdPedidoRoute,
   AuthEmpleadosIdRoute: AuthEmpleadosIdRoute,
   AuthPedidosIdPedidoRoute: AuthPedidosIdPedidoRoute,
+  AuthCajaPagosIdTurnoTipoIdPagoRoute: AuthCajaPagosIdTurnoTipoIdPagoRoute,
 }
 
 const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)

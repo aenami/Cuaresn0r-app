@@ -814,3 +814,22 @@ alcance o feature terminada.
   y servidor, lint del cliente correcto y 29 suites/420 pruebas del servidor.
 - Pendiente: desplegar esta migración y versión cuando se solicite; continúan
   pendientes la prueba física de impresoras y la definición fiscal.
+
+### 2026-10-01 — Detalle de pagos desde el historial de cuadres
+
+- Los pagos a empleados y proveedores en cada cuadre abren ahora su propio
+  detalle de solo lectura. El enlace incluye turno, tipo e identificador del
+  pago; al regresar a Caja se conserva el cuadre histórico consultado.
+- El detalle muestra fecha, medio, concepto, importe y contexto del turno. En
+  nómina también muestra observación y devengos cubiertos. Los pagos por
+  traslado interno conservan su origen separado de una cuenta por pagar,
+  incluso si sus números de registro coinciden.
+- El administrador global puede consultar el comprobante del cuadre sin
+  habilitarle acceso al módulo de Nómina ni operaciones de cobro. La
+  autorización por área del turno sigue a cargo del servidor.
+- Se verificaron compilaciones de cliente y servidor, lint del cliente y las
+  420 pruebas del servidor. Una prueba de navegación con respuestas simuladas
+  comprobó los tres tipos de pago, IDs coincidentes, regreso al turno y vista
+  móvil sin desbordamiento. Este cambio no requiere migración de base de
+  datos. Quedan pendientes el despliegue solicitado por separado, la prueba
+  física de impresoras y la definición fiscal.
