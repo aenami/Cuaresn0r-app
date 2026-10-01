@@ -698,3 +698,49 @@ alcance o feature terminada.
 - Sin migraciones nuevas ni cambios en Neon, Render o Vercel. El turno #8
   requiere un cuadre real antes de abrir otro en esa caja. Continúan
   pendientes la prueba física de las impresoras y la definición fiscal.
+
+### 2026-09-30 — Inventario de Panadería, salidas justificadas y datos de prueba
+
+- El conteo diario de Panadería usa una **lista fija** de artículos existentes
+  (productos del catálogo e ingredientes); ya no se crean nombres libres desde
+  el conteo. Añadir o retirar un artículo afecta el día actual y los futuros,
+  sin borrar fotografías históricas. El primer conteo parte del stock actual
+  si no existe uno anterior. El historial es de solo lectura y las fechas
+  futuras muestran la lista sin admitir cantidades.
+- Inventario de Panadería tiene una sección **Productos** separada en panes,
+  postres y externos. Permite registrar hornadas con receta activa y consumo de
+  insumos, recepciones de productos externos y salidas manuales con motivo;
+  muestra existencias e historial de movimientos. Estas salidas se separan de
+  las ventas, mermas y faltantes en la conciliación del conteo.
+- Inventario de Restaurante tiene **Salidas** con motivo para ingredientes con
+  stock y productos de carta. Las primeras descuentan existencias; las
+  segundas quedan como movimiento documental del conteo, sin inventar stock
+  propio ni generar cobros. Ambas se reconocen como justificadas, no como
+  ventas ni pérdidas. Se mantuvieron las restricciones de rol y área.
+- El catálogo de Panadería permite crear, renombrar y desactivar categorías
+  propias de panes, pastelería y externos, y asociarlas a los artículos. Las
+  categorías de Restaurante siguen independientes.
+- Se aplicó **solo en la base local `POS`** la migración
+  `20260929130000_lista_conteo_y_categorias_panaderia`. Antes de cargar datos
+  se verificó el respaldo privado
+  `server/backups/pos-before-inventory-valuation-1790821925200.dump`
+  (353069 bytes; archivo PostgreSQL legible con 816 entradas). No se modificó
+  la base desplegada ni se ejecutó la migración en Neon.
+- `server/scripts/seed-demo-local.cjs` carga ejemplos únicamente en
+  `localhost/POS`, tras `--plan` y con `--apply`; `--verify` comprueba cifras.
+  Es transaccional e idempotente mediante el marcador `[DEMO]`. Se cargaron 10
+  artículos, recetas, hornadas, insumos, categorías, 3 ventas mixtas y 12
+  conteos históricos de Panadería, además de catálogo, ingredientes, receta,
+  salidas, proveedores, cuentas pendientes y meta de Restaurante. Son datos
+  **ilustrativos**; se pueden consultar en la base local y no representan
+  operación real. Los tres turnos demostrativos están cerrados; los turnos
+  reales abiertos de Restaurante #8 y Panadería #11 quedaron intactos.
+- La conciliación de la carga arrojó $316.500 en ventas y pagos de Panadería,
+  $316.500 de ingreso estimado en sus conteos y $6.950 de pérdida estimada
+  por faltantes. Repetir `--apply` no duplicó registros. Navegador local con
+  ambos administradores: lista fija, grupos de productos, historial, bloqueo
+  futuro y salidas verificadas sin errores de página; detector de interfaz sin
+  hallazgos. Compilaciones, lint de cliente y pruebas unitarias completadas.
+- Pendiente: aplicar la migración al entorno desplegado solo cuando se programe
+  su publicación; las impresoras aún requieren prueba física en el computador
+  de caja y la definición fiscal continúa abierta.
