@@ -47,8 +47,8 @@ export class IngredientsController {
     return this.inventoryService.findMovimientos(id);
   }
 
-  // ENTRADA/MERMA/AJUSTE_*: SALIDA_RECETA y REVERSO solo los genera Orders.
-  @Roles('ADMIN', 'CAJERO', 'COCINERO')
+  // ENTRADA/SALIDA_MANUAL/MERMA/AJUSTE_*: SALIDA_RECETA y REVERSO solo los genera Orders.
+  @Roles('ADMIN_LOCAL', 'CAJERO', 'COCINERO')
   @Post(':id/movements')
   registerMovement(
     @Param('id', ParseIntPipe) id: number,

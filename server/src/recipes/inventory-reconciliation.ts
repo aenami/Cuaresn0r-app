@@ -17,6 +17,7 @@ export type Salida = {
   cantidadCorroborada?: Prisma.Decimal;
   cantidadTrasladada?: Prisma.Decimal;
   cantidadMerma?: Prisma.Decimal;
+  cantidadJustificada?: Prisma.Decimal;
   ultima: Date | null;
   sinFecha: boolean;
 };
@@ -71,8 +72,7 @@ export async function salidasEntregadasEnRango(
     cantidad: Prisma.Decimal | number,
     entrega: Date | null,
     referenciaDia: Date,
-    traslado = false,
-    merma = false,
+    clase: 'CORROBORADA' | 'TRASLADO' | 'MERMA' | 'JUSTIFICADA' = 'CORROBORADA',
   ) => {
     const dia = fechaColombia(referenciaDia).toISOString().slice(0, 10);
     const salidas = dias.get(dia) ?? new Map<string, Salida>();
@@ -82,16 +82,20 @@ export async function salidasEntregadasEnRango(
       cantidadCorroborada: new Prisma.Decimal(0),
       cantidadTrasladada: new Prisma.Decimal(0),
       cantidadMerma: new Prisma.Decimal(0),
+      cantidadJustificada: new Prisma.Decimal(0),
       ultima: null,
       sinFecha: false,
     };
     if (entrega) {
       anterior.cantidad = anterior.cantidad.plus(cantidad);
-      if (traslado)
+      if (clase === 'TRASLADO')
         anterior.cantidadTrasladada =
           anterior.cantidadTrasladada!.plus(cantidad);
-      else if (merma)
+      else if (clase === 'MERMA')
         anterior.cantidadMerma = anterior.cantidadMerma!.plus(cantidad);
+      else if (clase === 'JUSTIFICADA')
+        anterior.cantidadJustificada =
+          anterior.cantidadJustificada!.plus(cantidad);
       else
         anterior.cantidadCorroborada =
           anterior.cantidadCorroborada!.plus(cantidad);
@@ -130,27 +134,39 @@ export async function salidasEntregadasEnRango(
       traslado.cantidad,
       traslado.fechaSalida,
       traslado.fechaSalida,
-      true,
+      'TRASLADO',
     );
-  const mermas = await db.movimientoInventario.findMany({
+  const salidasIngredientes = await db.movimientoInventario.findMany({
     where: {
-      tipo_movimiento: 'MERMA',
+      tipo_movimiento: { in: ['MERMA', 'SALIDA_MANUAL'] },
       fecha_movimiento: { gte: inicio, lt: fin },
     },
     select: {
       id_ingrediente_movimiento: true,
+      tipo_movimiento: true,
       cantidad_movimiento: true,
       fecha_movimiento: true,
     },
   });
-  for (const merma of mermas)
+  for (const salida of salidasIngredientes)
     agregar(
-      `INGREDIENTE:${merma.id_ingrediente_movimiento}`,
-      merma.cantidad_movimiento,
-      merma.fecha_movimiento,
-      merma.fecha_movimiento,
-      false,
-      true,
+      `INGREDIENTE:${salida.id_ingrediente_movimiento}`,
+      salida.cantidad_movimiento,
+      salida.fecha_movimiento,
+      salida.fecha_movimiento,
+      salida.tipo_movimiento === 'MERMA' ? 'MERMA' : 'JUSTIFICADA',
+    );
+  const productosJustificados = await db.salidaProductoRestaurante.findMany({
+    where: { fecha: { gte: inicio, lt: fin } },
+    select: { productoId: true, cantidad: true, fecha: true },
+  });
+  for (const salida of productosJustificados)
+    agregar(
+      `PRODUCTO:${salida.productoId}`,
+      salida.cantidad,
+      salida.fecha,
+      salida.fecha,
+      'JUSTIFICADA',
     );
   return dias;
 }
@@ -160,7 +176,7 @@ export async function actividadRestauranteEnRango(
   inicio: Date,
   fin: Date,
 ) {
-  const [movimientos, produccion, recepciones] = await Promise.all([
+  const [movimientos, produccion, recepciones, salidasProductos] = await Promise.all([
     db.movimientoInventario.findMany({
       where: { fecha_movimiento: { gte: inicio, lt: fin } },
       select: { id_ingrediente_movimiento: true, fecha_movimiento: true },
@@ -186,6 +202,10 @@ export async function actividadRestauranteEnRango(
         cuentaPorPagar: { select: { fecha_recepcion_mercancia: true } },
       },
     }),
+    db.salidaProductoRestaurante.findMany({
+      where: { fecha: { gte: inicio, lt: fin } },
+      select: { productoId: true, fecha: true },
+    }),
   ]);
   const dias = new Map<string, Map<string, Date>>();
   const agregar = (clave: string, fecha: Date | null) => {
@@ -208,6 +228,8 @@ export async function actividadRestauranteEnRango(
       `PRODUCTO:${r.id_producto_detalleCuenta}`,
       r.cuentaPorPagar.fecha_recepcion_mercancia,
     );
+  for (const salida of salidasProductos)
+    agregar(`PRODUCTO:${salida.productoId}`, salida.fecha);
   return dias;
 }
 
@@ -245,6 +267,9 @@ export function compararConteo(
       : null;
   return {
     cantidadSistema: cantidadSistema.toString(),
+    cantidadJustificada: (salida?.cantidadJustificada ?? new Prisma.Decimal(0))
+      .plus(salida?.cantidadMerma ?? 0)
+      .toString(),
     diferencia: diferencia?.toString() ?? null,
     estado: motivoNoComparable
       ? 'NO_COMPARABLE'

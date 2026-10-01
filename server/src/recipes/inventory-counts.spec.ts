@@ -103,6 +103,7 @@ function setup(
     transferenciaRestaurantePanaderia: {
       findMany: jest.fn().mockResolvedValue([]),
     },
+    salidaProductoRestaurante: { findMany: jest.fn().mockResolvedValue([]) },
     movimientoInventario: {
       aggregate: spies.entradasIngrediente,
       findMany: jest.fn().mockResolvedValue([]),
@@ -547,6 +548,7 @@ describe('InventoryCountsService', () => {
     Object.assign(prisma, {
       detalleComanda: tx.detalleComanda,
       transferenciaRestaurantePanaderia: tx.transferenciaRestaurantePanaderia,
+      salidaProductoRestaurante: tx.salidaProductoRestaurante,
       movimientoInventario: tx.movimientoInventario,
       planProduccionDiaria: tx.planProduccionDiaria,
       detalleCuentaPorPagar: tx.detalleCuentaPorPagar,

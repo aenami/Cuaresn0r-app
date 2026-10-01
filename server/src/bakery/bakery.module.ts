@@ -4,10 +4,12 @@ import { TransferenciasRestauranteController } from './transferencias-restaurant
 import { BakeryService } from './bakery.service';
 import { RemisionesService } from './remisiones.service';
 import { RemisionesController } from './remisiones.controller';
+import { CategoriasPanaderiaController } from './categorias-panaderia.controller';
+import { CategoriasPanaderiaService } from './categorias-panaderia.service';
 
 @Module({
-  controllers: [BakeryController, TransferenciasRestauranteController, RemisionesController],
-  providers: [BakeryService, RemisionesService],
+  controllers: [BakeryController, TransferenciasRestauranteController, RemisionesController, CategoriasPanaderiaController],
+  providers: [BakeryService, RemisionesService, CategoriasPanaderiaService],
   exports: [BakeryService],
 })
 export class BakeryModule {}

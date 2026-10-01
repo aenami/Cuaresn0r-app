@@ -17,15 +17,17 @@ const movDto = (over: Partial<CreateMovementDto>): CreateMovementDto =>
 function setupManual(ingrediente: Record<string, unknown> | null) {
   const spies = {
     ingFindUnique: jest.fn().mockResolvedValue(ingrediente),
-    ingUpdate: jest.fn().mockResolvedValue({}),
+    ingUpdate: jest.fn((args: { where: { stock_ingrediente?: { gte: number } } }) =>
+      Promise.resolve({ count: args.where.stock_ingrediente && ingrediente &&
+        (ingrediente.stock_ingrediente as Prisma.Decimal).lessThan(args.where.stock_ingrediente.gte) ? 0 : 1 })),
     movCreate: jest.fn((args: { data: Record<string, unknown> }) => Promise.resolve({ id_movimiento: 1, ...args.data })),
   };
   const tx = {
     movimientoInventario: { create: spies.movCreate },
-    ingrediente: { update: spies.ingUpdate },
+    ingrediente: { updateMany: spies.ingUpdate },
   };
   const prisma = {
-    ingrediente: { findUnique: spies.ingFindUnique, update: spies.ingUpdate },
+    ingrediente: { findUnique: spies.ingFindUnique, updateMany: spies.ingUpdate },
     $transaction: (cb: (t: typeof tx) => unknown) => cb(tx),
   } as unknown as PrismaService;
   return { svc: new InventoryService(prisma), spies };
@@ -44,11 +46,29 @@ describe('InventoryService.registrarMovimientoManual', () => {
     );
   });
 
+  it('no acepta un motivo formado solo por espacios', async () => {
+    const { svc } = setupManual({ id_ingrediente: 1, stock_ingrediente: new Prisma.Decimal(100) });
+    await expect(svc.registrarMovimientoManual(1, movDto({ tipo: TipoMovimientoManual.MERMA, cantidad: 5, motivo: '   ' }), 9))
+      .rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('409 si la MERMA dejaria el stock en negativo', async () => {
     const { svc } = setupManual({ id_ingrediente: 1, stock_ingrediente: new Prisma.Decimal(3) });
     await expect(
       svc.registrarMovimientoManual(1, movDto({ tipo: TipoMovimientoManual.MERMA, cantidad: 5, motivo: 'se cayo' }), 9),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('SALIDA_MANUAL conserva el motivo y descuenta stock sin clasificarla como merma', async () => {
+    const { svc, spies } = setupManual({ id_ingrediente: 1, stock_ingrediente: new Prisma.Decimal(3) });
+    await svc.registrarMovimientoManual(1, movDto({ tipo: TipoMovimientoManual.SALIDA_MANUAL, cantidad: 1, motivo: '  consumo interno ' }), 9);
+    expect(spies.movCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ tipo_movimiento: 'SALIDA_MANUAL', motivo_movimiento: 'consumo interno' }),
+    }));
+    expect(spies.ingUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ stock_ingrediente: { gte: 1 } }),
+      data: { stock_ingrediente: { decrement: 1 } },
+    }));
   });
 
   it('una ENTRADA suma al stock', async () => {

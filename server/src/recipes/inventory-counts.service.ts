@@ -469,7 +469,7 @@ export class InventoryCountsService {
         cantidadCorroborada: salida?.cantidadCorroborada ?? 0,
         salidasNoValorables: (
           salida?.cantidadTrasladada ?? new Prisma.Decimal(0)
-        ).plus(salida?.cantidadMerma ?? 0),
+        ).plus(salida?.cantidadMerma ?? 0).plus(salida?.cantidadJustificada ?? 0),
         motivoNoComparable: conciliacion.motivoNoComparable,
         fechaValoracion: finalizacion,
       });

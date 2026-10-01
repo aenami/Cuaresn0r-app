@@ -359,11 +359,13 @@ describe('Valoración conservadora de conteos', () => {
     const detalles = jest.fn().mockResolvedValue([]);
     const produccion = jest.fn().mockResolvedValue([]);
     const transferencias = jest.fn().mockResolvedValue([]);
+    const salidasProductos = jest.fn().mockResolvedValue([]);
     const soloPanaderia = jest.fn();
     const prisma = {
       conteoInventarioDiario: { findMany: conteos },
       detalleComanda: { findMany: detalles },
       transferenciaRestaurantePanaderia: { findMany: transferencias },
+      salidaProductoRestaurante: { findMany: salidasProductos },
       movimientoInventario: { findMany: movimientos },
       planProduccionDiaria: { findMany: produccion },
       detalleCuentaPorPagar: { findMany: recepciones },
@@ -395,6 +397,7 @@ describe('Valoración conservadora de conteos', () => {
     ])
       expect(consulta).toHaveBeenCalledTimes(1);
     expect(movimientos).toHaveBeenCalledTimes(2);
+    expect(salidasProductos).toHaveBeenCalledTimes(2);
     expect(soloPanaderia).not.toHaveBeenCalled();
     expect(conteos.mock.calls[0][0].where.fecha_conteoInventario).toEqual({
       gte: new Date('2026-12-29'),
@@ -418,6 +421,7 @@ describe('Valoración conservadora de conteos', () => {
       },
       planProduccionDiaria: { findMany: jest.fn().mockResolvedValue([]) },
       detalleCuentaPorPagar: { findMany: jest.fn().mockResolvedValue([]) },
+      salidaProductoRestaurante: { findMany: jest.fn().mockResolvedValue([]) },
     } as unknown as Prisma.TransactionClient;
     const dias = await actividadRestauranteEnRango(
       db,
@@ -517,6 +521,7 @@ describe('Valoración conservadora de conteos', () => {
       transferenciaRestaurantePanaderia: {
         findMany: jest.fn().mockResolvedValue([]),
       },
+      salidaProductoRestaurante: { findMany: jest.fn().mockResolvedValue([]) },
       movimientoInventario: { findMany: jest.fn().mockResolvedValue([]) },
       planProduccionDiaria: { findMany: jest.fn().mockResolvedValue([]) },
       detalleCuentaPorPagar: { findMany: recepciones },

@@ -113,6 +113,7 @@ enum TipoMovimientoPanaderia {
   VENTA
   TRANSFERENCIA
   MERMA
+  SALIDA_MANUAL
   AJUSTE_CONTEO
 }
 
@@ -136,6 +137,7 @@ enum TipoMovimientoInventario {
   SALIDA_RECETA
   TRANSFERENCIA
   MERMA
+  SALIDA_MANUAL
   AJUSTE_POSITIVO
   AJUSTE_NEGATIVO
   REVERSO
@@ -289,6 +291,7 @@ model Usuario {
   pedidosComoMesero         Pedido[]
   turnos                    Turno[]
   movimientosInventario     MovimientoInventario[]
+  salidasProductoRestaurante SalidaProductoRestaurante[]
   pagosNominaRegistrados    PagoNomina[]
   comandasEnviadas          Comanda[]                @relation("ComandaEnviadaPor")
   comentariosCuenta         ComentarioCuenta[]       @relation("ComentarioCuentaAutor")
@@ -647,6 +650,7 @@ model Producto {
   detallesCuentaPorPagar DetalleCuentaPorPagar[]
   conteosInventario      ConteoInventarioDiario[]
   elementosConteo       ElementoConteoDiario[]
+  salidasRegistradas    SalidaProductoRestaurante[]
   transferenciasRecibidas TransferenciaPanaderia[]
 
   @@index([categoria_producto])
@@ -815,6 +819,24 @@ model MovimientoInventario {
   @@index([id_detalleComanda_movimiento])
   @@index([id_movimiento_revertido])
   @@index([id_detalleCuentaPorPagar_movimiento])
+}
+
+// Salida manual justificada de un producto de carta, independiente de ventas.
+// Los productos de restaurante no tienen stock propio: esta fila alimenta la
+// conciliacion del conteo, no modifica existencias ni crea cobros.
+model SalidaProductoRestaurante {
+  id         Int      @id @default(autoincrement())
+  productoId Int
+  cantidad   Int
+  motivo     String   @db.VarChar(150)
+  usuarioId  Int
+  fecha      DateTime @default(now()) @db.Timestamp(6)
+
+  producto Producto @relation(fields: [productoId], references: [id_producto], onDelete: Restrict)
+  usuario  Usuario  @relation(fields: [usuarioId], references: [id_usuario], onDelete: Restrict)
+
+  @@index([productoId, fecha])
+  @@index([fecha])
 }
 
 // =========================================================================
@@ -1256,6 +1278,8 @@ model ArticuloPanaderia {
   id              Int                   @id @default(autoincrement())
   nombre          String                @db.VarChar(80)
   tipo            TipoArticuloPanaderia
+  categoriaId     Int?
+  categoria       CategoriaPanaderia?    @relation(fields: [categoriaId], references: [id])
   unidad          UnidadIngrediente      @default(UNIDADES)
   precioVenta     Decimal               @db.Decimal(20, 4)
   costoReferencia Decimal?              @db.Decimal(12, 4)
@@ -1265,11 +1289,38 @@ model ArticuloPanaderia {
 
   movimientos MovimientoPanaderia[]
   conteos     ConteoPanaderia[]
+  elementosConteo ElementoConteoPanaderia[]
   ventas      DetalleVentaPanaderia[]
   transferencias TransferenciaPanaderia[]
   transferenciasRecibidas TransferenciaRestaurantePanaderia[]
   recetasPanaderia RecetaPanaderia[] @relation("ProductoRecetaPanaderia")
   usosRecetaPanaderia DetalleRecetaPanaderia[] @relation("InsumoRecetaPanaderia")
+
+  @@index([categoriaId])
+}
+
+model CategoriaPanaderia {
+  id            Int                   @id @default(autoincrement())
+  nombre        String                @db.VarChar(60)
+  tipo          TipoArticuloPanaderia
+  activa        Boolean               @default(true)
+  fechaCreacion DateTime              @default(now()) @db.Timestamp(6)
+  articulos     ArticuloPanaderia[]
+
+  @@unique([tipo, nombre])
+}
+
+// Seleccion permanente de articulos existentes para el cierre fisico diario.
+// Los conteos ya tomados se preservan aunque el elemento se retire de la lista.
+model ElementoConteoPanaderia {
+  id          Int      @id @default(autoincrement())
+  articuloId  Int
+  activo      Boolean  @default(true)
+  fechaInicio DateTime @db.Date
+  fechaFin    DateTime? @db.Date
+  articulo    ArticuloPanaderia @relation(fields: [articuloId], references: [id], onDelete: Restrict)
+
+  @@index([articuloId, activo])
 }
 
 model RecetaPanaderia {
@@ -1384,6 +1435,7 @@ model ConteoPanaderia {
   ventasRegistradas Decimal @db.Decimal(20, 4)
   transferencias   Decimal  @db.Decimal(20, 4)
   mermas           Decimal  @db.Decimal(20, 4)
+  salidasJustificadas Decimal @default(0) @db.Decimal(20, 4)
   consumoReceta    Decimal  @default(0) @db.Decimal(20, 4)
   cantidadFisica   Decimal  @db.Decimal(20, 4)
   precioReferencia Decimal  @db.Decimal(20, 4)

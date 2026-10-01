@@ -157,6 +157,7 @@ function setupCerrar(
       findMany: jest.fn().mockResolvedValue([]),
     },
     movimientoInventario: { findMany: jest.fn().mockResolvedValue([]) },
+    salidaProductoRestaurante: { findMany: jest.fn().mockResolvedValue([]) },
     planProduccionDiaria: { findMany: jest.fn().mockResolvedValue([]) },
     detalleCuentaPorPagar: { findMany: jest.fn().mockResolvedValue([]) },
     remisionPanaderia: { count: jest.fn().mockResolvedValue(0) },

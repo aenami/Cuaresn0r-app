@@ -6,6 +6,7 @@ import { IsEnum, IsNumber, IsOptional, IsPositive, IsString, MaxLength } from 'c
 export enum TipoMovimientoManual {
   ENTRADA = 'ENTRADA',
   MERMA = 'MERMA',
+  SALIDA_MANUAL = 'SALIDA_MANUAL',
   AJUSTE_POSITIVO = 'AJUSTE_POSITIVO',
   AJUSTE_NEGATIVO = 'AJUSTE_NEGATIVO',
 }
@@ -18,7 +19,7 @@ export class CreateMovementDto {
   @IsPositive()
   cantidad!: number;
 
-  // Obligatorio a nivel de aplicacion para MERMA y AJUSTE_* (se valida en el service).
+  // Obligatorio a nivel de aplicacion para las salidas y AJUSTE_*.
   @IsOptional()
   @IsString()
   @MaxLength(150)

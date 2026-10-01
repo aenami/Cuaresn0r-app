@@ -3,9 +3,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '../generated/prisma/client';
 import { CreateMovementDto, TipoMovimientoManual } from './dto/create-movement.dto';
 
-const TIPOS_QUE_RESTAN: TipoMovimientoManual[] = [TipoMovimientoManual.MERMA, TipoMovimientoManual.AJUSTE_NEGATIVO];
+const TIPOS_QUE_RESTAN: TipoMovimientoManual[] = [TipoMovimientoManual.MERMA, TipoMovimientoManual.SALIDA_MANUAL, TipoMovimientoManual.AJUSTE_NEGATIVO];
 const TIPOS_QUE_REQUIEREN_MOTIVO: TipoMovimientoManual[] = [
   TipoMovimientoManual.MERMA,
+  TipoMovimientoManual.SALIDA_MANUAL,
   TipoMovimientoManual.AJUSTE_POSITIVO,
   TipoMovimientoManual.AJUSTE_NEGATIVO,
 ];
@@ -21,34 +22,40 @@ export class InventoryService {
 
   // ------------- Movimientos manuales (ENTRADA/MERMA/AJUSTE_*) -------------
   async registrarMovimientoManual(idIngrediente: number, dto: CreateMovementDto, idUsuario: number) {
+    if (!Number.isFinite(dto.cantidad) || dto.cantidad <= 0) {
+      throw new BadRequestException('La cantidad debe ser mayor a cero');
+    }
     const ingrediente = await this.prisma.ingrediente.findUnique({ where: { id_ingrediente: idIngrediente } });
     if (!ingrediente) throw new NotFoundException('Ingrediente no encontrado');
 
-    if (TIPOS_QUE_REQUIEREN_MOTIVO.includes(dto.tipo) && !dto.motivo) {
+    const motivo = dto.motivo?.trim();
+    if (TIPOS_QUE_REQUIEREN_MOTIVO.includes(dto.tipo) && !motivo) {
       throw new BadRequestException(`El movimiento ${dto.tipo} requiere indicar un motivo`);
     }
 
     const resta = TIPOS_QUE_RESTAN.includes(dto.tipo);
-    if (resta && ingrediente.stock_ingrediente.lessThan(dto.cantidad)) {
-      throw new ConflictException('Ese movimiento dejaria el stock del ingrediente en negativo');
-    }
-
     return this.prisma.$transaction(async (tx) => {
+      // El chequeo y el descuento deben ser una sola escritura atómica. Dos
+      // salidas simultáneas no pueden aprobarse con el mismo saldo previo.
+      const actualizado = await tx.ingrediente.updateMany({
+        where: {
+          id_ingrediente: idIngrediente,
+          ...(resta && { stock_ingrediente: { gte: dto.cantidad } }),
+        },
+        data: { stock_ingrediente: resta ? { decrement: dto.cantidad } : { increment: dto.cantidad } },
+      });
+      if (actualizado.count !== 1) {
+        throw new ConflictException('Ese movimiento dejaria el stock del ingrediente en negativo');
+      }
       const movimiento = await tx.movimientoInventario.create({
         data: {
           id_ingrediente_movimiento: idIngrediente,
           id_usuario_movimiento: idUsuario,
           tipo_movimiento: dto.tipo,
           cantidad_movimiento: dto.cantidad,
-          ...(dto.motivo !== undefined && { motivo_movimiento: dto.motivo }),
+          ...(motivo && { motivo_movimiento: motivo }),
         },
       });
-
-      await tx.ingrediente.update({
-        where: { id_ingrediente: idIngrediente },
-        data: { stock_ingrediente: resta ? { decrement: dto.cantidad } : { increment: dto.cantidad } },
-      });
-
       return movimiento;
     });
   }

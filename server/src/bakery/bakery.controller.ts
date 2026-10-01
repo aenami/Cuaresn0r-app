@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Patch,
   Param,
@@ -22,6 +23,7 @@ import {
   ConfirmarIngresoTransferenciaDto,
   CrearVentaPanaderiaDto,
   EntradaPanaderiaDto,
+  AgregarElementoConteoPanaderiaDto,
   RegistrarConteoPanaderiaDto,
 } from './dto';
 import { CreateCajaDto } from '../billing/dto/create-caja.dto';
@@ -81,6 +83,21 @@ export class BakeryController {
     @Body() dto: EntradaPanaderiaDto,
   ) { return this.bakery.registrarMerma(id, req.user.id, dto); }
 
+  @Post('articulos/:id/salidas')
+  registrarSalidaManual(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: EntradaPanaderiaDto,
+  ) { return this.bakery.registrarSalidaManual(id, req.user.id, dto); }
+
+  @Get('articulos/:id/movimientos')
+  listarMovimientosArticulo(@Param('id', ParseIntPipe) id: number, @Query('limit') limite?: string) {
+    const cantidad = limite === undefined ? 20 : Number(limite);
+    if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 50)
+      throw new BadRequestException('El limite debe ser un entero entre 1 y 50');
+    return this.bakery.listarMovimientosArticulo(id, cantidad);
+  }
+
   @Get('ventas')
   @Roles('ADMIN', 'CAJERO')
   listarVentas(@Query('turnoId') turnoId?: string) {
@@ -104,6 +121,21 @@ export class BakeryController {
       throw new BadRequestException('La fecha no es valida');
     }
     return this.bakery.estadoConteo(dia);
+  }
+
+  @Get('conteo/lista')
+  listarElementosConteo() { return this.bakery.listarElementosConteo(); }
+
+  @Roles('ADMIN')
+  @Post('conteo/lista')
+  agregarElementoConteo(@Body() dto: AgregarElementoConteoPanaderiaDto) {
+    return this.bakery.agregarElementoConteo(dto.articuloId);
+  }
+
+  @Roles('ADMIN')
+  @Delete('conteo/lista/:id')
+  retirarElementoConteo(@Param('id', ParseIntPipe) id: number) {
+    return this.bakery.retirarElementoConteo(id);
   }
 
   @Post('conteo/:id')

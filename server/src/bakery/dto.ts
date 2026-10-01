@@ -32,6 +32,11 @@ export class CrearArticuloPanaderiaDto {
   tipo!: TipoArticuloPanaderia;
 
   @IsOptional()
+  @IsInt()
+  @Min(1)
+  categoriaId?: number;
+
+  @IsOptional()
   @IsEnum(UnidadIngrediente)
   unidad?: UnidadIngrediente;
 
@@ -90,6 +95,11 @@ export class ActualizarArticuloPanaderiaDto {
   @IsNotEmpty()
   @MaxLength(80)
   nombre?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  categoriaId?: number | null;
 
   @IsOptional()
   @IsInt()
@@ -152,6 +162,12 @@ export class RegistrarConteoPanaderiaDto {
   @IsNumber({ maxDecimalPlaces: 4 })
   @Min(0)
   cantidadFisica!: number;
+}
+
+export class AgregarElementoConteoPanaderiaDto {
+  @IsInt()
+  @Min(1)
+  articuloId!: number;
 }
 
 export class CrearTransferenciaPanaderiaDto {

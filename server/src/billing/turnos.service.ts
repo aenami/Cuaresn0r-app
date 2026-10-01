@@ -156,7 +156,7 @@ export class TurnosService {
         await tx.$executeRaw`LOCK TABLE "ElementoConteoDiario", "ConteoInventarioDiario", "DetalleComanda" IN SHARE MODE`;
       }
       if (tipo !== 'MANANA' && turno.caja.area === 'PANADERIA') {
-        await tx.$executeRaw`LOCK TABLE "ConteoPanaderia", "MovimientoPanaderia" IN SHARE MODE`;
+        await tx.$executeRaw`LOCK TABLE "ElementoConteoPanaderia", "ConteoPanaderia", "MovimientoPanaderia" IN SHARE MODE`;
       }
       const fechaConteo = fechaColombia(turno.fecha_apertura_turno);
       const inventarioRestaurante =

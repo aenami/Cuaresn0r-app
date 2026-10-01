@@ -10,6 +10,8 @@ import { InventoryCountsController } from './inventory-counts.controller';
 import { InventoryCountsService } from './inventory-counts.service';
 import { InventoryValuationService } from './inventory-valuation.service';
 import { InventoryValuationController } from './inventory-valuation.controller';
+import { InventoryExitsController } from './inventory-exits.controller';
+import { InventoryExitsService } from './inventory-exits.service';
 
 @Module({
   // IngredientsController primero: Nest/Express matchea rutas en orden de
@@ -20,6 +22,7 @@ import { InventoryValuationController } from './inventory-valuation.controller';
     ProductionPlansController,
     InventoryCountsController,
     InventoryValuationController,
+    InventoryExitsController,
     RecipesController,
   ],
   providers: [
@@ -29,6 +32,7 @@ import { InventoryValuationController } from './inventory-valuation.controller';
     ProductionPlansService,
     InventoryCountsService,
     InventoryValuationService,
+    InventoryExitsService,
   ],
   // InventoryService lo reutiliza Orders para descontar/revertir stock
   // dentro de sus propias transacciones al enviar/cancelar comandas.
