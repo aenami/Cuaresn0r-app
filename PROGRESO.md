@@ -25,6 +25,49 @@ alcance o feature terminada.
 
 ## Completado
 
+### 2026-10-09 — Mostrador por teclado, conteos compactos y muestra operativa
+
+- Panadería: el mostrador permite recorrer productos disponibles con las cuatro
+  flechas, agregarlos con Enter, volver al buscador con Escape y abrir el cobro
+  con F2. Después de vender se limpian carrito, pagos y búsqueda y se enfoca
+  automáticamente el buscador. El cobro se realiza en modal; admite efectivo
+  recibido y devuelta automática, sin contabilizar el billete completo como
+  ingreso. Se conservan pagos mixtos, validación e idempotencia de reintentos.
+- Cuentas de Panadería incorpora consulta por fecha de Colombia, separación
+  por turno, indicadores diarios y detalle de productos/pagos. El servidor
+  consulta todo el día, sin truncar a las últimas 100 ventas. El comprobante
+  imprimible es un recibo interno, no factura fiscal ni envío al agente USB;
+  esa diferencia con Restaurante y la definición fiscal quedan explícitas.
+  Flujo de caja de Panadería excluye ventas del registro de movimientos y su
+  filtro, manteniendo intactos los indicadores de ingresos y efectivo esperado.
+- Ambas áreas tienen buscador de productos/ingredientes en el conteo, incluidos
+  historial y vista futura. Restaurante tiene tarjetas compactas con detalles
+  secundarios desplegables y diferencias/valoración siempre visibles. Las
+  fechas futuras continúan siendo de solo lectura.
+- Los formularios de Panadería de ingredientes, movimientos, conteos, recetas,
+  metas, hornadas, remisiones y apertura de caja ahora usan modales. El formato
+  principal del cuadre conserva su página de trabajo. La guía de interfaz
+  aplicada conserva la identidad visual y prioriza foco, teclado y densidad.
+- Se cargó una muestra aditiva en el **POS local**, con prefijo `[MUESTRA]`:
+  18 artículos de Panadería, 42 ventas de mostrador, 28 cuentas de Restaurante,
+  28 turnos cerrados, 133 conteos históricos y 8 hojas de producción; incluye
+  recetas, nómina, proveedores, metas, pagos mixtos y 3 remisiones. Período
+  02–08/10/2026; ingresos estimados de productos contados $1.621.800 y pérdidas
+  estimadas $19.500. No se cambiaron usuarios ni turnos abiertos existentes.
+- Respaldo privado validado con `pg_restore`: `server/backups/POS-antes-muestra-20261009.dump`.
+  Script local protegido e idempotente: `server/scripts/seed-showcase-local.cjs`.
+  Recorrido y escenarios en `docs/GUIA_DEMOSTRACION.md`. Neon no recibió datos
+  de muestra; esta funcionalidad no requiere una nueva migración.
+- Verificación: compilaciones de cliente/servidor, lint del cliente sin avisos,
+  30 suites/432 pruebas del servidor y validación de coherencia de datos con
+  Prisma. Chromium comprobó cuatro flechas, Enter/F2, devuelta, pago mixto y
+  digital, reintento idempotente, reinicio/foco, cuentas por turno y recibo,
+  búsqueda histórica/futura, análisis y modales en escritorio/móvil sin
+  errores de JavaScript ni desbordamiento. Cobros de QA simulados, sin ventas
+  reales adicionales.
+- Publicación solicitada junto con los commits acumulados anteriores. La
+  prueba física de impresoras y la definición fiscal siguen pendientes.
+
 ### 2026-09-23 — Conteo obligatorio al cierre y conciliación por entregas
 
 - Al abrir caja se selecciona obligatoriamente Mañana, Tarde-noche o Turno único.
