@@ -425,12 +425,18 @@ export class BakeryService {
     }
   }
 
-  listarVentas(turnoId?: number) {
+  listarVentas(turnoId?: number, fecha?: string) {
+    const rango = fecha ? rangoDia(new Date(`${fecha}T00:00:00Z`)) : null;
     return this.prisma.ventaPanaderia.findMany({
-      where: { ...(turnoId && { turnoId }), turno: { caja: { area: 'PANADERIA' } } },
-      include: { detalles: true, pagos: true },
-      orderBy: { fecha: 'desc' },
-      take: 100,
+      where: { ...(turnoId && { turnoId }), ...(rango && { fecha: { gte: rango.inicio, lt: rango.fin } }), turno: { caja: { area: 'PANADERIA' } } },
+      include: { detalles: true, pagos: true, turno: { select: {
+        id_turno: true, fecha_apertura_turno: true, fecha_cierre_turno: true,
+        caja: { select: { nombre_caja: true } },
+        usuario: { select: { email_usuario: true, empleado: { select: { nombre_empleado: true, apellido_empleado: true } } } },
+      } } },
+      orderBy: [{ fecha: 'desc' }, { id: 'desc' }],
+      // El mostrador solo necesita recientes; Cuentas consulta todo el día.
+      ...(!fecha && { take: 100 }),
     });
   }
 

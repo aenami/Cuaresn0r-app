@@ -100,8 +100,15 @@ export class BakeryController {
 
   @Get('ventas')
   @Roles('ADMIN', 'CAJERO')
-  listarVentas(@Query('turnoId') turnoId?: string) {
-    return this.bakery.listarVentas(turnoId ? Number(turnoId) : undefined);
+  listarVentas(@Query('turnoId') turnoId?: string, @Query('date') fecha?: string) {
+    if (turnoId !== undefined && (!/^\d+$/.test(turnoId) || !Number.isSafeInteger(Number(turnoId)) || Number(turnoId) < 1))
+      throw new BadRequestException('El turno debe ser un entero positivo');
+    if (fecha !== undefined) {
+      const dia = new Date(`${fecha}T00:00:00.000Z`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || Number.isNaN(dia.getTime()) || dia.toISOString().slice(0, 10) !== fecha)
+        throw new BadRequestException('La fecha debe ser válida y tener formato AAAA-MM-DD');
+    }
+    return this.bakery.listarVentas(turnoId ? Number(turnoId) : undefined, fecha);
   }
 
   @Post('ventas')

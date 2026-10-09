@@ -63,7 +63,8 @@ const ESTILO_TIPO: Record<TipoLedger, string> = {
 // registro cronologico. Solo el efectivo toca el cajon; tarjeta/transferencia
 // se ven en los KPIs, no aqui.
 function construirLedger(turno: TurnoResumen): FilaLedger[] {
-  const usuario = turno.usuario?.email_usuario ?? `USR_${turno.id_usuario_turno}`
+  const usuario =
+    turno.usuario?.email_usuario ?? `USR_${turno.id_usuario_turno}`
   const filas: FilaLedger[] = [
     {
       clave: 'apertura',
@@ -95,16 +96,28 @@ function construirLedger(turno: TurnoResumen): FilaLedger[] {
       monto: m.tipo_mc === 'INGRESO' ? Number(m.monto_mc) : -Number(m.monto_mc),
     })
   }
-  return filas.sort((a, b) => new Date(a.hora).getTime() - new Date(b.hora).getTime())
+  return filas.sort(
+    (a, b) => new Date(a.hora).getTime() - new Date(b.hora).getTime(),
+  )
 }
 
 function exportarCSV(filas: FilaLedger[], idTurno: number) {
   const filasCsv = [
     ['Hora', 'Tipo', 'Descripcion', 'Usuario', 'Monto'],
-    ...filas.map((f) => [new Date(f.hora).toLocaleString('es-CO'), f.tipo, f.descripcion, f.usuario, f.monto.toFixed(2)]),
+    ...filas.map((f) => [
+      new Date(f.hora).toLocaleString('es-CO'),
+      f.tipo,
+      f.descripcion,
+      f.usuario,
+      f.monto.toFixed(2),
+    ]),
   ]
-  const csv = filasCsv.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n')
-  const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }))
+  const csv = filasCsv
+    .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
+    .join('\r\n')
+  const url = URL.createObjectURL(
+    new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }),
+  )
   const a = document.createElement('a')
   a.href = url
   a.download = `movimientos_turno_${idTurno}.csv`
@@ -115,14 +128,22 @@ function exportarCSV(filas: FilaLedger[], idTurno: number) {
 // ---- Flujo de efectivo (dashboard del turno) ----
 
 export function FlujoEfectivo({ turno }: { turno: TurnoResumen }) {
-  const esperado = Number(turno.monto_cierre_esperado ?? turno.monto_apertura_turno)
-  const ventasNetas = turno.pagosPorMetodo.reduce((acc, p) => acc + Number(p.total ?? 0), 0)
-  const tarjetas = Number(turno.pagosPorMetodo.find((p) => p.metodo === 'TARJETA')?.total ?? 0)
+  const esperado = Number(
+    turno.monto_cierre_esperado ?? turno.monto_apertura_turno,
+  )
+  const ventasNetas = turno.pagosPorMetodo.reduce(
+    (acc, p) => acc + Number(p.total ?? 0),
+    0,
+  )
+  const tarjetas = Number(
+    turno.pagosPorMetodo.find((p) => p.metodo === 'TARJETA')?.total ?? 0,
+  )
   const egresos = turno.movimientosCaja.filter((m) => m.tipo_mc === 'EGRESO')
   const retiros = egresos.reduce((acc, m) => acc + Number(m.monto_mc), 0)
   const transferenciasVentas = Number(turno.resumenCuadre.ventas.transferencia)
   const transferenciasEgresos =
-    Number(turno.resumenCuadre.egresos.nominaTransferencia) + Number(turno.resumenCuadre.egresos.cuentasTransferencia)
+    Number(turno.resumenCuadre.egresos.nominaTransferencia) +
+    Number(turno.resumenCuadre.egresos.cuentasTransferencia)
   const transferenciasNetas = Number(turno.resumenCuadre.netoTransferencias)
 
   const filas = construirLedger(turno)
@@ -185,18 +206,38 @@ const OPCIONES_FILTRO: { valor: 'TODOS' | TipoLedger; texto: string }[] = [
   { valor: 'APERTURA', texto: 'Apertura' },
 ]
 
-function RegistroMovimientos({ turno, filas }: { turno: TurnoResumen; filas: FilaLedger[] }) {
+function RegistroMovimientos({
+  turno,
+  filas,
+}: {
+  turno: TurnoResumen
+  filas: FilaLedger[]
+}) {
   const [dialogoMov, setDialogoMov] = useState(false)
   const [filtro, setFiltro] = useState<'TODOS' | TipoLedger>('TODOS')
 
-  const filasFiltradas = filtro === 'TODOS' ? filas : filas.filter((f) => f.tipo === filtro)
+  const esPanaderia = turno.caja?.area === 'PANADERIA'
+  const movimientos = esPanaderia
+    ? filas.filter((fila) => fila.tipo !== 'VENTA')
+    : filas
+  const filasFiltradas =
+    filtro === 'TODOS'
+      ? movimientos
+      : movimientos.filter((f) => f.tipo === filtro)
 
   return (
     <section className="rounded-xl border-l-2 border-primary bg-surface-high p-5 md:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-heading text-lg font-semibold uppercase tracking-wide">Registro de movimientos</h2>
+        <h2 className="font-heading text-lg font-semibold uppercase tracking-wide">
+          Registro de movimientos
+        </h2>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => setDialogoMov(true)}>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => setDialogoMov(true)}
+          >
             <Plus className="size-4" /> Movimiento
           </Button>
           <Button
@@ -212,7 +253,9 @@ function RegistroMovimientos({ turno, filas }: { turno: TurnoResumen; filas: Fil
 
       {/* Filtro por tipo */}
       <div className="mt-4 flex flex-wrap gap-1.5">
-        {OPCIONES_FILTRO.map((o) => (
+        {OPCIONES_FILTRO.filter(
+          (opcion) => !esPanaderia || opcion.valor !== 'VENTA',
+        ).map((o) => (
           <button
             key={o.valor}
             type="button"
@@ -238,27 +281,44 @@ function RegistroMovimientos({ turno, filas }: { turno: TurnoResumen; filas: Fil
               <th className="micro-label py-2 pr-4 font-bold">Tipo</th>
               <th className="micro-label py-2 pr-4 font-bold">Descripcion</th>
               <th className="micro-label py-2 pr-4 font-bold">Usuario</th>
-              <th className="micro-label py-2 pl-4 text-right font-bold">Monto</th>
+              <th className="micro-label py-2 pl-4 text-right font-bold">
+                Monto
+              </th>
             </tr>
           </thead>
           <tbody>
             {filasFiltradas.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
+                <td
+                  colSpan={5}
+                  className="py-6 text-center text-sm text-muted-foreground"
+                >
                   Sin movimientos de este tipo en el turno.
                 </td>
               </tr>
             ) : (
               filasFiltradas.map((f) => (
-                <tr key={f.clave} className="border-b border-border/40 last:border-0">
-                  <td className="py-3 pr-4 tabular-nums text-muted-foreground">{horaCorta(f.hora)}</td>
+                <tr
+                  key={f.clave}
+                  className="border-b border-border/40 last:border-0"
+                >
+                  <td className="py-3 pr-4 tabular-nums text-muted-foreground">
+                    {horaCorta(f.hora)}
+                  </td>
                   <td className="py-3 pr-4">
-                    <span className={cn('rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider', ESTILO_TIPO[f.tipo])}>
+                    <span
+                      className={cn(
+                        'rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider',
+                        ESTILO_TIPO[f.tipo],
+                      )}
+                    >
                       {f.tipo}
                     </span>
                   </td>
                   <td className="py-3 pr-4">{f.descripcion}</td>
-                  <td className="py-3 pr-4 text-muted-foreground">{f.usuario}</td>
+                  <td className="py-3 pr-4 text-muted-foreground">
+                    {f.usuario}
+                  </td>
                   <td
                     className={cn(
                       'py-3 pl-4 text-right font-semibold tabular-nums',
@@ -280,21 +340,30 @@ function RegistroMovimientos({ turno, filas }: { turno: TurnoResumen; filas: Fil
   )
 }
 
-function MovimientoDialog({ abierto, onCambiar }: { abierto: boolean; onCambiar: (v: boolean) => void }) {
+function MovimientoDialog({
+  abierto,
+  onCambiar,
+}: {
+  abierto: boolean
+  onCambiar: (v: boolean) => void
+}) {
   const registrar = useRegistrarMovimiento()
   const [tipo, setTipo] = useState<'INGRESO' | 'EGRESO'>('EGRESO')
   const [monto, setMonto] = useState('')
   const [concepto, setConcepto] = useState('')
 
   const valor = Number(monto)
-  const valido = monto !== '' && !Number.isNaN(valor) && valor > 0 && concepto.trim() !== ''
+  const valido =
+    monto !== '' && !Number.isNaN(valor) && valor > 0 && concepto.trim() !== ''
 
   function registrarMovimiento() {
     if (!valido) return
     registrar
       .mutateAsync({ tipo, monto: valor, concepto: concepto.trim() })
       .then(() => {
-        toast.success(tipo === 'INGRESO' ? 'Ingreso registrado' : 'Egreso registrado')
+        toast.success(
+          tipo === 'INGRESO' ? 'Ingreso registrado' : 'Egreso registrado',
+        )
         setMonto('')
         setConcepto('')
         onCambiar(false)
@@ -306,8 +375,12 @@ function MovimientoDialog({ abierto, onCambiar }: { abierto: boolean; onCambiar:
     <Dialog open={abierto} onOpenChange={onCambiar}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle className="font-heading uppercase tracking-tight">Movimiento de caja</DialogTitle>
-          <DialogDescription>Dinero que entra o sale sin estar ligado a una venta.</DialogDescription>
+          <DialogTitle className="font-heading uppercase tracking-tight">
+            Movimiento de caja
+          </DialogTitle>
+          <DialogDescription>
+            Dinero que entra o sale sin estar ligado a una venta.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="flex gap-2">
@@ -316,7 +389,9 @@ function MovimientoDialog({ abierto, onCambiar }: { abierto: boolean; onCambiar:
               onClick={() => setTipo('EGRESO')}
               className={cn(
                 'flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-colors',
-                tipo === 'EGRESO' ? 'bg-destructive/15 text-destructive' : 'bg-surface-lowest text-muted-foreground',
+                tipo === 'EGRESO'
+                  ? 'bg-destructive/15 text-destructive'
+                  : 'bg-surface-lowest text-muted-foreground',
               )}
             >
               <ArrowUpRight className="size-4" /> Egreso
@@ -326,7 +401,9 @@ function MovimientoDialog({ abierto, onCambiar }: { abierto: boolean; onCambiar:
               onClick={() => setTipo('INGRESO')}
               className={cn(
                 'flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-colors',
-                tipo === 'INGRESO' ? 'bg-primary/15 text-primary' : 'bg-surface-lowest text-muted-foreground',
+                tipo === 'INGRESO'
+                  ? 'bg-primary/15 text-primary'
+                  : 'bg-surface-lowest text-muted-foreground',
               )}
             >
               <ArrowDownLeft className="size-4" /> Ingreso
@@ -360,8 +437,16 @@ function MovimientoDialog({ abierto, onCambiar }: { abierto: boolean; onCambiar:
           <Button variant="ghost" onClick={() => onCambiar(false)}>
             Cancelar
           </Button>
-          <Button className="btn-heat gap-2" disabled={!valido || registrar.isPending} onClick={registrarMovimiento}>
-            {registrar.isPending ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+          <Button
+            className="btn-heat gap-2"
+            disabled={!valido || registrar.isPending}
+            onClick={registrarMovimiento}
+          >
+            {registrar.isPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Plus className="size-4" />
+            )}
             Registrar
           </Button>
         </DialogFooter>
@@ -379,7 +464,12 @@ export function AbrirTurnoForm({
   esAdmin: boolean
   onRevisarTurno: (idTurno: number) => void
 }) {
-  const { data: cajas, isPending: cargandoCajas, error: errorCajas, refetch: reintentarCajas } = useQuery({
+  const {
+    data: cajas,
+    isPending: cargandoCajas,
+    error: errorCajas,
+    refetch: reintentarCajas,
+  } = useQuery({
     ...cajasQuery,
     refetchInterval: 20_000,
   })
@@ -389,7 +479,8 @@ export function AbrirTurnoForm({
 
   const cajasLibres = (cajas ?? []).filter((c) => (c.turnos ?? []).length === 0)
   const cajasOcupadas = (cajas ?? []).filter((c) => (c.turnos ?? []).length > 0)
-  const valido = tipo !== '' && cajasLibres.some((caja) => String(caja.id_caja) === idCaja)
+  const valido =
+    tipo !== '' && cajasLibres.some((caja) => String(caja.id_caja) === idCaja)
 
   function abrirTurno() {
     if (!valido || !tipo) return
@@ -406,15 +497,23 @@ export function AbrirTurnoForm({
           <Wallet className="size-5 text-primary" />
         </div>
         <div>
-          <h2 className="font-heading text-lg font-semibold uppercase tracking-tight">Abrir turno</h2>
-          <p className="text-xs text-muted-foreground">Necesario para cobrar y mover caja.</p>
+          <h2 className="font-heading text-lg font-semibold uppercase tracking-tight">
+            Abrir turno
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Necesario para cobrar y mover caja.
+          </p>
         </div>
       </div>
 
       <div className="space-y-4">
         <div className="space-y-1.5">
           <Label>Caja</Label>
-          <Select value={idCaja} onValueChange={setIdCaja} disabled={cargandoCajas || !!errorCajas || !cajas?.length}>
+          <Select
+            value={idCaja}
+            onValueChange={setIdCaja}
+            disabled={cargandoCajas || !!errorCajas || !cajas?.length}
+          >
             <SelectTrigger className="w-full">
               <SelectValue placeholder="Elige una caja libre" />
             </SelectTrigger>
@@ -422,7 +521,11 @@ export function AbrirTurnoForm({
               {(cajas ?? []).map((c) => {
                 const ocupada = (c.turnos ?? []).length > 0
                 return (
-                  <SelectItem key={c.id_caja} value={String(c.id_caja)} disabled={ocupada}>
+                  <SelectItem
+                    key={c.id_caja}
+                    value={String(c.id_caja)}
+                    disabled={ocupada}
+                  >
                     {c.nombre_caja}
                     {ocupada ? ' · en uso' : ''}
                   </SelectItem>
@@ -430,34 +533,70 @@ export function AbrirTurnoForm({
               })}
             </SelectContent>
           </Select>
-          {cargandoCajas ? <p className="text-sm text-muted-foreground" role="status">Consultando cajas disponibles…</p> : null}
+          {cargandoCajas ? (
+            <p className="text-sm text-muted-foreground" role="status">
+              Consultando cajas disponibles…
+            </p>
+          ) : null}
           {errorCajas ? (
             <div className="flex flex-wrap items-center gap-2" role="alert">
-              <p className="text-sm text-destructive">No se pudieron consultar las cajas: {errorApi(errorCajas)}</p>
-              <Button variant="secondary" size="sm" onClick={() => void reintentarCajas()}>Reintentar</Button>
+              <p className="text-sm text-destructive">
+                No se pudieron consultar las cajas: {errorApi(errorCajas)}
+              </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => void reintentarCajas()}
+              >
+                Reintentar
+              </Button>
             </div>
           ) : null}
           {cajas?.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No hay cajas configuradas para esta área. Solicita a un administrador que cree una en Ajustes.</p>
+            <p className="text-sm text-muted-foreground">
+              No hay cajas configuradas para esta área. Solicita a un
+              administrador que cree una en Ajustes.
+            </p>
           ) : null}
           {cajasLibres.length === 0 && cajasOcupadas.length > 0 ? (
-            <div className="space-y-3 rounded-lg border border-tertiary/30 bg-tertiary/10 p-3" role="status">
-              <p className="text-sm font-semibold text-foreground">No hay cajas libres en esta área</p>
+            <div
+              className="space-y-3 rounded-lg border border-tertiary/30 bg-tertiary/10 p-3"
+              role="status"
+            >
+              <p className="text-sm font-semibold text-foreground">
+                No hay cajas libres en esta área
+              </p>
               <ul className="space-y-3 text-sm">
                 {cajasOcupadas.flatMap((caja) =>
                   (caja.turnos ?? []).map((turno) => (
-                    <li key={turno.id_turno} className="space-y-1 border-t border-border/70 pt-3 first:border-t-0 first:pt-0">
-                      <p className="font-medium text-foreground">{caja.nombre_caja} · turno #{turno.id_turno}</p>
+                    <li
+                      key={turno.id_turno}
+                      className="space-y-1 border-t border-border/70 pt-3 first:border-t-0 first:pt-0"
+                    >
+                      <p className="font-medium text-foreground">
+                        {caja.nombre_caja} · turno #{turno.id_turno}
+                      </p>
                       <p className="text-muted-foreground">
-                        Abierto por {turno.usuario?.email_usuario ?? `usuario #${turno.id_usuario_turno}`} el{' '}
-                        {new Date(turno.fecha_apertura_turno).toLocaleString('es-CO', {
-                          dateStyle: 'medium',
-                          timeStyle: 'short',
-                          timeZone: 'America/Bogota',
-                        })}.
+                        Abierto por{' '}
+                        {turno.usuario?.email_usuario ??
+                          `usuario #${turno.id_usuario_turno}`}{' '}
+                        el{' '}
+                        {new Date(turno.fecha_apertura_turno).toLocaleString(
+                          'es-CO',
+                          {
+                            dateStyle: 'medium',
+                            timeStyle: 'short',
+                            timeZone: 'America/Bogota',
+                          },
+                        )}
+                        .
                       </p>
                       {esAdmin ? (
-                        <Button variant="secondary" size="sm" onClick={() => onRevisarTurno(turno.id_turno)}>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => onRevisarTurno(turno.id_turno)}
+                        >
                           Ir al cuadre del turno
                         </Button>
                       ) : null}
@@ -466,7 +605,10 @@ export function AbrirTurnoForm({
                 )}
               </ul>
               {!esAdmin ? (
-                <p className="text-xs text-muted-foreground">Pide al responsable o al administrador local que complete el cuadre y cierre su turno antes de abrir otro.</p>
+                <p className="text-xs text-muted-foreground">
+                  Pide al responsable o al administrador local que complete el
+                  cuadre y cierre su turno antes de abrir otro.
+                </p>
               ) : null}
             </div>
           ) : null}
@@ -475,8 +617,12 @@ export function AbrirTurnoForm({
         <SelectorTipoTurno valor={tipo} onCambiar={setTipo} />
         <div className="rounded-lg bg-surface-low p-3">
           <p className="micro-label">Base fija de caja</p>
-          <p className="mt-1 font-heading text-xl font-semibold tabular-nums">{formatearPrecio(300000)}</p>
-          <p className="mt-1 text-xs text-muted-foreground">Se recibe y se deja intacta en cada cambio de turno.</p>
+          <p className="mt-1 font-heading text-xl font-semibold tabular-nums">
+            {formatearPrecio(300000)}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Se recibe y se deja intacta en cada cambio de turno.
+          </p>
         </div>
 
         <Button
@@ -484,7 +630,11 @@ export function AbrirTurnoForm({
           disabled={!valido || abrir.isPending}
           onClick={abrirTurno}
         >
-          {abrir.isPending ? <Loader2 className="size-4 animate-spin" /> : <Wallet className="size-4" />}
+          {abrir.isPending ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Wallet className="size-4" />
+          )}
           Abrir turno
         </Button>
       </div>
