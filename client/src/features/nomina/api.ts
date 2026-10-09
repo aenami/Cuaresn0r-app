@@ -82,13 +82,14 @@ export const miNominaQuery = queryOptions({
 
 // ---- queries: jornadas ----
 
-export function jornadasQuery(params: { empleado?: number; estado?: EstadoJornada } = {}) {
+export function jornadasQuery(params: { empleado?: number; estado?: EstadoJornada; fecha?: string } = {}) {
   const qs = new URLSearchParams()
   if (params.empleado !== undefined) qs.set('empleado', String(params.empleado))
   if (params.estado !== undefined) qs.set('estado', params.estado)
+  if (params.fecha !== undefined) qs.set('fecha', params.fecha)
   const suffix = qs.toString() ? `?${qs}` : ''
   return queryOptions({
-    queryKey: ['nomina', 'jornadas', params.empleado ?? 'todos', params.estado ?? 'todos'],
+    queryKey: ['nomina', 'jornadas', params.empleado ?? 'todos', params.estado ?? 'todos', params.fecha ?? 'todas'],
     queryFn: () => api.get<Jornada[]>(`/payroll/jornadas${suffix}`),
     refetchInterval: params.estado === 'ABIERTA' ? 20_000 : undefined,
   })
@@ -158,37 +159,13 @@ export function useReactivarEmpleado(idEmpleado: number) {
   })
 }
 
-// ---- mutaciones: jornadas (marcacion, cierre, correccion) ----
+// ---- mutaciones: horarios completos (confirmacion y correccion) ----
 
-export function useMarcar() {
+export function useGuardarHorario() {
   const invalidar = useInvalidarNomina()
   return useMutation({
-    mutationFn: (datos: { idEmpleado: number; fechaHora?: string }) =>
-      api.post<{ marcacion: { tipo_marcacion: string }; jornada: Jornada }>('/payroll/jornadas/marcar', datos),
-    onSuccess: invalidar,
-  })
-}
-
-export function useCerrarJornada() {
-  const invalidar = useInvalidarNomina()
-  return useMutation({
-    mutationFn: (idJornada: number) => api.patch(`/payroll/jornadas/${idJornada}/cerrar`),
-    onSuccess: invalidar,
-  })
-}
-
-export function useDeshacerMarcacion() {
-  const invalidar = useInvalidarNomina()
-  return useMutation({
-    mutationFn: (idJornada: number) => api.delete(`/payroll/jornadas/${idJornada}/marcaciones/ultima`),
-    onSuccess: invalidar,
-  })
-}
-
-export function useReabrirJornada() {
-  const invalidar = useInvalidarNomina()
-  return useMutation({
-    mutationFn: (idJornada: number) => api.patch(`/payroll/jornadas/${idJornada}/reabrir`),
+    mutationFn: (datos: { idEmpleado: number; fecha: string; idJornada?: number; tramos: { entrada: string; salida: string }[] }) =>
+      api.post<{ jornada: Jornada }>('/payroll/jornadas/horario', datos),
     onSuccess: invalidar,
   })
 }

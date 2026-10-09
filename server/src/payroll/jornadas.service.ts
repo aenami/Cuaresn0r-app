@@ -1,13 +1,35 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma, EstadoJornada, TipoMarcacion } from '../generated/prisma/client';
+import {
+  Prisma,
+  EstadoJornada,
+  TipoMarcacion,
+} from '../generated/prisma/client';
 import { NominaConfigService } from './nomina-config.service';
 import { MarcarDto } from './dto/marcar.dto';
-import { fechaLocalSinHora, horasEnFranjaNocturna, tiempoDbAMinutos } from './fechas';
+import { RegistrarHorarioDto } from './dto/registrar-horario.dto';
+import { validarHorario } from './horario';
+import {
+  fechaLocalSinHora,
+  horasEnFranjaNocturna,
+  tiempoDbAMinutos,
+} from './fechas';
 import { areaActual, exigirArea } from '../auth/access-context';
 
 const JORNADA_INCLUDE = {
-  empleado: { select: { id_empleado: true, nombre_empleado: true, apellido_empleado: true, area: true } },
+  empleado: {
+    select: {
+      id_empleado: true,
+      nombre_empleado: true,
+      apellido_empleado: true,
+      area: true,
+    },
+  },
   marcaciones: { orderBy: { fecha_hora_marcacion: 'asc' } },
 } satisfies Prisma.JornadaInclude;
 
@@ -28,40 +50,58 @@ export class JornadasService {
   // Registra ENTRADA o SALIDA alternando automaticamente; si el empleado no
   // tiene jornada ABIERTA, la crea (con fecha = dia local de la marcacion).
   async marcar(dto: MarcarDto) {
-    const empleado = await this.prisma.empleado.findUnique({ where: { id_empleado: dto.idEmpleado } });
+    const empleado = await this.prisma.empleado.findUnique({
+      where: { id_empleado: dto.idEmpleado },
+    });
     if (!empleado) throw new NotFoundException('Empleado no encontrado');
     exigirArea(empleado.area);
     return this.prisma.$transaction(async (tx) => {
       // Lock del empleado: dos marcaciones simultaneas del mismo empleado
       // crearian dos jornadas abiertas o romperian la alternancia.
-      const filas = await tx.$queryRaw<{ id_empleado: number; estado_empleado: string }[]>`
+      const filas = await tx.$queryRaw<
+        { id_empleado: number; estado_empleado: string }[]
+      >`
         SELECT id_empleado, estado_empleado FROM "Empleado" WHERE id_empleado = ${dto.idEmpleado} FOR UPDATE
       `;
       if (!filas[0]) throw new NotFoundException('Empleado no encontrado');
       if (filas[0].estado_empleado !== 'ACTIVO') {
-        throw new ConflictException('No se pueden registrar marcaciones de un empleado inactivo');
+        throw new ConflictException(
+          'No se pueden registrar marcaciones de un empleado inactivo',
+        );
       }
 
-      const instante = dto.fechaHora !== undefined ? new Date(dto.fechaHora) : new Date();
+      const instante =
+        dto.fechaHora !== undefined ? new Date(dto.fechaHora) : new Date();
       if (instante.getTime() > Date.now() + 60_000) {
-        throw new BadRequestException('La marcacion no puede estar en el futuro');
+        throw new BadRequestException(
+          'La marcacion no puede estar en el futuro',
+        );
       }
 
       let jornada = await tx.jornada.findFirst({
-        where: { id_empleado_jornada: dto.idEmpleado, estado_jornada: 'ABIERTA' },
+        where: {
+          id_empleado_jornada: dto.idEmpleado,
+          estado_jornada: 'ABIERTA',
+        },
         include: { marcaciones: { orderBy: { fecha_hora_marcacion: 'asc' } } },
       });
 
       let tipo: TipoMarcacion;
       if (!jornada) {
         jornada = await tx.jornada.create({
-          data: { id_empleado_jornada: dto.idEmpleado, fecha_jornada: fechaLocalSinHora(instante) },
+          data: {
+            id_empleado_jornada: dto.idEmpleado,
+            fecha_jornada: fechaLocalSinHora(instante),
+          },
           include: { marcaciones: true },
         });
         tipo = 'ENTRADA';
       } else {
         const ultima = jornada.marcaciones[jornada.marcaciones.length - 1];
-        if (ultima && instante.getTime() <= ultima.fecha_hora_marcacion.getTime()) {
+        if (
+          ultima &&
+          instante.getTime() <= ultima.fecha_hora_marcacion.getTime()
+        ) {
           throw new BadRequestException(
             `La marcacion debe ser posterior a la ultima registrada (${ultima.fecha_hora_marcacion.toISOString()})`,
           );
@@ -71,12 +111,19 @@ export class JornadasService {
       }
 
       const marcacion = await tx.marcacion.create({
-        data: { id_jornada_marcacion: jornada.id_jornada, tipo_marcacion: tipo, fecha_hora_marcacion: instante },
+        data: {
+          id_jornada_marcacion: jornada.id_jornada,
+          tipo_marcacion: tipo,
+          fecha_hora_marcacion: instante,
+        },
       });
 
       return {
         marcacion,
-        jornada: await tx.jornada.findUniqueOrThrow({ where: { id_jornada: jornada.id_jornada }, include: JORNADA_INCLUDE }),
+        jornada: await tx.jornada.findUniqueOrThrow({
+          where: { id_jornada: jornada.id_jornada },
+          include: JORNADA_INCLUDE,
+        }),
       };
     });
   }
@@ -93,113 +140,154 @@ export class JornadasService {
       `;
       if (!filas[0]) throw new NotFoundException('Jornada no encontrada');
 
-      const jornada = await tx.jornada.findUniqueOrThrow({
-        where: { id_jornada: idJornada },
-        include: { marcaciones: { orderBy: { fecha_hora_marcacion: 'asc' } }, empleado: true },
-      });
-      if (jornada.estado_jornada === 'CERRADA') throw new ConflictException('Esta jornada ya esta cerrada');
+      return this.liquidar(tx, idJornada);
+    });
+  }
 
-      const marcaciones = jornada.marcaciones;
-      const ultima = marcaciones[marcaciones.length - 1];
-      if (!ultima || ultima.tipo_marcacion !== 'SALIDA') {
-        throw new ConflictException('La jornada solo se puede cerrar cuando la ultima marcacion es una SALIDA');
-      }
+  private async liquidar(tx: Prisma.TransactionClient, idJornada: number) {
+    const jornada = await tx.jornada.findUniqueOrThrow({
+      where: { id_jornada: idJornada },
+      include: {
+        marcaciones: { orderBy: { fecha_hora_marcacion: 'asc' } },
+        empleado: true,
+      },
+    });
+    if (jornada.estado_jornada === 'CERRADA')
+      throw new ConflictException('Esta jornada ya esta cerrada');
 
-      const tarifa = await tx.tarifaEmpleado.findFirst({
-        where: { id_empleado_tarifaEmpleado: jornada.id_empleado_jornada, tarifa_activa: true },
+    const marcaciones = jornada.marcaciones;
+    const ultima = marcaciones[marcaciones.length - 1];
+    if (!ultima || ultima.tipo_marcacion !== 'SALIDA') {
+      throw new ConflictException(
+        'La jornada solo se puede cerrar cuando la ultima marcacion es una SALIDA',
+      );
+    }
+
+    const tarifa = await tx.tarifaEmpleado.findFirst({
+      where: {
+        id_empleado_tarifaEmpleado: jornada.id_empleado_jornada,
+        tarifa_activa: true,
+      },
+    });
+    if (!tarifa) {
+      throw new ConflictException(
+        'El empleado no tiene una tarifa activa; asignala antes de cerrar la jornada para poder liquidarla',
+      );
+    }
+
+    const config = await this.nominaConfigService.findActiva(tx);
+    const hayRecargo =
+      config.aplica_recargo_nocturno &&
+      config.hora_inicio_nocturno !== null &&
+      config.hora_fin_nocturno !== null;
+    const inicioMin = hayRecargo
+      ? tiempoDbAMinutos(config.hora_inicio_nocturno!)
+      : 0;
+    const finMin = hayRecargo ? tiempoDbAMinutos(config.hora_fin_nocturno!) : 0;
+
+    // Pares (ENTRADA, SALIDA): la alternancia la garantizo marcar().
+    let horasTotales = 0;
+    let horasNocturnas = 0;
+    for (let i = 0; i + 1 < marcaciones.length; i += 2) {
+      const entrada = marcaciones[i].fecha_hora_marcacion;
+      const salida = marcaciones[i + 1].fecha_hora_marcacion;
+      horasTotales += (salida.getTime() - entrada.getTime()) / 3600000;
+      if (hayRecargo)
+        horasNocturnas += horasEnFranjaNocturna(
+          entrada,
+          salida,
+          inicioMin,
+          finMin,
+        );
+    }
+
+    const horasRecargo = new Prisma.Decimal(horasNocturnas).toDecimalPlaces(2);
+    const horasOrdinarias = new Prisma.Decimal(
+      horasTotales - horasNocturnas,
+    ).toDecimalPlaces(2);
+    const valorHora = tarifa.valor_hora_tarifaEmpleado;
+    const porcentaje = hayRecargo ? config.porcentaje_recargo_nocturno : null;
+    const factorRecargo = porcentaje
+      ? new Prisma.Decimal(1).plus(porcentaje.dividedBy(100))
+      : new Prisma.Decimal(1);
+    const monto = aPesoEntero(
+      valorHora
+        .times(horasOrdinarias)
+        .plus(valorHora.times(horasRecargo).times(factorRecargo)),
+    );
+
+    const devengoJornada = await tx.devengoNomina.create({
+      data: {
+        id_empleado_devengoNomina: jornada.id_empleado_jornada,
+        id_jornada_devengoNomina: jornada.id_jornada,
+        horas_ordinarias_devengoNomina: horasOrdinarias,
+        horas_recargo_devengoNomina: horasRecargo,
+        valor_hora_aplicado_devengoNomina: valorHora,
+        porcentaje_recargo_aplicado_devengoNomina: porcentaje,
+        monto_devengoNomina: monto,
+        fecha_devengoNomina: jornada.fecha_jornada,
+      },
+    });
+
+    // Conceptos automaticos por dia trabajado (seccion 13): una fila de
+    // ConceptoNominaEmpleado por jornada cerrada + su devengo, con el
+    // valor vigente snapshoteado.
+    const automaticos = await tx.conceptoNomina.findMany({
+      where: { area: areaActual(), aplica_automaticamente: true },
+    });
+    const devengosConceptos = [];
+    for (const concepto of automaticos) {
+      const valor = await tx.valorConceptoNomina.findFirst({
+        where: {
+          id_concepto_valorConceptoNomina: concepto.id_conceptoNomina,
+          valor_activo: true,
+        },
       });
-      if (!tarifa) {
+      if (!valor) {
         throw new ConflictException(
-          'El empleado no tiene una tarifa activa; asignala antes de cerrar la jornada para poder liquidarla',
+          `El concepto automatico "${concepto.nombre_conceptoNomina}" no tiene un valor activo; configuralo o desactiva su aplicacion automatica`,
         );
       }
 
-      const config = await this.nominaConfigService.findActiva(tx);
-      const hayRecargo =
-        config.aplica_recargo_nocturno && config.hora_inicio_nocturno !== null && config.hora_fin_nocturno !== null;
-      const inicioMin = hayRecargo ? tiempoDbAMinutos(config.hora_inicio_nocturno!) : 0;
-      const finMin = hayRecargo ? tiempoDbAMinutos(config.hora_fin_nocturno!) : 0;
-
-      // Pares (ENTRADA, SALIDA): la alternancia la garantizo marcar().
-      let horasTotales = 0;
-      let horasNocturnas = 0;
-      for (let i = 0; i + 1 < marcaciones.length; i += 2) {
-        const entrada = marcaciones[i].fecha_hora_marcacion;
-        const salida = marcaciones[i + 1].fecha_hora_marcacion;
-        horasTotales += (salida.getTime() - entrada.getTime()) / 3600000;
-        if (hayRecargo) horasNocturnas += horasEnFranjaNocturna(entrada, salida, inicioMin, finMin);
-      }
-
-      const horasRecargo = new Prisma.Decimal(horasNocturnas).toDecimalPlaces(2);
-      const horasOrdinarias = new Prisma.Decimal(horasTotales - horasNocturnas).toDecimalPlaces(2);
-      const valorHora = tarifa.valor_hora_tarifaEmpleado;
-      const porcentaje = hayRecargo ? config.porcentaje_recargo_nocturno : null;
-      const factorRecargo = porcentaje ? new Prisma.Decimal(1).plus(porcentaje.dividedBy(100)) : new Prisma.Decimal(1);
-      const monto = aPesoEntero(
-        valorHora.times(horasOrdinarias).plus(valorHora.times(horasRecargo).times(factorRecargo)),
-      );
-
-      const devengoJornada = await tx.devengoNomina.create({
+      const montoConcepto = aPesoEntero(valor.monto_valorConceptoNomina);
+      const cne = await tx.conceptoNominaEmpleado.create({
         data: {
-          id_empleado_devengoNomina: jornada.id_empleado_jornada,
-          id_jornada_devengoNomina: jornada.id_jornada,
-          horas_ordinarias_devengoNomina: horasOrdinarias,
-          horas_recargo_devengoNomina: horasRecargo,
-          valor_hora_aplicado_devengoNomina: valorHora,
-          porcentaje_recargo_aplicado_devengoNomina: porcentaje,
-          monto_devengoNomina: monto,
-          fecha_devengoNomina: jornada.fecha_jornada,
+          id_concepto_cne: concepto.id_conceptoNomina,
+          id_empleado_cne: jornada.id_empleado_jornada,
+          id_jornada_cne: jornada.id_jornada,
+          fecha_cne: jornada.fecha_jornada,
+          cantidad_cne: 1,
+          valor_unitario_aplicado_cne: valor.monto_valorConceptoNomina,
+          monto_cne: montoConcepto,
         },
       });
 
-      // Conceptos automaticos por dia trabajado (seccion 13): una fila de
-      // ConceptoNominaEmpleado por jornada cerrada + su devengo, con el
-      // valor vigente snapshoteado.
-      const automaticos = await tx.conceptoNomina.findMany({ where: { area: areaActual(), aplica_automaticamente: true } });
-      const devengosConceptos = [];
-      for (const concepto of automaticos) {
-        const valor = await tx.valorConceptoNomina.findFirst({
-          where: { id_concepto_valorConceptoNomina: concepto.id_conceptoNomina, valor_activo: true },
-        });
-        if (!valor) {
-          throw new ConflictException(
-            `El concepto automatico "${concepto.nombre_conceptoNomina}" no tiene un valor activo; configuralo o desactiva su aplicacion automatica`,
-          );
-        }
-
-        const montoConcepto = aPesoEntero(valor.monto_valorConceptoNomina);
-        const cne = await tx.conceptoNominaEmpleado.create({
+      const signo = concepto.tipo_conceptoNomina === 'DEDUCCION' ? -1 : 1;
+      devengosConceptos.push(
+        await tx.devengoNomina.create({
           data: {
-            id_concepto_cne: concepto.id_conceptoNomina,
-            id_empleado_cne: jornada.id_empleado_jornada,
-            id_jornada_cne: jornada.id_jornada,
-            fecha_cne: jornada.fecha_jornada,
-            cantidad_cne: 1,
-            valor_unitario_aplicado_cne: valor.monto_valorConceptoNomina,
-            monto_cne: montoConcepto,
+            id_empleado_devengoNomina: jornada.id_empleado_jornada,
+            id_conceptoNominaEmpleado_devengoNomina:
+              cne.id_conceptoNominaEmpleado,
+            monto_devengoNomina: montoConcepto.times(signo),
+            fecha_devengoNomina: jornada.fecha_jornada,
           },
-        });
+        }),
+      );
+    }
 
-        const signo = concepto.tipo_conceptoNomina === 'DEDUCCION' ? -1 : 1;
-        devengosConceptos.push(
-          await tx.devengoNomina.create({
-            data: {
-              id_empleado_devengoNomina: jornada.id_empleado_jornada,
-              id_conceptoNominaEmpleado_devengoNomina: cne.id_conceptoNominaEmpleado,
-              monto_devengoNomina: montoConcepto.times(signo),
-              fecha_devengoNomina: jornada.fecha_jornada,
-            },
-          }),
-        );
-      }
-
-      await tx.jornada.update({ where: { id_jornada: idJornada }, data: { estado_jornada: 'CERRADA' } });
-
-      return {
-        jornada: await tx.jornada.findUniqueOrThrow({ where: { id_jornada: idJornada }, include: JORNADA_INCLUDE }),
-        devengos: [devengoJornada, ...devengosConceptos],
-      };
+    await tx.jornada.update({
+      where: { id_jornada: idJornada },
+      data: { estado_jornada: 'CERRADA' },
     });
+
+    return {
+      jornada: await tx.jornada.findUniqueOrThrow({
+        where: { id_jornada: idJornada },
+        include: JORNADA_INCLUDE,
+      }),
+      devengos: [devengoJornada, ...devengosConceptos],
+    };
   }
 
   // Deshace la ultima marcacion de una jornada ABIERTA (el "ctrl+z" del
@@ -215,18 +303,29 @@ export class JornadasService {
 
       const jornada = await tx.jornada.findUniqueOrThrow({
         where: { id_jornada: idJornada },
-        include: { marcaciones: { orderBy: { fecha_hora_marcacion: 'desc' }, take: 1 } },
+        include: {
+          marcaciones: { orderBy: { fecha_hora_marcacion: 'desc' }, take: 1 },
+        },
       });
       if (jornada.estado_jornada === 'CERRADA') {
-        throw new ConflictException('La jornada esta cerrada; reabrela antes de corregir marcaciones');
+        throw new ConflictException(
+          'La jornada esta cerrada; reabrela antes de corregir marcaciones',
+        );
       }
 
       const ultima = jornada.marcaciones[0];
-      if (!ultima) throw new ConflictException('La jornada no tiene marcaciones para deshacer');
+      if (!ultima)
+        throw new ConflictException(
+          'La jornada no tiene marcaciones para deshacer',
+        );
 
-      await tx.marcacion.delete({ where: { id_marcacion: ultima.id_marcacion } });
+      await tx.marcacion.delete({
+        where: { id_marcacion: ultima.id_marcacion },
+      });
 
-      const restantes = await tx.marcacion.count({ where: { id_jornada_marcacion: idJornada } });
+      const restantes = await tx.marcacion.count({
+        where: { id_jornada_marcacion: idJornada },
+      });
       if (restantes === 0) {
         await tx.jornada.delete({ where: { id_jornada: idJornada } });
         return { marcacionEliminada: ultima, jornadaEliminada: true as const };
@@ -235,7 +334,10 @@ export class JornadasService {
       return {
         marcacionEliminada: ultima,
         jornadaEliminada: false as const,
-        jornada: await tx.jornada.findUniqueOrThrow({ where: { id_jornada: idJornada }, include: JORNADA_INCLUDE }),
+        jornada: await tx.jornada.findUniqueOrThrow({
+          where: { id_jornada: idJornada },
+          include: JORNADA_INCLUDE,
+        }),
       };
     });
   }
@@ -247,63 +349,190 @@ export class JornadasService {
   // toca y la diferencia se compensa con un concepto manual de ajuste.
   async reabrir(idJornada: number) {
     await this.findOne(idJornada);
-    return this.prisma.$transaction(async (tx) => {
-      const filas = await tx.$queryRaw<{ id_jornada: number }[]>`
+    return this.prisma.$transaction((tx) =>
+      this.reabrirEnTransaccion(tx, idJornada),
+    );
+  }
+
+  private async reabrirEnTransaccion(
+    tx: Prisma.TransactionClient,
+    idJornada: number,
+  ) {
+    const filas = await tx.$queryRaw<{ id_jornada: number }[]>`
         SELECT id_jornada FROM "Jornada" WHERE id_jornada = ${idJornada} FOR UPDATE
       `;
-      if (!filas[0]) throw new NotFoundException('Jornada no encontrada');
+    if (!filas[0]) throw new NotFoundException('Jornada no encontrada');
 
-      const jornada = await tx.jornada.findUniqueOrThrow({ where: { id_jornada: idJornada } });
-      if (jornada.estado_jornada === 'ABIERTA') throw new ConflictException('Esta jornada ya esta abierta');
+    const jornada = await tx.jornada.findUniqueOrThrow({
+      where: { id_jornada: idJornada },
+    });
+    if (jornada.estado_jornada === 'ABIERTA')
+      throw new ConflictException('Esta jornada ya esta abierta');
 
-      // El indice parcial jornada_abierta_por_empleado lo rechazaria igual,
-      // pero con este chequeo el error le dice al usuario que hacer.
-      const otraAbierta = await tx.jornada.findFirst({
-        where: { id_empleado_jornada: jornada.id_empleado_jornada, estado_jornada: 'ABIERTA' },
-      });
-      if (otraAbierta) {
-        throw new ConflictException(
-          `El empleado tiene otra jornada abierta (#${otraAbierta.id_jornada}); cierrala o corrigela antes de reabrir esta`,
-        );
-      }
+    // El indice parcial jornada_abierta_por_empleado lo rechazaria igual,
+    // pero con este chequeo el error le dice al usuario que hacer.
+    const otraAbierta = await tx.jornada.findFirst({
+      where: {
+        id_empleado_jornada: jornada.id_empleado_jornada,
+        estado_jornada: 'ABIERTA',
+      },
+    });
+    if (otraAbierta) {
+      throw new ConflictException(
+        `El empleado tiene otra jornada abierta (#${otraAbierta.id_jornada}); cierrala o corrigela antes de reabrir esta`,
+      );
+    }
 
-      // Devengos del cierre: el de horas (directo) + los de conceptos
-      // automaticos (via ConceptoNominaEmpleado con id_jornada_cne).
-      const devengos = await tx.devengoNomina.findMany({
-        where: {
-          OR: [
-            { id_jornada_devengoNomina: idJornada },
-            { conceptoNominaEmpleado: { id_jornada_cne: idJornada } },
-          ],
-        },
-        include: { pagoNominaDetalles: true },
-      });
-      if (devengos.some((d) => d.pagoNominaDetalles.length > 0)) {
-        throw new ConflictException(
-          'Los devengos de esta jornada ya tienen pagos aplicados; no se puede reabrir. Compensa la diferencia con un concepto manual de ajuste',
-        );
-      }
+    // Devengos del cierre: el de horas (directo) + los de conceptos
+    // automaticos (via ConceptoNominaEmpleado con id_jornada_cne).
+    const devengos = await tx.devengoNomina.findMany({
+      where: {
+        OR: [
+          { id_jornada_devengoNomina: idJornada },
+          { conceptoNominaEmpleado: { id_jornada_cne: idJornada } },
+        ],
+      },
+      include: { pagoNominaDetalles: true },
+    });
+    if (devengos.some((d) => d.pagoNominaDetalles.length > 0)) {
+      throw new ConflictException(
+        'Los devengos de esta jornada ya tienen pagos aplicados; no se puede reabrir. Compensa la diferencia con un concepto manual de ajuste',
+      );
+    }
 
-      // Orden de borrado por FKs: devengos -> conceptos automaticos.
-      await tx.devengoNomina.deleteMany({
-        where: { id_devengoNomina: { in: devengos.map((d) => d.id_devengoNomina) } },
-      });
-      await tx.conceptoNominaEmpleado.deleteMany({ where: { id_jornada_cne: idJornada } });
+    // Orden de borrado por FKs: devengos -> conceptos automaticos.
+    await tx.devengoNomina.deleteMany({
+      where: {
+        id_devengoNomina: { in: devengos.map((d) => d.id_devengoNomina) },
+      },
+    });
+    await tx.conceptoNominaEmpleado.deleteMany({
+      where: { id_jornada_cne: idJornada },
+    });
 
-      return tx.jornada.update({
-        where: { id_jornada: idJornada },
-        data: { estado_jornada: 'ABIERTA' },
-        include: JORNADA_INCLUDE,
-      });
+    return tx.jornada.update({
+      where: { id_jornada: idJornada },
+      data: { estado_jornada: 'ABIERTA' },
+      include: JORNADA_INCLUDE,
     });
   }
 
-  async findAll(idEmpleado?: number, estado?: EstadoJornada) {
+  // Una confirmación guarda todos los tramos y liquida sin pasos intermedios.
+  // El lock de empleado también serializa pagos, evitando corregir un devengo
+  // a la vez que otro usuario lo paga. La historia pagada nunca se reemplaza.
+  async registrarHorario(dto: RegistrarHorarioDto) {
+    const { fecha, tramos } = validarHorario(dto);
+    const empleado = await this.prisma.empleado.findUnique({
+      where: { id_empleado: dto.idEmpleado },
+    });
+    if (!empleado) throw new NotFoundException('Empleado no encontrado');
+    exigirArea(empleado.area);
+    return this.prisma.$transaction(async (tx) => {
+      const filas = await tx.$queryRaw<{ estado_empleado: string }[]>`
+        SELECT estado_empleado FROM "Empleado" WHERE id_empleado = ${dto.idEmpleado} FOR UPDATE
+      `;
+      if (!filas[0]) throw new NotFoundException('Empleado no encontrado');
+      if (filas[0].estado_empleado !== 'ACTIVO')
+        throw new ConflictException('El empleado está inactivo');
+      const jornadas = await tx.jornada.findMany({
+        where: {
+          id_empleado_jornada: dto.idEmpleado,
+          OR: [{ fecha_jornada: fecha }, { estado_jornada: 'ABIERTA' }],
+        },
+        include: JORNADA_INCLUDE,
+      });
+      const delDia = jornadas.filter(
+        (j) => j.fecha_jornada.getTime() === fecha.getTime(),
+      );
+      if (!dto.idJornada && delDia.length > 1)
+        throw new ConflictException(
+          'Hay varias jornadas para esa fecha; selecciona la que deseas editar',
+        );
+      let jornada = dto.idJornada
+        ? delDia.find((j) => j.id_jornada === dto.idJornada)
+        : delDia[0];
+      if (dto.idJornada && !jornada)
+        throw new ConflictException(
+          'La jornada no corresponde al empleado y fecha seleccionados',
+        );
+      const otraAbierta = jornadas.find(
+        (j) =>
+          j.estado_jornada === 'ABIERTA' &&
+          j.id_jornada !== jornada?.id_jornada,
+      );
+      if (otraAbierta)
+        throw new ConflictException(
+          `Completa primero el horario pendiente de la jornada #${otraAbierta.id_jornada}`,
+        );
+      if (jornada) {
+        await tx.$queryRaw`SELECT id_jornada FROM "Jornada" WHERE id_jornada = ${jornada.id_jornada} FOR UPDATE`;
+        jornada = await tx.jornada.findUniqueOrThrow({
+          where: { id_jornada: jornada.id_jornada },
+          include: JORNADA_INCLUDE,
+        });
+        const marcas = tramos.flatMap((t) => [
+          { tipo: 'ENTRADA', fecha: t.entrada },
+          { tipo: 'SALIDA', fecha: t.salida },
+        ]);
+        const mismoHorario =
+          jornada.marcaciones.length === marcas.length &&
+          jornada.marcaciones.every(
+            (m, i) =>
+              m.tipo_marcacion === marcas[i].tipo &&
+              m.fecha_hora_marcacion.getTime() === marcas[i].fecha.getTime(),
+          );
+        // Reintentar una confirmación no duplica ni recalcula una nómina pagada.
+        if (jornada.estado_jornada === 'CERRADA' && mismoHorario)
+          return { jornada };
+        if (jornada.estado_jornada === 'CERRADA') {
+          if (!dto.idJornada)
+            throw new ConflictException(
+              'Ya hay un horario confirmado; usa Editar horario para corregirlo',
+            );
+          await this.reabrirEnTransaccion(tx, jornada.id_jornada);
+        }
+        await tx.marcacion.deleteMany({
+          where: { id_jornada_marcacion: jornada.id_jornada },
+        });
+      } else {
+        jornada = await tx.jornada.create({
+          data: { id_empleado_jornada: dto.idEmpleado, fecha_jornada: fecha },
+          include: JORNADA_INCLUDE,
+        });
+      }
+      await tx.marcacion.createMany({
+        data: tramos.flatMap((t) => [
+          {
+            id_jornada_marcacion: jornada!.id_jornada,
+            tipo_marcacion: 'ENTRADA' as const,
+            fecha_hora_marcacion: t.entrada,
+          },
+          {
+            id_jornada_marcacion: jornada!.id_jornada,
+            tipo_marcacion: 'SALIDA' as const,
+            fecha_hora_marcacion: t.salida,
+          },
+        ]),
+      });
+      return this.liquidar(tx, jornada.id_jornada);
+    }, { timeout: 20000 });
+  }
+
+  async findAll(idEmpleado?: number, estado?: EstadoJornada, fecha?: string) {
+    const dia = fecha !== undefined ? new Date(`${fecha}T00:00:00Z`) : null;
+    if (
+      dia &&
+      (!/^\d{4}-\d{2}-\d{2}$/.test(fecha!) ||
+        !Number.isFinite(dia.getTime()) ||
+        dia.toISOString().slice(0, 10) !== fecha)
+    )
+      throw new BadRequestException('La fecha de la jornada no es válida');
     return this.prisma.jornada.findMany({
       where: {
         empleado: { area: areaActual() },
         ...(idEmpleado !== undefined && { id_empleado_jornada: idEmpleado }),
         ...(estado !== undefined && { estado_jornada: estado }),
+        ...(dia && { fecha_jornada: dia }),
       },
       include: JORNADA_INCLUDE,
       orderBy: { id_jornada: 'desc' },
@@ -313,7 +542,11 @@ export class JornadasService {
   async findOne(id: number) {
     const jornada = await this.prisma.jornada.findUnique({
       where: { id_jornada: id },
-      include: { ...JORNADA_INCLUDE, devengos: true, conceptosNomina: { include: { concepto: true } } },
+      include: {
+        ...JORNADA_INCLUDE,
+        devengos: true,
+        conceptosNomina: { include: { concepto: true } },
+      },
     });
     if (!jornada) throw new NotFoundException('Jornada no encontrada');
     exigirArea(jornada.empleado.area);

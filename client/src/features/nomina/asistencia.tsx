@@ -1,26 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import {
-  CalendarClock,
-  ClipboardList,
-  Clock,
-  Coffee,
-  Loader2,
-  LogIn,
-  Undo2,
-  Users,
-} from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
-import {
-  empleadosQuery,
-  jornadasQuery,
-  useCerrarJornada,
-  useDeshacerMarcacion,
-  useMarcar,
-} from '@/features/nomina/api'
-import type { Empleado, Jornada, Marcacion } from '@/types/api'
-import { cn } from '@/lib/utils'
+import { Check, Clock, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
+import type { Empleado, Jornada } from '@/types/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -28,7 +10,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -39,450 +20,480 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { errorApi, idCorto, nombreEmpleado } from './comun'
+import { empleadosQuery, jornadasQuery, useGuardarHorario } from './api'
+import { errorApi, nombreEmpleado } from './comun'
+import {
+  describirTramos,
+  duracionHorario,
+  formatearDuracion,
+  hoyColombia,
+  prepararHorario,
+  tramoVacio,
+  tramosDeJornada,
+} from './horario'
+import type { TramoEditable } from './horario'
 
-// Ultima marcacion de una jornada abierta (define si esta trabajando o en pausa).
-function ultimaMarcacion(j: Jornada): Marcacion | undefined {
-  const m = j.marcaciones ?? []
-  return m[m.length - 1]
-}
-
-function horaCorta(iso: string): string {
-  return new Date(iso).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: false })
-}
-
-function duracionDesde(iso: string): string {
-  const min = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000))
-  const h = Math.floor(min / 60)
-  const m = min % 60
-  return h > 0 ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`
-}
+const fechaVisible = (fecha: string) =>
+  new Date(fecha + 'T12:00:00Z').toLocaleDateString('es-CO', {
+    dateStyle: 'long',
+    timeZone: 'UTC',
+  })
 
 export function Asistencia() {
-  const { data: abiertas } = useQuery(jornadasQuery({ estado: 'ABIERTA' }))
-  const { data: activos } = useQuery(empleadosQuery('ACTIVO'))
-  const marcar = useMarcar()
-  const [idSel, setIdSel] = useState<string>('')
-  const [manual, setManual] = useState(false)
-
-  // Refresca duraciones cada minuto.
-  const [, setTick] = useState(0)
-  useEffect(() => {
-    const t = setInterval(() => setTick((x) => x + 1), 60_000)
-    return () => clearInterval(t)
-  }, [])
-
-  const jornadas = abiertas ?? []
-  const trabajando = jornadas.filter((j) => ultimaMarcacion(j)?.tipo_marcacion === 'ENTRADA')
-  const enPausa = jornadas.filter((j) => ultimaMarcacion(j)?.tipo_marcacion === 'SALIDA')
-
-  // Estado de marcacion del empleado seleccionado, para etiquetar el boton.
-  const jornadaSel = jornadas.find((j) => j.id_empleado_jornada === Number(idSel))
-  const proximaEsSalida = ultimaMarcacion(jornadaSel ?? ({} as Jornada))?.tipo_marcacion === 'ENTRADA'
-
-  function marcarSel() {
-    if (idSel === '') return
-    marcar
-      .mutateAsync({ idEmpleado: Number(idSel) })
-      .then((r) => toast.success(r.marcacion.tipo_marcacion === 'ENTRADA' ? 'Entrada registrada' : 'Salida registrada'))
-      .catch((e: unknown) => toast.error(errorApi(e)))
-  }
-
-  return (
-    <div className="grid gap-6 lg:grid-cols-[22rem_1fr]">
-      {/* Reloj + marcacion */}
-      <div className="space-y-6">
-        <section className="rounded-2xl border border-border bg-surface-high p-6 text-center">
-          <p className="micro-label">Hora del sistema</p>
-          <Reloj />
-          <div className="mt-6 space-y-3 text-left">
-            <Select value={idSel} onValueChange={setIdSel}>
-              <SelectTrigger className="h-11 w-full">
-                <SelectValue placeholder="Elige un empleado" />
-              </SelectTrigger>
-              <SelectContent>
-                {(activos ?? []).map((e) => (
-                  <SelectItem key={e.id_empleado} value={String(e.id_empleado)}>
-                    {nombreEmpleado(e)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              className="btn-heat h-14 w-full gap-2 font-heading text-base font-semibold uppercase tracking-wide"
-              disabled={idSel === '' || marcar.isPending}
-              onClick={marcarSel}
-            >
-              {marcar.isPending ? (
-                <Loader2 className="size-5 animate-spin" />
-              ) : (
-                <LogIn className={cn('size-5', proximaEsSalida && 'rotate-180')} />
-              )}
-              {proximaEsSalida ? 'Marcar salida' : 'Marcar entrada'}
-            </Button>
-            <p className="text-xs text-muted-foreground">
-              El sistema alterna entrada/salida segun la ultima marca del empleado.
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full gap-2"
-              disabled={(activos ?? []).length === 0}
-              onClick={() => setManual(true)}
-            >
-              <CalendarClock className="size-4" /> Marcacion manual
-            </Button>
-          </div>
-        </section>
-      </div>
-
-      {/* KPIs + log de turnos activos */}
-      <div className="space-y-6">
-        <div className="grid grid-cols-3 gap-3">
-          <KpiMini icono={Users} etiqueta="En turno" valor={`${jornadas.length} / ${(activos ?? []).length}`} acento="text-primary" />
-          <KpiMini icono={Clock} etiqueta="Trabajando" valor={String(trabajando.length)} acento="text-primary" />
-          <KpiMini icono={Coffee} etiqueta="En pausa" valor={String(enPausa.length)} acento="text-tertiary" />
-        </div>
-
-        <section className="rounded-xl border-l-2 border-primary bg-surface-high p-5 md:p-6">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="font-heading text-lg font-semibold uppercase tracking-wide">Turnos activos</h2>
-            <span className="micro-label flex items-center gap-1.5">
-              <span className="relative flex size-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/60" />
-                <span className="relative inline-flex size-2 rounded-full bg-primary" />
-              </span>
-              En vivo
-            </span>
-          </div>
-
-          {jornadas.length === 0 ? (
-            <p className="mt-4 text-sm text-muted-foreground">Nadie tiene una jornada abierta ahora mismo.</p>
-          ) : (
-            <>
-              {/* Telefono: tarjetas */}
-              <ul className="mt-4 space-y-2 md:hidden">
-                {jornadas.map((j) => (
-                  <TarjetaJornadaAbierta key={j.id_jornada} jornada={j} />
-                ))}
-              </ul>
-
-              {/* Tablet / desktop: tabla */}
-              <table className="mt-4 hidden w-full text-sm md:table">
-                <thead>
-                  <tr className="border-b border-border text-left">
-                    <th className="micro-label py-2 pr-3">Sts</th>
-                    <th className="micro-label py-2 pr-4">Empleado</th>
-                    <th className="micro-label py-2 pr-4">Inicio</th>
-                    <th className="micro-label py-2 pr-4">Duracion</th>
-                    <th className="micro-label py-2 pr-4">Tramo actual</th>
-                    <th className="micro-label py-2 pl-3 text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {jornadas.map((j) => (
-                    <FilaJornadaAbierta key={j.id_jornada} jornada={j} />
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
-        </section>
-      </div>
-
-      <MarcacionManualDialog
-        activos={activos ?? []}
-        abiertas={jornadas}
-        idInicial={idSel}
-        abierto={manual}
-        onCerrar={() => setManual(false)}
-      />
-    </div>
+  const empleados = useQuery(empleadosQuery('ACTIVO'))
+  const [fecha, setFecha] = useState(hoyColombia)
+  const jornadas = useQuery({ ...jornadasQuery({ fecha }), enabled: !!fecha })
+  const abiertas = useQuery(jornadasQuery({ estado: 'ABIERTA' }))
+  const [edicion, setEdicion] = useState<{
+    fecha: string
+    jornada?: Jornada
+  } | null>(null)
+  const lista = jornadas.data ?? []
+  const delDia = lista.filter((j) => j.fecha_jornada.slice(0, 10) === fecha)
+  const pendientesAnteriores = (abiertas.data ?? []).filter(
+    (j) =>
+      j.estado_jornada === 'ABIERTA' && j.fecha_jornada.slice(0, 10) !== fecha,
   )
-}
-
-// Marca entrada/salida con una fecha y hora especificas (correcciones/olvidos).
-// El tipo (entrada/salida) lo sigue decidiendo el backend por alternancia.
-function ahoraLocalInput(): string {
-  const d = new Date()
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
-}
-
-function MarcacionManualDialog({
-  activos,
-  abiertas,
-  idInicial,
-  abierto,
-  onCerrar,
-}: {
-  activos: Empleado[]
-  abiertas: Jornada[]
-  idInicial: string
-  abierto: boolean
-  onCerrar: () => void
-}) {
-  const marcar = useMarcar()
-  const [idSel, setIdSel] = useState(idInicial)
-  const [cuando, setCuando] = useState('')
-
-  useEffect(() => {
-    if (abierto) {
-      setIdSel(idInicial)
-      setCuando(ahoraLocalInput())
-    }
-  }, [abierto, idInicial])
-
-  const jornadaSel = abiertas.find((j) => j.id_empleado_jornada === Number(idSel))
-  const esSalida = ultimaMarcacion(jornadaSel ?? ({} as Jornada))?.tipo_marcacion === 'ENTRADA'
-  const valido = idSel !== '' && cuando !== ''
-
-  function registrar() {
-    if (!valido) return
-    marcar
-      .mutateAsync({ idEmpleado: Number(idSel), fechaHora: new Date(cuando).toISOString() })
-      .then((r) =>
-        toast.success(r.marcacion.tipo_marcacion === 'ENTRADA' ? 'Entrada registrada' : 'Salida registrada'),
-      )
-      .then(() => onCerrar())
-      .catch((e: unknown) => toast.error(errorApi(e)))
-  }
+  const puedeRegistrar =
+    !empleados.isPending &&
+    !empleados.isError &&
+    !!empleados.data?.length &&
+    !!fecha &&
+    fecha <= hoyColombia()
 
   return (
-    <Dialog open={abierto} onOpenChange={(o) => !o && onCerrar()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="font-heading tracking-tight">Marcacion manual</DialogTitle>
-          <DialogDescription>
-            Registra una entrada o salida con fecha y hora especificas (correcciones u olvidos). Debe ser
-            posterior a la ultima marca del empleado y no puede estar en el futuro.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Empleado</Label>
-            <Select value={idSel} onValueChange={setIdSel}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Elige un empleado" />
-              </SelectTrigger>
-              <SelectContent>
-                {activos.map((e) => (
-                  <SelectItem key={e.id_empleado} value={String(e.id_empleado)}>
-                    {nombreEmpleado(e)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="marca-cuando">Fecha y hora</Label>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="font-heading text-xl font-semibold">Asistencia</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Registra los horarios trabajados y confirma la duración total, sin
+            marcar entradas en vivo.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <Label htmlFor="asistencia-fecha">Fecha de la jornada</Label>
             <Input
-              id="marca-cuando"
-              type="datetime-local"
-              value={cuando}
-              max={ahoraLocalInput()}
-              onChange={(e) => setCuando(e.target.value)}
+              id="asistencia-fecha"
+              type="date"
+              value={fecha}
+              max={hoyColombia()}
+              onChange={(e) => setFecha(e.target.value)}
             />
           </div>
-          {idSel !== '' ? (
-            <p className="text-xs text-muted-foreground">
-              Se registrara como{' '}
-              <span className={cn('font-semibold', esSalida ? 'text-tertiary' : 'text-primary')}>
-                {esSalida ? 'SALIDA' : 'ENTRADA'}
-              </span>{' '}
-              para este empleado.
-            </p>
-          ) : null}
-        </div>
-        <DialogFooter>
-          <Button variant="ghost" onClick={onCerrar}>
-            Cancelar
-          </Button>
-          <Button className="btn-heat gap-2" disabled={!valido || marcar.isPending} onClick={registrar}>
-            {marcar.isPending ? <Loader2 className="size-4 animate-spin" /> : <CalendarClock className="size-4" />}
-            Registrar
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function Reloj() {
-  const [ahora, setAhora] = useState(() => new Date())
-  useEffect(() => {
-    const t = setInterval(() => setAhora(new Date()), 1000)
-    return () => clearInterval(t)
-  }, [])
-  return (
-    <>
-      <p className="mt-1 font-heading text-5xl font-semibold tabular-nums tracking-tight text-primary md:text-6xl">
-        {ahora.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
-      </p>
-      <p className="micro-label mt-2 first-letter:uppercase">
-        {ahora.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })}
-      </p>
-    </>
-  )
-}
-
-function KpiMini({
-  icono: Icono,
-  etiqueta,
-  valor,
-  acento,
-}: {
-  icono: LucideIcon
-  etiqueta: string
-  valor: string
-  acento: string
-}) {
-  return (
-    <div className="rounded-xl bg-surface-high p-4">
-      <p className="micro-label flex items-center gap-1.5">
-        <Icono className="size-3.5" /> {etiqueta}
-      </p>
-      <p className={cn('mt-2 font-heading text-2xl font-semibold tabular-nums tracking-tight md:text-3xl', acento)}>
-        {valor}
-      </p>
-    </div>
-  )
-}
-
-// Logica compartida por la fila (desktop) y la tarjeta (telefono) de una
-// jornada abierta: mutaciones + datos derivados + handlers.
-function useJornadaAcciones(jornada: Jornada) {
-  const cerrar = useCerrarJornada()
-  const deshacer = useDeshacerMarcacion()
-  const marcaciones = jornada.marcaciones ?? []
-  const inicio = marcaciones[0]?.fecha_hora_marcacion
-  const ultima = ultimaMarcacion(jornada)
-  const trabajando = ultima?.tipo_marcacion === 'ENTRADA'
-  const nombre = jornada.empleado ? nombreEmpleado(jornada.empleado) : `#${jornada.id_empleado_jornada}`
-
-  const accion = (fn: Promise<unknown>, ok: string) =>
-    fn.then(() => toast.success(ok)).catch((e: unknown) => toast.error(errorApi(e)))
-
-  return {
-    cerrar,
-    deshacer,
-    inicio,
-    ultima,
-    trabajando,
-    nombre,
-    onDeshacer: () => accion(deshacer.mutateAsync(jornada.id_jornada), 'Ultima marcacion deshecha'),
-    onCerrar: () => accion(cerrar.mutateAsync(jornada.id_jornada), 'Jornada cerrada y liquidada'),
-  }
-}
-
-// Tarjeta de jornada abierta para telefono.
-function TarjetaJornadaAbierta({ jornada }: { jornada: Jornada }) {
-  const { cerrar, deshacer, inicio, ultima, trabajando, nombre, onDeshacer, onCerrar } =
-    useJornadaAcciones(jornada)
-
-  return (
-    <li className="rounded-xl bg-surface-lowest p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span
-            className={cn('inline-block size-2.5 shrink-0 rounded-full', trabajando ? 'bg-primary' : 'bg-tertiary')}
-            title={trabajando ? 'Trabajando' : 'En pausa'}
-          />
-          <span className="shrink-0 tabular-nums text-muted-foreground">{idCorto(jornada.id_empleado_jornada)}</span>
-          <span className="truncate font-medium">{nombre}</span>
-        </div>
-        <span
-          className={cn(
-            'shrink-0 rounded-md border px-2 py-0.5 text-xs tabular-nums',
-            trabajando ? 'border-primary/40 text-primary' : 'border-tertiary/40 text-tertiary',
-          )}
-        >
-          {trabajando ? 'Dentro' : 'Pausa'} {ultima ? horaCorta(ultima.fecha_hora_marcacion) : ''}
-        </span>
-      </div>
-      <div className="mt-3 flex items-center justify-between gap-3">
-        <p className="micro-label tabular-nums">
-          Inicio {inicio ? horaCorta(inicio) : '—'} · {inicio ? duracionDesde(inicio) : '—'}
-        </p>
-        <div className="flex gap-1.5">
           <Button
-            variant="ghost"
-            size="icon-sm"
-            className="text-muted-foreground hover:text-foreground"
-            title="Deshacer ultima marcacion"
-            disabled={deshacer.isPending}
-            onClick={onDeshacer}
+            className="btn-heat"
+            disabled={!puedeRegistrar}
+            onClick={() => setEdicion({ fecha })}
           >
-            <Undo2 className="size-4" />
+            <Plus className="size-4" /> Registrar horario
           </Button>
+        </div>
+      </div>
+      {empleados.isError ? (
+        <p role="alert" className="text-sm text-destructive">
+          No se pudieron cargar los empleados.{' '}
           <Button
             variant="outline"
             size="sm"
-            className="h-7 gap-1.5"
-            disabled={trabajando || cerrar.isPending}
-            title={trabajando ? 'Marca la salida antes de cerrar' : 'Cerrar jornada y liquidar'}
-            onClick={onCerrar}
+            onClick={() => void empleados.refetch()}
           >
-            <ClipboardList className="size-3.5" /> Cerrar
+            Reintentar
           </Button>
+        </p>
+      ) : empleados.data?.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          Crea un empleado activo en el Directorio para registrar su horario.
+        </p>
+      ) : null}
+      {fecha && jornadas.isPending ? (
+        <p className="text-sm text-muted-foreground">Cargando horarios…</p>
+      ) : fecha && jornadas.isError ? (
+        <p role="alert" className="text-sm text-destructive">
+          No se pudieron cargar los horarios.{' '}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void jornadas.refetch()}
+          >
+            Reintentar
+          </Button>
+        </p>
+      ) : (
+        <section aria-label="Horarios de la fecha seleccionada">
+          <h3 className="mb-3 font-medium">
+            {fecha ? fechaVisible(fecha) : 'Selecciona una fecha'}
+          </h3>
+          {delDia.length ? (
+            <ul className="space-y-2">
+              {delDia.map((j) => (
+                <HorarioRegistrado
+                  key={j.id_jornada}
+                  jornada={j}
+                  onEditar={() =>
+                    setEdicion({
+                      fecha: j.fecha_jornada.slice(0, 10),
+                      jornada: j,
+                    })
+                  }
+                />
+              ))}
+            </ul>
+          ) : (
+            <p className="py-5 text-sm text-muted-foreground">
+              No hay horarios registrados para esta fecha.
+            </p>
+          )}
+        </section>
+      )}
+      {!jornadas.isError && pendientesAnteriores.length > 0 ? (
+        <section aria-label="Jornadas anteriores pendientes">
+          <h3 className="mb-1 font-heading text-lg font-semibold">
+            Horarios por completar
+          </h3>
+          <p className="mb-3 text-sm text-muted-foreground">
+            Completa las jornadas antiguas que quedaron abiertas antes de
+            registrar otro día para ese empleado.
+          </p>
+          <ul className="space-y-2">
+            {pendientesAnteriores.map((j) => (
+              <HorarioRegistrado
+                key={j.id_jornada}
+                jornada={j}
+                mostrarFecha
+                onEditar={() =>
+                  setEdicion({
+                    fecha: j.fecha_jornada.slice(0, 10),
+                    jornada: j,
+                  })
+                }
+              />
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {abiertas.isError ? (
+        <p role="alert" className="text-sm text-destructive">
+          No se pudieron consultar las jornadas por completar.{' '}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void abiertas.refetch()}
+          >
+            Reintentar
+          </Button>
+        </p>
+      ) : null}
+      {edicion ? (
+        <HorarioDialog
+          fecha={edicion.fecha}
+          jornada={edicion.jornada}
+          activos={empleados.data ?? []}
+          onCerrar={() => setEdicion(null)}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+function HorarioRegistrado({
+  jornada,
+  mostrarFecha,
+  onEditar,
+}: {
+  jornada: Jornada
+  mostrarFecha?: boolean
+  onEditar: () => void
+}) {
+  const confirmada = jornada.estado_jornada === 'CERRADA'
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-4 rounded-lg bg-surface-high p-4">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-medium">
+            {jornada.empleado
+              ? nombreEmpleado(jornada.empleado)
+              : 'Empleado #' + jornada.id_empleado_jornada}
+          </p>
+          <span
+            className={
+              confirmada ? 'text-xs text-emerald-300' : 'text-xs text-tertiary'
+            }
+          >
+            {confirmada ? 'Confirmado' : 'Por completar'}
+          </span>
         </div>
+        {mostrarFecha ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {fechaVisible(jornada.fecha_jornada.slice(0, 10))}
+          </p>
+        ) : null}
+        <p className="mt-1 text-sm tabular-nums text-muted-foreground">
+          {describirTramos(jornada) || 'Sin horario registrado'}
+        </p>
+      </div>
+      <div className="flex items-center gap-4">
+        <span className="flex items-center gap-1.5 text-sm font-semibold tabular-nums">
+          <Clock className="size-4 text-muted-foreground" />
+          {duracionHorario(jornada)}
+        </span>
+        <Button variant="outline" size="sm" onClick={onEditar}>
+          <Pencil className="size-3.5" />
+          {confirmada ? 'Editar horario' : 'Completar horario'}
+        </Button>
       </div>
     </li>
   )
 }
 
-function FilaJornadaAbierta({ jornada }: { jornada: Jornada }) {
-  const { cerrar, deshacer, inicio, ultima, trabajando, nombre, onDeshacer, onCerrar } =
-    useJornadaAcciones(jornada)
+function HorarioDialog({
+  fecha,
+  jornada,
+  activos,
+  onCerrar,
+}: {
+  fecha: string
+  jornada?: Jornada
+  activos: Empleado[]
+  onCerrar: () => void
+}) {
+  const guardar = useGuardarHorario()
+  const [idEmpleado, setIdEmpleado] = useState(
+    jornada ? String(jornada.id_empleado_jornada) : '',
+  )
+  const [tramos, setTramos] = useState(() => tramosDeJornada(jornada))
+  const [errorServidor, setErrorServidor] = useState('')
+  const resumen = prepararHorario(fecha, tramos)
+  const cerrado = jornada?.estado_jornada === 'CERRADA'
+  const nombre = jornada?.empleado
+    ? nombreEmpleado(jornada.empleado)
+    : 'Empleado #' + jornada?.id_empleado_jornada
+
+  function cambiar(indice: number, cambio: Partial<TramoEditable>) {
+    setTramos((anteriores) =>
+      anteriores.map((t, i) => (i === indice ? { ...t, ...cambio } : t)),
+    )
+    setErrorServidor('')
+  }
+
+  async function confirmar() {
+    if (!idEmpleado || !resumen.valido || guardar.isPending) return
+    setErrorServidor('')
+    try {
+      await guardar.mutateAsync({
+        idEmpleado: Number(idEmpleado),
+        fecha,
+        ...(jornada && { idJornada: jornada.id_jornada }),
+        tramos: resumen.tramos,
+      })
+      toast.success('Horario confirmado y nómina calculada')
+      onCerrar()
+    } catch (error) {
+      setErrorServidor(errorApi(error))
+    }
+  }
 
   return (
-    <tr className="border-b border-border/40 last:border-0">
-      <td className="py-3 pr-3">
-        <span
-          className={cn('inline-block size-2.5 rounded-full', trabajando ? 'bg-primary' : 'bg-tertiary')}
-          title={trabajando ? 'Trabajando' : 'En pausa'}
-        />
-      </td>
-      <td className="py-3 pr-4">
-        <span className="tabular-nums text-muted-foreground">{idCorto(jornada.id_empleado_jornada)}</span>{' '}
-        <span className="font-medium">{nombre}</span>
-      </td>
-      <td className="py-3 pr-4 tabular-nums text-muted-foreground">{inicio ? horaCorta(inicio) : '—'}</td>
-      <td className="py-3 pr-4 tabular-nums">{inicio ? duracionDesde(inicio) : '—'}</td>
-      <td className="py-3 pr-4">
-        <span
-          className={cn(
-            'rounded-md border px-2 py-0.5 text-xs tabular-nums',
-            trabajando ? 'border-primary/40 text-primary' : 'border-tertiary/40 text-tertiary',
-          )}
+    <Dialog
+      open
+      onOpenChange={(abierto) => !abierto && !guardar.isPending && onCerrar()}
+    >
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>
+            {jornada ? 'Completar o editar horario' : 'Registrar horario'}
+          </DialogTitle>
+          <DialogDescription>
+            {fechaVisible(fecha)} · Colombia. Agrega un tramo por cada período
+            trabajado; las pausas no se suman.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            void confirmar()
+          }}
         >
-          {trabajando ? 'Dentro' : 'Pausa'} {ultima ? horaCorta(ultima.fecha_hora_marcacion) : ''}
-        </span>
-      </td>
-      <td className="py-3 pl-3">
-        <div className="flex justify-end gap-1.5">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="text-muted-foreground hover:text-foreground"
-            title="Deshacer ultima marcacion"
-            disabled={deshacer.isPending}
-            onClick={onDeshacer}
-          >
-            <Undo2 className="size-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 gap-1.5"
-            disabled={trabajando || cerrar.isPending}
-            title={trabajando ? 'Marca la salida antes de cerrar' : 'Cerrar jornada y liquidar'}
-            onClick={onCerrar}
-          >
-            <ClipboardList className="size-3.5" /> Cerrar
-          </Button>
-        </div>
-      </td>
-    </tr>
+          <fieldset disabled={guardar.isPending} className="space-y-5">
+            <div>
+              <Label htmlFor="horario-empleado">Trabajador</Label>
+              {jornada ? (
+                <Input id="horario-empleado" value={nombre} readOnly />
+              ) : (
+                <Select
+                  value={idEmpleado}
+                  onValueChange={(valor) => {
+                    setIdEmpleado(valor)
+                    setErrorServidor('')
+                  }}
+                >
+                  <SelectTrigger id="horario-empleado" className="w-full">
+                    <SelectValue placeholder="Selecciona un trabajador" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activos.map((e) => (
+                      <SelectItem
+                        key={e.id_empleado}
+                        value={String(e.id_empleado)}
+                      >
+                        {nombreEmpleado(e)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            <div className="space-y-4">
+              {tramos.map((tramo, indice) => (
+                <div key={indice} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">Tramo {indice + 1}</p>
+                    {tramos.length > 1 ? (
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label={'Eliminar tramo ' + (indice + 1)}
+                        onClick={() => {
+                          setTramos((anteriores) =>
+                            anteriores.filter((_, i) => i !== indice),
+                          )
+                          setErrorServidor('')
+                        }}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    ) : null}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor={'horario-entrada-' + indice}>
+                        Entrada
+                      </Label>
+                      <Input
+                        id={'horario-entrada-' + indice}
+                        type="time"
+                        required
+                        value={tramo.inicio}
+                        onChange={(e) =>
+                          cambiar(indice, { inicio: e.target.value })
+                        }
+                      />
+                      {indice > 0 ? (
+                        <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                          <input
+                            type="checkbox"
+                            className="accent-primary"
+                            checked={tramo.entradaDiaSiguiente}
+                            onChange={(e) =>
+                              cambiar(indice, {
+                                entradaDiaSiguiente: e.target.checked,
+                              })
+                            }
+                          />
+                          Día siguiente
+                        </label>
+                      ) : null}
+                    </div>
+                    <div>
+                      <Label htmlFor={'horario-salida-' + indice}>Salida</Label>
+                      <Input
+                        id={'horario-salida-' + indice}
+                        type="time"
+                        required
+                        value={tramo.fin}
+                        onChange={(e) =>
+                          cambiar(indice, { fin: e.target.value })
+                        }
+                      />
+                      <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          className="accent-primary"
+                          checked={tramo.salidaDiaSiguiente}
+                          onChange={(e) =>
+                            cambiar(indice, {
+                              salidaDiaSiguiente: e.target.checked,
+                            })
+                          }
+                        />
+                        Día siguiente
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={tramos.length >= 12}
+                onClick={() =>
+                  setTramos((anteriores) => [
+                    ...anteriores,
+                    {
+                      ...tramoVacio(),
+                      entradaDiaSiguiente:
+                        anteriores.at(-1)?.salidaDiaSiguiente ?? false,
+                      salidaDiaSiguiente:
+                        anteriores.at(-1)?.salidaDiaSiguiente ?? false,
+                    },
+                  ])
+                }
+              >
+                <Plus className="size-4" /> Agregar tramo (turno partido)
+              </Button>
+            </div>
+            <div
+              className="flex items-center justify-between gap-3 bg-surface-high p-4"
+              role="status"
+              aria-live="polite"
+            >
+              <span className="text-sm">Tiempo trabajado</span>
+              <strong
+                data-total-horario
+                className="font-heading text-xl tabular-nums text-primary"
+              >
+                {resumen.valido ? formatearDuracion(resumen.minutos) : '—'}
+              </strong>
+            </div>
+            {!resumen.valido ? (
+              <p role="status" className="text-sm text-muted-foreground">
+                {resumen.mensaje}
+              </p>
+            ) : null}
+            {cerrado ? (
+              <p className="text-sm text-muted-foreground">
+                Se recalculará la nómina de esta jornada. Solo se puede corregir
+                si aún no tiene pagos aplicados.
+              </p>
+            ) : null}
+            {errorServidor ? (
+              <p role="alert" className="text-sm text-destructive">
+                {errorServidor}
+              </p>
+            ) : null}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={onCerrar}>
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                className="btn-heat"
+                disabled={!idEmpleado || !resumen.valido || guardar.isPending}
+              >
+                {guardar.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Check className="size-4" />
+                )}
+                {guardar.isPending ? 'Confirmando…' : 'Confirmar horario'}
+              </Button>
+            </div>
+          </fieldset>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

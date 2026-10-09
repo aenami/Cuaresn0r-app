@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Body, Param, Patch, Delete, ParseIntPipe, Query } from '@nestjs/common';
 import { JornadasService } from './jornadas.service';
 import { MarcarDto } from './dto/marcar.dto';
+import { RegistrarHorarioDto } from './dto/registrar-horario.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Area } from '../auth/decorators/area.decorator';
 import { EstadoJornada } from '../generated/prisma/client';
@@ -13,14 +14,19 @@ import { EstadoJornada } from '../generated/prisma/client';
 export class JornadasController {
   constructor(private readonly jornadasService: JornadasService) {}
 
+  @Post('horario')
+  registrarHorario(@Body() dto: RegistrarHorarioDto) {
+    return this.jornadasService.registrarHorario(dto);
+  }
+
   @Post('marcar')
   marcar(@Body() marcarDto: MarcarDto) {
     return this.jornadasService.marcar(marcarDto);
   }
 
   @Get()
-  findAll(@Query('empleado') empleado?: string, @Query('estado') estado?: EstadoJornada) {
-    return this.jornadasService.findAll(empleado !== undefined ? Number(empleado) : undefined, estado);
+  findAll(@Query('empleado') empleado?: string, @Query('estado') estado?: EstadoJornada, @Query('fecha') fecha?: string) {
+    return this.jornadasService.findAll(empleado !== undefined ? Number(empleado) : undefined, estado, fecha);
   }
 
   @Get(':id')

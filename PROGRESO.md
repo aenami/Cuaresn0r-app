@@ -25,6 +25,44 @@ alcance o feature terminada.
 
 ## Completado
 
+### 2026-10-09 — Filtros de proveedores y asistencia por horarios completos
+
+- Proveedores y cuentas, en ambas áreas, permite filtrar Todas, Pendientes y
+  Pagadas, y combinar fechas de emisión desde/hasta, inclusivas. Pendientes
+  incluye cuentas con abonos parciales. Se puede limpiar la selección y se
+  informan rangos inválidos o resultados vacíos; el detalle y las acciones
+  siempre pertenecen a una cuenta visible en el filtro actual. Las cuentas
+  pagadas muestran su importe, no un saldo cero como único valor.
+- Se corrigió el estado «Mercancía recibida y registrada»: texto verde claro
+  sobre fondo oscuro, icono y contraste medido 10,66:1. Emisión y vencimiento
+  conservan el día de la columna Date sin desplazarse por la zona horaria.
+  La lista también respeta el ancho de pantallas móviles.
+- Asistencia sustituye reloj, marcación en vivo y acciones de entrada/salida
+  por un formulario modal de trabajador y horarios. Permite varios tramos por
+  día, muestra automáticamente su duración sin sumar descansos y admite
+  horarios que cruzan medianoche mediante «Día siguiente». Se pueden consultar
+  fechas anteriores y completar jornadas antiguas abiertas; no se borra su
+  historia. Se consultan solo las jornadas de la fecha elegida y las abiertas,
+  en paralelo, sin descargar todo el historial para registrar un día.
+- Confirmar guarda todos los tramos y liquida horas, recargo configurado y
+  conceptos automáticos en una misma transacción. Se validan futuros,
+  superposiciones, fecha inicial de Colombia y duración máxima de 24 horas.
+  Un reintento idéntico no duplica ni recalcula devengos. Editar un horario
+  confirmado usa las reglas existentes de reapertura y solo se permite si no
+  tiene pagos aplicados; pagos y correcciones comparten bloqueo del empleado.
+  Los permisos y la separación Panadería/Restaurante no se amplían.
+- Las rutas antiguas de marcación se conservan para compatibilidad, sin
+  controles en la nueva interfaz. No se requiere migración ni se modifican
+  jornadas, tarifas o pagos existentes durante el despliegue.
+- Verificación: 32 suites/467 pruebas del servidor, compilaciones de cliente y
+  servidor y lint del cliente. Integración con PostgreSQL en ambas áreas:
+  horarios partidos, liquidación, reintento, corrección, bloqueo de pagos,
+  recargo nocturno y falta de tarifa; todo el dato temporal se revirtió.
+  Chromium validó filtros/fechas, estados vacíos y detalle coherente, contraste,
+  duración, validaciones y reintento de formulario en escritorio/móvil, sin
+  errores de JavaScript ni desbordamiento. Confirmaciones de UI simuladas,
+  sin agregar nómina a la base.
+
 ### 2026-10-09 — Mostrador por teclado, conteos compactos y muestra operativa
 
 - Panadería: el mostrador permite recorrer productos disponibles con las cuatro
