@@ -19,6 +19,8 @@ import type { CuentaPorPagar } from '@/types/api'
 import { ApiError } from '@/lib/api'
 import { formatearPrecio } from '@/lib/formato'
 import { cn } from '@/lib/utils'
+import { filtrarCuentas } from '@/features/billing/filtros-cuentas'
+import type { EstadoFiltroCuenta } from '@/features/billing/filtros-cuentas'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -45,20 +47,24 @@ function saldo(cuenta: CuentaPorPagar) {
 
 function fechaConHora(fecha: string) {
   return new Date(fecha).toLocaleString('es-CO', {
+    timeZone: 'America/Bogota',
     dateStyle: 'medium',
     timeStyle: 'short',
   })
 }
 
 function fechaDocumento(fecha: string) {
-  return new Date(fecha).toLocaleDateString('es-CO', { dateStyle: 'medium' })
+  return new Date(fecha).toLocaleDateString('es-CO', { dateStyle: 'medium', timeZone: 'UTC' })
 }
 
 function PaginaCuentasPorPagar() {
   const esAdmin = useEsAdmin()
   const esCaja = useEsCaja()
   const area = useAreaTrabajo()
-  const { data: cuentas, isPending } = useQuery(cuentasPorPagarQuery)
+  const { data: cuentas, isPending, isError, refetch } = useQuery(cuentasPorPagarQuery)
+  const [estadoFiltro, setEstadoFiltro] = useState<EstadoFiltroCuenta>('TODAS')
+  const [desde, setDesde] = useState('')
+  const [hasta, setHasta] = useState('')
   const [seleccionada, setSeleccionada] = useState<number | null>(null)
   const [crearAbierto, setCrearAbierto] = useState(false)
   const [proveedorAbierto, setProveedorAbierto] = useState(false)
@@ -66,7 +72,9 @@ function PaginaCuentasPorPagar() {
   const recibir = useRecibirCuentaPorPagar()
 
   const lista = cuentas ?? []
-  const actual = lista.find((cuenta) => cuenta.id_cuentaPorPagar === seleccionada) ?? lista[0]
+  const filtradas = filtrarCuentas(lista, estadoFiltro, desde, hasta)
+  const rangoInvalido = !!desde && !!hasta && desde > hasta
+  const actual = filtradas.find((cuenta) => cuenta.id_cuentaPorPagar === seleccionada) ?? filtradas[0]
   const pendientes = lista.filter(
     (cuenta) => cuenta.estado_cuentaPorPagar === 'PENDIENTE' || cuenta.estado_cuentaPorPagar === 'PARCIAL',
   )
@@ -94,14 +102,43 @@ function PaginaCuentasPorPagar() {
         ) : null}
       </header>
 
+      <section aria-label="Filtros de cuentas por pagar" className="mt-6 flex flex-wrap items-end gap-x-5 gap-y-4">
+        <div>
+          <p className="mb-2 text-sm font-medium">Estado</p>
+          <div className="flex gap-1" role="group" aria-label="Estado de la cuenta">
+            {([['TODAS', 'Todas'], ['PENDIENTE', 'Pendientes'], ['PAGADA', 'Pagadas']] as const).map(([valor, etiqueta]) => (
+              <Button key={valor} size="sm" variant={estadoFiltro === valor ? 'secondary' : 'ghost'} aria-pressed={estadoFiltro === valor} onClick={() => { setEstadoFiltro(valor); setSeleccionada(null) }}>
+                {etiqueta}
+              </Button>
+            ))}
+          </div>
+        </div>
+        <div className="min-w-0">
+          <Label htmlFor="cuentas-desde">Emisión desde</Label>
+          <Input id="cuentas-desde" type="date" value={desde} onChange={(e) => { setDesde(e.target.value); setSeleccionada(null) }} />
+        </div>
+        <div className="min-w-0">
+          <Label htmlFor="cuentas-hasta">Emisión hasta</Label>
+          <Input id="cuentas-hasta" type="date" value={hasta} onChange={(e) => { setHasta(e.target.value); setSeleccionada(null) }} />
+        </div>
+        {estadoFiltro !== 'TODAS' || desde || hasta ? (
+          <Button variant="ghost" size="sm" onClick={() => { setEstadoFiltro('TODAS'); setDesde(''); setHasta(''); setSeleccionada(null) }}>Limpiar filtros</Button>
+        ) : null}
+        <p role="status" className="w-full text-sm text-muted-foreground">{filtradas.length} de {lista.length} cuentas · Pendientes incluye pagos parciales.</p>
+        {rangoInvalido ? <p role="alert" className="w-full text-sm text-destructive">La fecha desde no puede ser posterior a la fecha hasta.</p> : null}
+      </section>
+
       {isPending ? (
         <p className="mt-8 text-sm text-muted-foreground">Cargando cuentas…</p>
+      ) : isError ? (
+        <div role="alert" className="mt-8 text-sm text-destructive">No se pudieron cargar las cuentas. <Button variant="outline" size="sm" onClick={() => void refetch()}>Reintentar</Button></div>
       ) : (
-        <div className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
-          <div className="space-y-2">
-            {lista.map((cuenta) => (
+        <div className="mt-8 grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
+          <div className="min-w-0 space-y-2">
+            {filtradas.map((cuenta) => (
               <button
                 key={cuenta.id_cuentaPorPagar}
+                data-cuenta-id={cuenta.id_cuentaPorPagar}
                 type="button"
                 onClick={() => setSeleccionada(cuenta.id_cuentaPorPagar)}
                 className={cn(
@@ -121,24 +158,24 @@ function PaginaCuentasPorPagar() {
                   </div>
                   <EstadoCuenta estado={cuenta.estado_cuentaPorPagar} />
                 </div>
-                <div className="mt-3 flex items-end justify-between">
+                <div className="mt-3 flex items-end justify-between gap-3">
                   <span className="text-xs text-muted-foreground">
-                    Vence{' '}
+                    Emisión {fechaDocumento(cuenta.fecha_emision_cuentaPorPagar)} · Vence{' '}
                     {cuenta.fecha_vencimiento_cuentaPorPagar
-                      ? new Date(cuenta.fecha_vencimiento_cuentaPorPagar).toLocaleDateString('es-CO')
+                      ? fechaDocumento(cuenta.fecha_vencimiento_cuentaPorPagar)
                       : 'sin fecha'}
                   </span>
-                  <span className="font-heading text-lg font-semibold tabular-nums text-primary">
-                    {formatearPrecio(saldo(cuenta))}
+                  <span className="shrink-0 font-heading text-lg font-semibold tabular-nums text-primary">
+                    {formatearPrecio(cuenta.estado_cuentaPorPagar === 'PAGADA' ? cuenta.monto_total_cuentaPorPagar : saldo(cuenta))}
                   </span>
                 </div>
               </button>
             ))}
-            {lista.length === 0 ? <p className="text-sm text-muted-foreground">No hay cuentas registradas.</p> : null}
+            {filtradas.length === 0 ? <p className="text-sm text-muted-foreground">{lista.length ? 'No hay cuentas que coincidan con estos filtros.' : 'No hay cuentas registradas.'}</p> : null}
           </div>
 
           {actual ? (
-            <aside className="h-fit rounded-2xl bg-surface-low p-5 xl:sticky xl:top-6">
+            <aside className="h-fit min-w-0 rounded-2xl bg-surface-low p-5 xl:sticky xl:top-6">
               <p className="micro-label">Detalle</p>
               <h2 className="mt-2 font-heading text-xl font-semibold">{actual.proveedor.nombre_proveedor}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{actual.concepto_cuentaPorPagar}</p>
@@ -170,11 +207,12 @@ function PaginaCuentasPorPagar() {
                   ))}
                 </ul>
               ) : null}
-              <div className="mt-5 rounded-lg bg-surface-high p-3 text-xs">
-                <span className={actual.fecha_recepcion_mercancia ? 'text-secondary' : 'text-tertiary'}>
+              <div data-estado-recepcion className={cn('mt-5 flex items-center gap-2 rounded-lg p-3 text-sm', actual.fecha_recepcion_mercancia ? 'bg-emerald-500/10 text-emerald-300' : 'bg-surface-high text-tertiary')}>
+                <PackageCheck className="size-4 shrink-0" aria-hidden="true" />
+                <span>
                   {actual.fecha_recepcion_mercancia
-                    ? 'Mercancia recibida y registrada'
-                    : 'Mercancia pendiente de confirmacion'}
+                    ? 'Mercancía recibida y registrada'
+                    : 'Mercancía pendiente de confirmación'}
                 </span>
               </div>
               {(esAdmin || esCaja) && actual.estado_cuentaPorPagar !== 'ANULADA' &&
