@@ -4,16 +4,20 @@ Este archivo registra el estado funcional y las decisiones tomadas al adaptar el
 template POS al restaurante objetivo. Debe actualizarse junto con cada cambio de
 alcance o feature terminada.
 
-### 2026-10-10 — Contingencia manual y respaldos PostgreSQL
+### 2026-10-10 — Aclaración del alcance sin Internet
 
-- Procedimiento manual para Panadería y Restaurante en
-  `docs/CONTINGENCIA_SIN_INTERNET.md`: folios, fichas, cuentas/pagos mixtos,
-  autorización de preparación, entregas por línea, hornadas, remisiones, cierre
-  provisional y conciliación sin duplicar cobros, consumo o impresiones.
-- Formatos A4 en blanco en `output/pdf/CONTINGENCIA_POS.pdf`, con generador en
-  `docs/scripts/crear-formatos-contingencia.py`. Tres páginas renderizadas y
-  revisadas visualmente. Es un procedimiento en papel, no un POS offline ni
-  una importación retroactiva de pedidos; sus límites quedan documentados.
+- El usuario requiere continuar registrando operaciones en un dispositivo sin
+  Internet y transferirlas después al sistema, no un procedimiento en papel.
+- Retirados guía, formatos imprimibles, generador y archivos de revisión visual
+  de la propuesta anterior; conservados herramientas y evidencia de respaldos.
+  Los archivos versionados retirados siguen recuperables desde el historial Git.
+- Pendiente de elegir entre captura offline en navegador, aplicación local de
+  contingencia o servidor en la red del negocio. Ninguna opción offline se ha
+  implementado ni seleccionado todavía. Hay que resolver sincronización sin
+  duplicados, impresión local, pagos, turnos y existencias compartidas.
+
+### 2026-10-10 — Respaldos PostgreSQL
+
 - Herramienta `pnpm backup:postgres`: dump custom de snapshot de solo lectura,
   cifrado AES-256-GCM, SHA-256, configuración privada explícita y subida opcional
   S3/R2. Verifica una descarga completa, no solo la respuesta de subida.

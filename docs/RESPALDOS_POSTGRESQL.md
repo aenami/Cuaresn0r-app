@@ -167,8 +167,9 @@ memoria, tiempos y tamaño. Subidas simples se limitan aquí a 5 GB.
   clave ni descartar el respaldo** antes de investigar.
 - Restaurar solo archivos de procedencia propia y confiable: un dump puede
   ejecutar SQL. [Advertencia y opciones de pg_restore](https://www.postgresql.org/docs/17/app-pgrestore.html).
-- Para recuperación real, declarar la contingencia manual y detener el uso de la
-  API/agent hasta decidir el punto de recuperación. Proteger el estado existente.
+- Para recuperación real, declarar la incidencia y detener el uso de la API/agent
+  hasta decidir el punto de recuperación. Proteger el estado existente. La
+  operación digital sin Internet requiere una solución adicional aún no elegida.
 - Elegir una copia verificada y restaurarla primero en una **base nueva vacía**,
   con credenciales propias. Esta herramienta hace ensayos y retira esa base;
   no tiene un comando de reemplazo de producción. El cambio real de conexión se

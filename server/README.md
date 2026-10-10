@@ -44,9 +44,8 @@ Consulta `../PROGRESO.md`, `../docs/ROLES_Y_AREAS.md` y
 y los índices SQL adicionales en `prisma/migrations/`. Las mesas y los traslados
 antiguos se conservan únicamente como datos históricos; no tienen flujo operativo.
 
-## Contingencia y respaldos
+## Respaldos
 
-Procedimiento manual y formatos imprimibles: `../docs/CONTINGENCIA_SIN_INTERNET.md`.
 Respaldo cifrado y restauración aislada: `../docs/RESPALDOS_POSTGRESQL.md`.
 `pnpm backup:postgres --help` muestra los comandos; usa una configuración privada
 explícita, no las variables del frontend. La automatización externa requiere

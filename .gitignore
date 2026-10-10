@@ -23,7 +23,6 @@ server/backups/
 *.posbackup
 *.dump
 *.backup-key
-tmp/pdfs/
 .impeccable/review/
 
 # =========================
