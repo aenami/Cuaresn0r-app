@@ -3,12 +3,14 @@
 ## Estado real
 
 La herramienta está implementada y probada con la base POS **local**.
-No hay un respaldo externo diario activo todavía: falta elegir origen y destino,
-configurar credenciales y publicar/activar el workflow. No se conectó a Neon,
+R2 es el destino elegido. No hay un respaldo externo diario activo todavía:
+falta configurar bucket, credenciales y publicar/activar el workflow.
+No se conectó a Neon,
 se compró almacenamiento ni se subieron datos durante estas pruebas.
 
-El esquema propuesto es Neon → proceso independiente de Render → bucket privado
-S3/Cloudflare R2. Si se respaldan local y producción, usar configuraciones,
+El esquema propuesto es Neon → GitHub Actions (independiente de Render) → bucket
+privado de Cloudflare R2. Confirmar la base de producción y su versión al configurar
+el origen. Si se respaldan local y producción, usar configuraciones,
 etiquetas y prefijos separados. Una base contiene ambas áreas del negocio.
 
 ## Qué hace la herramienta
@@ -41,6 +43,8 @@ La copia custom permite una restauración flexible y consistente sin detener
 las operaciones normales. [Documentación de PostgreSQL](https://www.postgresql.org/docs/17/app-pgdump.html).
 
 ## Preparación de seguridad
+
+Para configurar Cloudflare paso a paso, consultar [Activación en R2](ACTIVAR_RESPALDOS_R2.md).
 
 - Bucket **privado**, sin dominio público ni acceso anónimo. Token limitado al
   bucket y operaciones de lectura/escritura; el proceso no necesita borrar objetos.
@@ -95,7 +99,27 @@ pnpm backup:postgres backup --env-file "C:/RESPALDOS_PRIVADOS/POS/.env.backup" -
 
 # Prueba independiente de un archivo descargado del bucket.
 pnpm backup:postgres restore-test --env-file "C:/RESPALDOS_PRIVADOS/POS/.env.backup" --file "C:/RESPALDOS_PRIVADOS/POS/copia-descargada.posbackup"
+
+# Consultar antigüedad y existencia del último respaldo externo verificado.
+# No necesita clave de cifrado ni conexión PostgreSQL. Código de salida 1 si >30 h.
+pnpm backup:postgres status --env-file "C:/RESPALDOS_PRIVADOS/POS/.env.backup" --max-age-hours 30
+
+# Descargar el último respaldo verificado del bucket y autenticar su cifrado.
+# Necesita BACKUP_ENCRYPTION_KEY + BACKUP_KEY_ID de esa copia.
+pnpm backup:postgres download --env-file "C:/RESPALDOS_PRIVADOS/POS/.env.backup"
+
+# Elegir una copia anterior (clave exacta del objeto, dentro del prefijo configurado).
+pnpm backup:postgres download --env-file "C:/RESPALDOS_PRIVADOS/POS/.env.backup" --key "pos/produccion/2026-10-10/NOMBRE_REAL.posbackup"
 ```
+
+`status` lee el indicador y comprueba tamaño/metadata con HEAD: no descarga todos
+los bytes ni vuelve a restaurar en esa consulta. Falla ante objeto ausente, indicador
+inválido o fechas futuras. Es una herramienta de revisión, **no un monitor activo**.
+`download` comprueba los bytes completos y AES-GCM antes de emitir éxito. No
+sobrescribe archivos locales y solo acepta objetos `.posbackup` del prefijo propio.
+Si se rotó la clave, usar una configuración privada con el ID y clave archivados
+para esa copia; no regenerar una clave. Ante error de autenticación se conserva el
+archivo cifrado descargado para revisión, sin restaurarlo ni exponer el dump.
 
 Sin `--upload-s3` el reporte muestra `externalVerified: false` deliberadamente.
 Sin prueba de restauración no se actualiza el indicador de éxito completo.
@@ -167,13 +191,16 @@ memoria, tiempos y tamaño. Subidas simples se limitan aquí a 5 GB.
   clave ni descartar el respaldo** antes de investigar.
 - Restaurar solo archivos de procedencia propia y confiable: un dump puede
   ejecutar SQL. [Advertencia y opciones de pg_restore](https://www.postgresql.org/docs/17/app-pgrestore.html).
-- Para recuperación real, declarar la incidencia y detener el uso de la API/agent
+- Para recuperación real, declarar la incidencia y detener el uso de la API/agente
   hasta decidir el punto de recuperación. Proteger el estado existente. La
-  operación digital sin Internet requiere una solución adicional aún no elegida.
+  operación digital sin Internet se dejó aplazada; una caída de Internet por sí
+  sola no justifica restaurar la base.
 - Elegir una copia verificada y restaurarla primero en una **base nueva vacía**,
-  con credenciales propias. Esta herramienta hace ensayos y retira esa base;
-  no tiene un comando de reemplazo de producción. El cambio real de conexión se
-  hace en una intervención explícita y revisada por el responsable técnico.
+  con credenciales propias. `restore-test` hace ensayos y retira su base local;
+  `restore-new` crea una base nueva y la conserva. Nunca restaura sobre una base
+  existente, ni borra la original ni cambia la conexión de Render automáticamente.
+  El cambio real de conexión se hace en una intervención explícita y revisada por
+  el responsable técnico.
 - Antes de cambiar la conexión, verificar versión del código/migraciones,
   roles/accesos, áreas, caja, cuentas, inventario, remisiones y datos posteriores
   al respaldo. No ejecutar seed ni `db push` para «arreglar» una restauración.
@@ -184,6 +211,66 @@ memoria, tiempos y tamaño. Subidas simples se limitan aquí a 5 GB.
   pendiente en la copia pudo imprimirse después del respaldo. Reenviarlo sin
   comprobar puede duplicar comandas. Coordinar cualquier reimpresión con cocina.
 - Conservar la base anterior y el incidente hasta validar el servicio restaurado.
+
+### Comando de recuperación real (solo durante una incidencia o ensayo autorizado)
+
+Requisitos: archivo propio y confiable, clave original y su ID, servidor destino
+de la misma versión mayor que el origen y `pg_restore` compatible con la versión
+de `pg_dump` del respaldo. El usuario de `RESTORE_ADMIN_URL` debe poder crear bases.
+Esa URL se configura en un archivo privado de recuperación; **no se reutiliza ni
+se adivina a partir de `DATABASE_URL`/`BACKUP_DATABASE_URL`**. La conexión puede
+apuntar a una base administrativa existente del destino (por ejemplo `postgres`
+local o `neondb` en un proyecto de recuperación). Solo se lee allí el catálogo y
+se crea otra base con `TEMPLATE template0`; no se restaura sobre la administrativa.
+Las conexiones remotas deben exigir TLS y no pueden ser pooled.
+
+```powershell
+# Desde server/. Configuración privada: BACKUP_DIR, BACKUP_KEY_ID,
+# BACKUP_ENCRYPTION_KEY, PG_BIN_DIR y RESTORE_ADMIN_URL explícita.
+pnpm backup:postgres restore-new --env-file "C:/RESPALDOS_PRIVADOS/POS/.env.backup.recovery" --file "C:/RESPALDOS_PRIVADOS/POS/NOMBRE_REAL.posbackup" --database "pos_recovered_20261010" --confirm "pos_recovered_20261010"
+```
+
+El nombre debe empezar por `pos_recovered_`, contener solo minúsculas, números o
+guiones bajos, y tener como máximo 59 caracteres. `--confirm` debe repetirlo.
+Si ya existe se rechaza, incluso si está vacía; elegir otro nombre. No admite
+`--clean`, reemplazos, seeds ni un destino tomado automáticamente de producción.
+
+Se autentica el archivo antes de conectar; se restaura con una transacción y se
+comparan filas/huellas y catálogo antes de emitir `ok: true`. El reporte privado
+`*.recovery-*.json` identifica copia, fecha, base y verificación, sin URLs ni claves.
+Si falla después de crear la base, se conserva para revisión; no conectarla a la
+API, no reintentar sobre ella y no borrarla automáticamente. Un resultado correcto
+confirma datos y esquema, **no** todas las pruebas funcionales del POS ni su conexión.
+
+Para ponerla en servicio: revisar roles/permisos del usuario de API, comprobar
+migraciones contra la versión desplegada (sin `db push` ni seed), actualizar
+`DATABASE_URL` en Render al destino revisado, reiniciar y probar inicio de sesión,
+lecturas y operaciones controladas. Si hay migraciones posteriores al snapshot,
+respaldar la base recuperada y aplicar únicamente las migraciones revisadas.
+Mantener el agente detenido hasta revisar trabajos pendientes que pudieron haberse
+impreso después del respaldo. Actualizar también la conexión del proceso de
+respaldos si cambió la base activa, ejecutar una copia completa y comprobarla.
+
+Una restauración completa recupera panadería y restaurante juntas. No es una
+fusión con datos actuales: las operaciones posteriores al snapshot requieren
+conciliación explícita. El tiempo sin respaldo puede superar un día si falló el
+job; tomar la fecha del último éxito verificado, no la del horario previsto.
+
+### Prueba de integración reproducible (opcional, solo local)
+
+```powershell
+$env:POS_BACKUP_INTEGRATION_ENV_FILE = "C:/RESPALDOS_PRIVADOS/POS/.env.backup.local"
+node --test scripts/backup/integration.test.cjs
+Remove-Item Env:POS_BACKUP_INTEGRATION_ENV_FILE
+```
+
+Requiere `BACKUP_DATABASE_URL` y `RESTORE_TEST_ADMIN_URL` **locales**, herramientas
+PostgreSQL y una carpeta privada. Lee el origen, genera un respaldo nuevo, simula
+el transporte S3 en memoria y prueba la recuperación conservada y el rechazo de
+un segundo intento sobre la misma base. El ensayo retira solo su base nueva,
+validada por nombre aleatorio/OID; conserva archivos cifrados y reportes privados.
+No valida credenciales, TLS, permisos ni cuotas de Cloudflare/Neon. Sin esa variable
+la prueba se omite, también en el workflow diario.
 
 ## Alcance y evidencia de la prueba local
 

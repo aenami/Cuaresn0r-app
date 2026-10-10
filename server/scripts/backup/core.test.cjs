@@ -77,7 +77,7 @@ test('limpia schema y exige usuario, base, TLS remoto y conexión directa', () =
     assert.throws(() => databaseUrl(value));
 });
 
-test('restauración rechaza cualquier destino remoto incluso si tiene TLS', () => {
+test('restauración de prueba rechaza cualquier destino remoto incluso si tiene TLS', () => {
   assert.throws(
     () =>
       databaseUrl('postgresql://u:p@ep-example.neon.tech/db?sslmode=require', {

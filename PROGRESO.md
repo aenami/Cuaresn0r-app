@@ -4,6 +4,43 @@ Este archivo registra el estado funcional y las decisiones tomadas al adaptar el
 template POS al restaurante objetivo. Debe actualizarse junto con cada cambio de
 alcance o feature terminada.
 
+### 2026-10-10 — Recuperación real y preparación de Cloudflare R2
+
+- Destino elegido: bucket privado R2. El usuario confirmó que aún no creó R2 ni
+  el bucket. No hay credenciales disponibles ni servicio externo activo; no se
+  contrató almacenamiento, no se conectó a Neon ni se publicaron los cambios.
+- Añadido `restore-new`: autentica/descifra la copia, exige destino administrativo
+  explícito, nombre nuevo `pos_recovered_*` y confirmación exacta. Comprueba versión,
+  rechaza bases existentes y conserva la recuperación verificada. No borra bases,
+  ejecuta seeds/migraciones ni cambia la conexión de Render. Si falla después de
+  crear el destino lo conserva para investigación y emite un reporte privado.
+- Añadido `download`: última copia verificada o un objeto anterior del prefijo
+  autorizado; verifica tamaño, SHA-256, cifrado e ID de clave. No sobrescribe archivos
+  locales, acota la descarga y limpia solo su archivo parcial. Recuperar no requiere
+  conexión a la base de origen ni credenciales de la API.
+- Añadido `status`: comprueba indicador y HEAD, falla ante copia ausente, incoherente
+  o mayor de 30 horas. No se presenta como nueva restauración ni monitor activo.
+- Guía paso a paso en `docs/ACTIVAR_RESPALDOS_R2.md`: bucket Standard privado,
+  token restringido, custodia de claves, secretos/variables de GitHub, primera
+  ejecución y recuperación independiente, retención y revisión. Actualizadas
+  ayuda CLI, configuración de ejemplo y guía general de recuperación.
+- Verificación: 57 pruebas unitarias de herramienta. Ensayo adicional real local:
+  76 tablas/3.161 filas y catálogo coincidentes, nueva base conservada tras recuperar,
+  segundo intento rechazado sin modificarla. Se retiraron únicamente las bases del
+  ensayo por nombre/OID; POS solo recibió lecturas. Evidencia cifrada privada en
+  `server/backups/contingencia-20261010/integration-OwsJXo/` (ignorada por Git).
+  El transporte S3 de este ensayo fue simulado: no acredita una subida real a R2.
+- Regresión: 34 suites/475 pruebas de API y 12 e2e correctos; build, lint sin
+  advertencias, detección de código sin uso, sintaxis y formato de scripts correctos.
+  La integración local es opt-in y se omite en pruebas normales sin configuración.
+- Pendiente externo: crear R2/bucket, confirmar conexión/versión de producción,
+  guardar claves/secretos, publicar y activar el workflow, probar descarga/restauración
+  reales desde R2 y verificar la segunda ejecución diaria. No se activó un monitor
+  independiente de antigüedad ni se cambió la aplicación operativa.
+- Offline: se eligió PWA con operación concentrada en caja y posible impresión
+  local mediante agente adaptado; implementación aplazada expresamente para
+  concentrarse ahora en respaldos. No hay modo offline implementado.
+
 ### 2026-10-10 — Aclaración del alcance sin Internet
 
 - El usuario requiere continuar registrando operaciones en un dispositivo sin
@@ -11,10 +48,10 @@ alcance o feature terminada.
 - Retirados guía, formatos imprimibles, generador y archivos de revisión visual
   de la propuesta anterior; conservados herramientas y evidencia de respaldos.
   Los archivos versionados retirados siguen recuperables desde el historial Git.
-- Pendiente de elegir entre captura offline en navegador, aplicación local de
-  contingencia o servidor en la red del negocio. Ninguna opción offline se ha
-  implementado ni seleccionado todavía. Hay que resolver sincronización sin
-  duplicados, impresión local, pagos, turnos y existencias compartidas.
+- Se propusieron captura offline en navegador, aplicación local de contingencia
+  y servidor en la red del negocio. Posteriormente se eligió PWA y se aplazó su
+  implementación. Hay que resolver sincronización sin duplicados, impresión local,
+  pagos, turnos y existencias compartidas cuando se retome ese trabajo.
 
 ### 2026-10-10 — Respaldos PostgreSQL
 

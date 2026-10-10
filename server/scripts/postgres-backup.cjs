@@ -9,41 +9,56 @@ const {
   databaseUrl,
   createBackup,
   restoreTest,
+  restoreNew,
+  assertRecoveryTarget,
+  assertArchiveKeyId,
+  decryptArchive,
   removeWorkdir,
 } = require('./backup/core.cjs');
 const {
   storageConfig,
   uploadAndVerify,
   publishSuccess,
+  downloadBackup,
+  latestStatus,
 } = require('./backup/storage.cjs');
 
-const HELP = `Respaldo cifrado y restauración aislada de CorePOS
+const HELP = `Respaldo cifrado, R2/S3 y recuperación PostgreSQL de CorePOS
 
 Desde server/:
   pnpm backup:postgres keygen
   pnpm backup:postgres backup --env-file <ARCHIVO_PRIVADO> [--upload-s3] [--restore-test]
   pnpm backup:postgres restore-test --env-file <ARCHIVO_PRIVADO> --file <RESPALDO.posbackup>
+  pnpm backup:postgres status --env-file <ARCHIVO_PRIVADO> [--max-age-hours 30]
+  pnpm backup:postgres download --env-file <ARCHIVO_PRIVADO> [--key <OBJETO.posbackup>]
+  pnpm backup:postgres restore-new --env-file <ARCHIVO_PRIVADO> --file <RESPALDO.posbackup> --database <pos_recovered_NOMBRE> --confirm <pos_recovered_NOMBRE>
 
 Las conexiones y claves solo se aceptan por variables de entorno/archivo privado.
 BACKUP_DATABASE_URL es explícita: no se toma DATABASE_URL ni server/.env automáticamente.
-La restauración solo crea una base temporal local nueva y la elimina al terminar.
-No se restauran bases existentes ni se borra información operativa.
+restore-test crea una base temporal LOCAL y la elimina al terminar.
+restore-new usa RESTORE_ADMIN_URL explícita y CONSERVA una base NUEVA verificada.
+No se restauran bases existentes ni se cambia la conexión de producción.
+download verifica tamaño/SHA-256 y autentica el cifrado; sin --key usa latest-success.
+status comprueba indicador + HEAD, NO vuelve a restaurar; sale con error si está vencido.
 `;
 
 function parseArgs(args) {
   if (args.length === 0 || args.includes('--help')) return { command: 'help' };
   const command = args[0];
-  if (!['keygen', 'backup', 'restore-test'].includes(command))
+  const allowed = {
+    keygen: [],
+    backup: ['--env-file', '--upload-s3', '--restore-test'],
+    'restore-test': ['--env-file', '--file'],
+    'restore-new': ['--env-file', '--file', '--database', '--confirm'],
+    download: ['--env-file', '--key'],
+    status: ['--env-file', '--max-age-hours'],
+  };
+  if (!Object.hasOwn(allowed, command))
     throw new BackupError('Comando desconocido. Consulta --help.');
   const options = { command };
   for (let i = 1; i < args.length; i++) {
     const name = args[i];
-    if (
-      !['--env-file', '--file', '--upload-s3', '--restore-test'].includes(
-        name,
-      ) ||
-      options[name] !== undefined
-    )
+    if (!allowed[command].includes(name) || options[name] !== undefined)
       throw new BackupError('Opción desconocida o repetida. Consulta --help.');
     if (['--upload-s3', '--restore-test'].includes(name)) options[name] = true;
     else {
@@ -53,16 +68,14 @@ function parseArgs(args) {
       options[name] = value;
     }
   }
-  if (command === 'keygen' && args.length !== 1)
-    throw new BackupError('keygen no recibe opciones.');
-  if (command === 'backup' && options['--file'])
-    throw new BackupError('--file solo se usa en restore-test.');
+  if (['restore-test', 'restore-new'].includes(command) && !options['--file'])
+    throw new BackupError('La restauración necesita --file.');
   if (
-    command === 'restore-test' &&
-    (!options['--file'] || options['--upload-s3'] || options['--restore-test'])
+    command === 'restore-new' &&
+    (!options['--database'] || !options['--confirm'])
   )
     throw new BackupError(
-      'restore-test necesita --file y no admite opciones de backup.',
+      'restore-new necesita --database y --confirm explícitos.',
     );
   return options;
 }
@@ -110,6 +123,20 @@ async function main(args, env = process.env) {
         'No se pudo leer el archivo privado de configuración.',
       );
   }
+  if (options.command === 'status') {
+    const result = await latestStatus(
+      env,
+      options['--max-age-hours'] === undefined
+        ? 30
+        : Number(options['--max-age-hours']),
+    );
+    process.stdout.write(JSON.stringify(result) + '\n');
+    if (result.status !== 'ok')
+      throw new BackupError(
+        'El último respaldo está vencido. Revisa el job y realiza una copia verificada.',
+      );
+    return result;
+  }
   const key = encryptionKey(env.BACKUP_ENCRYPTION_KEY);
   if (
     !env.BACKUP_DIR ||
@@ -124,8 +151,84 @@ async function main(args, env = process.env) {
   const testing =
     options.command === 'restore-test' || options['--restore-test'];
   if (testing) databaseUrl(env.RESTORE_TEST_ADMIN_URL, { localOnly: true });
-  if (options['--upload-s3']) storageConfig(env);
+  if (options.command === 'restore-new')
+    assertRecoveryTarget(
+      env.RESTORE_ADMIN_URL,
+      options['--database'],
+      options['--confirm'],
+    );
+  if (options['--upload-s3'] || options.command === 'download')
+    storageConfig(env);
   await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+  if (options.command === 'download') {
+    const result = await downloadBackup(env, dir, options['--key']);
+    const workdir = await fs.mkdtemp(path.join(dir, '.restore-work-'));
+    try {
+      const { manifest } = await decryptArchive(result.archive, key, workdir);
+      assertArchiveKeyId(manifest, env);
+      Object.assign(result, {
+        backupId: manifest.id,
+        backupCreatedAt: manifest.createdAt,
+        keyId: manifest.keyId,
+        cipherVerified: true,
+      });
+      const report = path.join(
+        dir,
+        `${manifest.id}.download-${Date.now()}.json`,
+      );
+      await fs.writeFile(report, JSON.stringify(result, null, 2) + '\n', {
+        flag: 'wx',
+        mode: 0o600,
+      });
+      process.stdout.write(JSON.stringify({ ...result, report }) + '\n');
+      return result;
+    } finally {
+      await removeWorkdir(workdir);
+    }
+  }
+  if (options.command === 'restore-new') {
+    const workdir = await fs.mkdtemp(path.join(dir, '.restore-work-'));
+    const report = path.join(
+      dir,
+      `${options['--database']}.recovery-${Date.now()}-${crypto.randomBytes(6).toString('hex')}.json`,
+    );
+    try {
+      const result = await restoreNew(
+        path.resolve(options['--file']),
+        key,
+        env,
+        workdir,
+        options['--database'],
+        options['--confirm'],
+      );
+      await fs.writeFile(report, JSON.stringify(result, null, 2) + '\n', {
+        flag: 'wx',
+        mode: 0o600,
+      });
+      process.stdout.write(JSON.stringify({ ...result, report }) + '\n');
+      return result;
+    } catch (error) {
+      await fs.writeFile(
+        report,
+        JSON.stringify(
+          {
+            ...(error.recovery || {
+              database: options['--database'],
+              ok: false,
+            }),
+            status: 'failed',
+            productionConnectionChanged: false,
+          },
+          null,
+          2,
+        ) + '\n',
+        { flag: 'wx', mode: 0o600 },
+      );
+      throw error;
+    } finally {
+      await removeWorkdir(workdir);
+    }
+  }
   if (options.command === 'restore-test') {
     const workdir = await fs.mkdtemp(path.join(dir, '.restore-work-'));
     try {

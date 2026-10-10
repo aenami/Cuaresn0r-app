@@ -115,7 +115,7 @@ function connectionEnv(url) {
   for (const key of Object.keys(env))
     if (
       key.startsWith('BACKUP_') ||
-      /SECRET|TOKEN|PASSWORD|DATABASE_URL|CLOUDINARY|PRINT_AGENT|RESTORE_TEST_ADMIN_URL/.test(
+      /SECRET|TOKEN|PASSWORD|DATABASE_URL|CLOUDINARY|PRINT_AGENT|RESTORE_/.test(
         key,
       )
     )
@@ -467,6 +467,163 @@ function assertOwnedTestDatabase(url, name) {
     );
 }
 
+function assertRecoveryTarget(adminUrl, name, confirmation) {
+  const parsed = databaseUrl(adminUrl);
+  if (!/^pos_recovered_[a-z0-9][a-z0-9_]{0,44}$/.test(name || ''))
+    throw new BackupError(
+      'Usa un nombre nuevo pos_recovered_ seguido de letras minúsculas, números o guiones bajos (máximo 59 caracteres).',
+    );
+  if (confirmation !== name)
+    throw new BackupError(
+      '--confirm debe repetir exactamente el nombre de --database. No se creó ninguna base.',
+    );
+  if (decodeURIComponent(parsed.pathname.slice(1)) === name)
+    throw new BackupError(
+      'El destino no puede ser la base de la conexión administrativa.',
+    );
+  return parsed;
+}
+
+function assertArchiveKeyId(manifest, env) {
+  if (
+    !/^[a-zA-Z0-9-]{1,40}$/.test(manifest.keyId || '') ||
+    manifest.keyId !== env.BACKUP_KEY_ID
+  )
+    throw new BackupError(
+      'BACKUP_KEY_ID no coincide con la clave identificada en el respaldo. Usa la configuración archivada correspondiente.',
+    );
+}
+
+// Recuperación real: crea una base nueva y la CONSERVA. No hay DROP, --clean,
+// seed ni cambio de conexión de la API. Las dependencias opcionales permiten
+// probar cada protección sin tocar servidores externos.
+async function restoreNew(
+  archive,
+  key,
+  env,
+  workdir,
+  name,
+  confirmation,
+  dependencies = {},
+) {
+  const parsed = assertRecoveryTarget(
+    env.RESTORE_ADMIN_URL,
+    name,
+    confirmation,
+  );
+  const { manifest, dump } = await decryptArchive(archive, key, workdir);
+  assertArchiveKeyId(manifest, env);
+  const ClientClass = dependencies.Client || Client;
+  const execute = dependencies.runTool || runTool;
+  const describe = dependencies.describeDatabase || describeDatabase;
+  const restoreVersion = await execute(
+    pgTool('pg_restore', env),
+    ['--version'],
+    connectionEnv(parsed),
+  );
+  const toolMajor = Number(
+    restoreVersion.stdout.match(/PostgreSQL\)\s+(\d+)/)?.[1],
+  );
+  const dumpMajor = Number(
+    manifest.dumpVersion?.match(/PostgreSQL\)\s+(\d+)/)?.[1],
+  );
+  const sourceMajor = Number(manifest.sourceVersion?.split('.')[0]);
+  if (!sourceMajor || !dumpMajor || !toolMajor || toolMajor < dumpMajor)
+    throw new BackupError(
+      'pg_restore debe ser compatible con la versión de pg_dump indicada en el respaldo.',
+    );
+  const admin = new ClientClass({
+    connectionString: parsed.toString(),
+    connectionTimeoutMillis: 20000,
+  });
+  let created = false;
+  try {
+    await admin.connect();
+    const info = (
+      await admin.query("SELECT current_setting('server_version') AS version")
+    ).rows[0];
+    if (Number(info.version.split('.')[0]) !== sourceMajor)
+      throw new BackupError(
+        'La recuperación requiere la misma versión mayor de PostgreSQL que el origen.',
+      );
+    const existing = await admin.query(
+      'SELECT oid FROM pg_database WHERE datname=$1',
+      [name],
+    );
+    if (existing.rows.length)
+      throw new BackupError(
+        'La base de destino ya existe. No se modificó; elige un nombre nuevo.',
+      );
+    // CREATE sin IF NOT EXISTS también rechaza una carrera con otro operador.
+    await admin.query(
+      `CREATE DATABASE ${identifier(name)} TEMPLATE template0 ENCODING 'UTF8'`,
+    );
+    created = true;
+    const target = new URL(parsed);
+    target.pathname = '/' + name;
+    const restored = await execute(
+      pgTool('pg_restore', env),
+      [
+        `--dbname=${name}`,
+        '--exit-on-error',
+        '--single-transaction',
+        '--no-owner',
+        '--no-acl',
+        '--no-password',
+        dump,
+      ],
+      connectionEnv(target),
+    );
+    if (restored.warnings)
+      throw new BackupError(
+        'pg_restore emitió advertencias. Revisa la base nueva antes de considerarla recuperada.',
+      );
+    const client = new ClientClass({
+      connectionString: target.toString(),
+      connectionTimeoutMillis: 20000,
+    });
+    let verified;
+    try {
+      await client.connect();
+      await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      verified = checkRestored(manifest.database, await describe(client));
+      await client.query('ROLLBACK');
+    } finally {
+      await client.end();
+    }
+    return {
+      ...verified,
+      backupId: manifest.id,
+      backupCreatedAt: manifest.createdAt,
+      keyId: manifest.keyId,
+      archiveSha256: await hashFile(archive),
+      database: name,
+      databasePreserved: true,
+      productionConnectionChanged: false,
+      verifiedAt: new Date().toISOString(),
+      ok: true,
+    };
+  } catch (error) {
+    const reason =
+      error instanceof BackupError
+        ? error.message
+        : 'Revisa conexión, permisos CREATEDB, versión y disponibilidad del destino.';
+    const failure = new BackupError(
+      `Falló la recuperación. ${reason}${created ? ' La base nueva se conserva para revisión; no la conectes a la API.' : ' No se restauró sobre ninguna base existente.'}`,
+    );
+    failure.recovery = {
+      database: name,
+      databaseCreated: created,
+      databasePreserved: created,
+      productionConnectionChanged: false,
+      ok: false,
+    };
+    throw failure;
+  } finally {
+    await admin.end();
+  }
+}
+
 async function restoreTest(archive, key, adminUrl, pgBinEnv, workdir) {
   const parsed = databaseUrl(adminUrl, { localOnly: true });
   // La conexión administrativa nunca usa la base operativa.
@@ -671,6 +828,9 @@ module.exports = {
   checkRestored,
   canonicalConstraintDefinition,
   assertOwnedTestDatabase,
+  assertRecoveryTarget,
+  assertArchiveKeyId,
+  restoreNew,
   restoreTest,
   createBackup,
   removeWorkdir,

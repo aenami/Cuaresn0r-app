@@ -46,7 +46,9 @@ antiguos se conservan únicamente como datos históricos; no tienen flujo operat
 
 ## Respaldos
 
-Respaldo cifrado y restauración aislada: `../docs/RESPALDOS_POSTGRESQL.md`.
+Respaldo cifrado, descarga R2, consulta de antigüedad y recuperación en base nueva:
+`../docs/RESPALDOS_POSTGRESQL.md`. Activación paso a paso de R2/GitHub:
+`../docs/ACTIVAR_RESPALDOS_R2.md`.
 `pnpm backup:postgres --help` muestra los comandos; usa una configuración privada
 explícita, no las variables del frontend. La automatización externa requiere
 configuración adicional y permanece desactivada hasta validarla.
