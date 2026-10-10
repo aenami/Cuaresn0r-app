@@ -1,0 +1,65 @@
+name: Respaldo externo PostgreSQL
+
+# Inactivo hasta configurar destino, secretos y POS_BACKUP_ENABLED=true.
+# 08:17 UTC equivale a 03:17 de Colombia. GitHub puede retrasar el cron.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 8 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: postgres-external-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: vars.POS_BACKUP_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    container:
+      image: postgres:${{ vars.BACKUP_POSTGRES_MAJOR || '17' }}-bookworm
+    defaults:
+      run:
+        working-directory: server
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+      - name: Instalar dependencias y verificar herramienta
+        run: |
+          npm install --global pnpm@11.1.1
+          pnpm install --frozen-lockfile
+          pnpm test:backup
+      - name: Preparar PostgreSQL temporal aislado
+        run: |
+          install -d -o postgres -g postgres -m 700 /tmp/pos-backup-cluster
+          runuser -u postgres -- initdb -D /tmp/pos-backup-cluster --encoding=UTF8 --locale=C.UTF-8 --auth-local=trust --auth-host=trust > /tmp/pos-initdb.log
+          runuser -u postgres -- pg_ctl -D /tmp/pos-backup-cluster -l /tmp/pos-restore-server.log -o '-h 127.0.0.1 -p 55432' -w start
+      - name: Respaldar, cifrar, subir y restaurar la copia descargada
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          BACKUP_KEY_ID: ${{ vars.BACKUP_KEY_ID }}
+          BACKUP_LABEL: ${{ vars.BACKUP_LABEL || 'produccion' }}
+          BACKUP_DIR: ${{ runner.temp }}/pos-backups
+          BACKUP_S3_BUCKET: ${{ vars.BACKUP_S3_BUCKET }}
+          BACKUP_S3_PREFIX: ${{ vars.BACKUP_S3_PREFIX || 'pos/produccion' }}
+          BACKUP_S3_ENDPOINT: ${{ vars.BACKUP_S3_ENDPOINT }}
+          BACKUP_S3_REGION: ${{ vars.BACKUP_S3_REGION || 'auto' }}
+          BACKUP_S3_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+          BACKUP_S3_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+          RESTORE_TEST_ADMIN_URL: postgresql://postgres@127.0.0.1:55432/postgres
+        run: pnpm backup:postgres backup --upload-s3 --restore-test
+      - name: Detener únicamente el servidor temporal
+        if: always()
+        run: |
+          if [ -f /tmp/pos-backup-cluster/postmaster.pid ]; then
+            runuser -u postgres -- pg_ctl -D /tmp/pos-backup-cluster -m fast -w stop
+          fi

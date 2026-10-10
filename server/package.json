@@ -15,6 +15,8 @@
     "lint": "eslint \"{src,test}/**/*.ts\" --max-warnings 0",
     "lint:fix": "eslint \"{src,test}/**/*.ts\" --fix",
     "check:unused": "knip",
+    "backup:postgres": "node scripts/postgres-backup.cjs",
+    "test:backup": "node --test scripts/backup/*.test.cjs",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
@@ -39,6 +41,7 @@
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "3.1149.0",
     "@jest/globals": "30.4.1",
     "@eslint/js": "^9.18.0",
     "@nestjs/cli": "^11.0.0",

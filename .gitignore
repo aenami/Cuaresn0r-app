@@ -16,6 +16,14 @@ server/dist
 # =========================
 server/uploads/
 server/backups/
+**/.env.backup
+**/.env.backup.*
+!**/.env.backup.example
+# Los respaldos contienen credenciales, nómina y datos de clientes.
+*.posbackup
+*.dump
+*.backup-key
+tmp/pdfs/
 .impeccable/review/
 
 # =========================

@@ -4,6 +4,42 @@ Este archivo registra el estado funcional y las decisiones tomadas al adaptar el
 template POS al restaurante objetivo. Debe actualizarse junto con cada cambio de
 alcance o feature terminada.
 
+### 2026-10-10 — Contingencia manual y respaldos PostgreSQL
+
+- Procedimiento manual para Panadería y Restaurante en
+  `docs/CONTINGENCIA_SIN_INTERNET.md`: folios, fichas, cuentas/pagos mixtos,
+  autorización de preparación, entregas por línea, hornadas, remisiones, cierre
+  provisional y conciliación sin duplicar cobros, consumo o impresiones.
+- Formatos A4 en blanco en `output/pdf/CONTINGENCIA_POS.pdf`, con generador en
+  `docs/scripts/crear-formatos-contingencia.py`. Tres páginas renderizadas y
+  revisadas visualmente. Es un procedimiento en papel, no un POS offline ni
+  una importación retroactiva de pedidos; sus límites quedan documentados.
+- Herramienta `pnpm backup:postgres`: dump custom de snapshot de solo lectura,
+  cifrado AES-256-GCM, SHA-256, configuración privada explícita y subida opcional
+  S3/R2. Verifica una descarga completa, no solo la respuesta de subida.
+- Restauración únicamente en base local nueva, con comparación de filas/huellas,
+  columnas, índices SQL, restricciones, enums, secuencias, rutinas, triggers y
+  vistas. Retira exclusivamente la base temporal validada por nombre y OID.
+  No restaura encima de POS/Neon ni ejecuta seed, migraciones o `db push`.
+- Workflow diario preparado (03:17 Colombia), desactivado por defecto. Solo
+  publica `latest-success.json` externo tras verificar descarga y restauración.
+  Guía de activación, claves, retención, limitaciones del cron y recuperación
+  en `docs/RESPALDOS_POSTGRESQL.md`; configuración de ejemplo sin secretos.
+- Prueba real local: 76 tablas, 3.161 filas, 597 columnas, 251 índices,
+  276 restricciones, 104 valores enum y 75 definiciones de secuencia coincidentes.
+  Comprobada también una segunda restauración independiente del archivo cifrado.
+  Bases temporales retiradas, sin cambios a POS; copia, claves privadas y evidencia
+  conservadas fuera de Git en `server/backups/contingencia-20261010/`.
+- Pruebas de herramienta: 24 casos, incluyendo claves/archivos alterados,
+  rutas inseguras, prohibición de restaurar remoto, descarga corrupta e indicador
+  de éxito. Regresión: 34 suites/475 pruebas de API y 12 e2e; build, lint y detección de
+  código sin uso correctos. Workflow validado sintáctica y estructuralmente;
+  su ejecución en GitHub y la prueba de subida real siguen pendientes.
+- Pendiente: el usuario debe elegir origen (Neon/local/ambos) y destino externo
+  y configurar credenciales. No se subieron respaldos, no se activó el cron,
+  no se configuró un monitor externo ni se publicaron estos cambios.
+  La copia local probada no se presenta como respaldo externo diario activo.
+
 ### 2026-10-10 — Limpieza de código obsoleto y controles de calidad
 
 - Autorizado retirar por completo el flujo operativo de traslados antiguos,

@@ -6,11 +6,12 @@
     "test/**/*.e2e-spec.ts",
     "test/*.integration.cjs",
     "scripts/*.cjs",
+    "scripts/**/*.test.cjs",
   ],
   "project": [
     "src/**/*.ts",
     "test/**/*.{ts,cjs}",
-    "scripts/*.cjs",
+    "scripts/**/*.cjs",
     "prisma/*.{ts,prisma}",
   ],
   // Importado por el cliente Prisma generado, que el analizador excluye automáticamente.
