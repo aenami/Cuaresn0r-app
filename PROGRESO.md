@@ -4,6 +4,28 @@ Este archivo registra el estado funcional y las decisiones tomadas al adaptar el
 template POS al restaurante objetivo. Debe actualizarse junto con cada cambio de
 alcance o feature terminada.
 
+### 2026-10-10 — Modal del catálogo de Restaurante y publicación
+
+- Corregido el formulario de creación y edición de productos: al seleccionar
+  «Stock compartido de Panadería» ya no crece fuera de la pantalla. Su altura
+  máxima depende del espacio visible; los campos tienen desplazamiento interno,
+  mientras el encabezado, el cierre y el botón Guardar permanecen visibles.
+  Se conserva el diseño existente y no se añaden cálculos de tamaño en React.
+- Verificado en Chromium a 1366×768, 1024×600, 390×844, 320×568 y 844×390:
+  sin desbordamiento horizontal, imagen alcanzable al desplazar, creación y
+  edición de producto compartido, validación, foco dentro del modal, cierre con
+  Escape y descarte de Select sin cerrar el formulario. También comprobados
+  producto normal, Ejecutivo y Bandeja. Las respuestas y escrituras del ensayo
+  fueron simuladas; no se crearon productos en la base real.
+- Calidad: build, lint y detección de código sin uso del frontend correctos;
+  build y lint del servidor correctos, 34 suites/475 pruebas y 12 e2e correctos.
+  Capturas y guion de comprobación locales excluidos de Git.
+- El usuario autorizó publicar todos los avances acumulados en `main`, no solo
+  esta corrección. La comprobación de despliegue se realiza tras el push.
+- Respaldos aplazados expresamente: se conservan las herramientas preparadas,
+  pero R2 y el respaldo diario externo siguen sin configurar ni activar.
+  Tampoco se implementa ahora el modo offline.
+
 ### 2026-10-10 — Recuperación real y preparación de Cloudflare R2
 
 - Destino elegido: bucket privado R2. El usuario confirmó que aún no creó R2 ni

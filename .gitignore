@@ -24,6 +24,7 @@ server/backups/
 *.dump
 *.backup-key
 .impeccable/review/
+.playwright-cli/
 
 # =========================
 # ENV FILES
