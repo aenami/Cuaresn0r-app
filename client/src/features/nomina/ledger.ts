@@ -15,7 +15,7 @@ export interface FilaLedger {
   balance: number
 }
 
-export function describirDevengo(d: DevengoConSaldo): string {
+function describirDevengo(d: DevengoConSaldo): string {
   if (d.id_jornada_devengoNomina !== null) {
     const ord = Number(d.horas_ordinarias_devengoNomina ?? 0)
     const noc = Number(d.horas_recargo_devengoNomina ?? 0)

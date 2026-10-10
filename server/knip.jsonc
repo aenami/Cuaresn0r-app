@@ -1,0 +1,18 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/main.ts",
+    "src/**/*.spec.ts",
+    "test/**/*.e2e-spec.ts",
+    "test/*.integration.cjs",
+    "scripts/*.cjs",
+  ],
+  "project": [
+    "src/**/*.ts",
+    "test/**/*.{ts,cjs}",
+    "scripts/*.cjs",
+    "prisma/*.{ts,prisma}",
+  ],
+  // Importado por el cliente Prisma generado, que el analizador excluye automáticamente.
+  "ignoreDependencies": ["@prisma/client"],
+}

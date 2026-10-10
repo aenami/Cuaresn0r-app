@@ -2,7 +2,7 @@ import { queryOptions } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
 export type FamiliaProduccion = 'PANADERIA' | 'PASTELERIA'
-export type EstadoHojaProduccion = 'BORRADOR' | 'FINALIZADA'
+type EstadoHojaProduccion = 'BORRADOR' | 'FINALIZADA'
 
 export interface EntradaHojaProduccion {
   id: number
@@ -15,7 +15,7 @@ export interface EntradaHojaProduccion {
   fechaRegistro: string
 }
 
-export interface ResumenFamiliaProduccion {
+interface ResumenFamiliaProduccion {
   cantidad: string
   valor: string
 }
@@ -46,18 +46,12 @@ export interface HojaProduccion {
 export const hojasProduccionKeys = {
   all: ['bakery', 'production-sheets'] as const,
   fecha: (fecha: string) => ['bakery', 'production-sheets', fecha] as const,
-  detalle: (id: number) => ['bakery', 'production-sheets', 'detail', id] as const,
 }
 
 export const hojasProduccionFechaQuery = (fecha: string, esHoy: boolean) => queryOptions({
   queryKey: hojasProduccionKeys.fecha(fecha),
   queryFn: () => api.get<HojaProduccion[]>(`/bakery/production-sheets?date=${encodeURIComponent(fecha)}`),
   refetchInterval: esHoy ? 15_000 : false,
-})
-
-export const hojaProduccionDetalleQuery = (id: number) => queryOptions({
-  queryKey: hojasProduccionKeys.detalle(id),
-  queryFn: () => api.get<HojaProduccion>(`/bakery/production-sheets/${id}`),
 })
 
 export const hojasProduccionApi = {

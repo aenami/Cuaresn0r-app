@@ -81,8 +81,12 @@ describe('TurnosService.abrir (creacion)', () => {
     const { svc, spies } = setupAbrir();
     await svc.abrir(5, abrirDto(1));
     const data = spies.turnoCreate.mock.calls[0][0].data;
-    expect(data.monto_apertura_turno.toString()).toBe('300000');
-    expect(data.monto_cierre_esperado.toString()).toBe('300000');
+    expect((data.monto_apertura_turno as Prisma.Decimal).toString()).toBe(
+      '300000',
+    );
+    expect((data.monto_cierre_esperado as Prisma.Decimal).toString()).toBe(
+      '300000',
+    );
     expect(data.id_usuario_turno).toBe(5);
     expect(data.tipo_turno).toBe('MANANA');
   });
@@ -178,14 +182,12 @@ function setupCerrar(
     $transaction: (cb: (t: typeof tx) => unknown) => cb(tx),
   } as unknown as PrismaService;
   const bakery = {
-    aplicarConteoCierre: jest
-      .fn()
-      .mockResolvedValue({
-        completo: true,
-        fecha: '2026-09-22',
-        valorDiferencia: '3000',
-        detalle: [],
-      }),
+    aplicarConteoCierre: jest.fn().mockResolvedValue({
+      completo: true,
+      fecha: '2026-09-22',
+      valorDiferencia: '3000',
+      detalle: [],
+    }),
   };
   return {
     svc: new TurnosService(prisma, bakery as unknown as BakeryService),
@@ -306,10 +308,7 @@ describe('TurnosService.cerrar (cuadre)', () => {
   it('congela el esperado recalculado: apertura + efectivo + ingresos - egresos', async () => {
     const { svc, spies } = setupCerrar(); // 100000 + 50000 + 20000 - 5000
     await svc.cerrar(3, 1, 'CAJERO', cerrarDto(165000));
-    const data = spies.turnoUpdate.mock.calls[0][0].data as Record<
-      string,
-      Prisma.Decimal | unknown
-    >;
+    const data = spies.turnoUpdate.mock.calls[0][0].data;
     expect((data.monto_cierre_esperado as Prisma.Decimal).toString()).toBe(
       '165000',
     );
@@ -404,7 +403,10 @@ describe('TurnosService.cerrar (cuadre)', () => {
       spies.turnoUpdate.mock.calls[0][0].data.conteo_panaderia_cierre_turno,
     ).toMatchObject({ valorDiferencia: '3000' });
     expect(
-      spies.turnoUpdate.mock.calls[0][0].data.monto_cierre_esperado.toString(),
+      (
+        spies.turnoUpdate.mock.calls[0][0].data
+          .monto_cierre_esperado as Prisma.Decimal
+      ).toString(),
     ).toBe('312000');
   });
 });

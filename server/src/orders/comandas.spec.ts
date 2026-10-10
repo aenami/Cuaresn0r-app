@@ -1,3 +1,4 @@
+import { expect } from '@jest/globals';
 import {
   BadRequestException,
   ConflictException,
@@ -47,20 +48,20 @@ function setup(
       .mockResolvedValue({ id_subcuenta: 1, id_pedido_subcuenta: 10 }),
     comandaCreate: jest.fn().mockResolvedValue({ id_comanda: 100 }),
     comandaFind: jest.fn().mockResolvedValue({ id_comanda: 100, detalles: [] }),
-    comandaFindUnique: jest
-      .fn()
-      .mockResolvedValue({
-        id_comanda: 100,
-        id_pedido_comanda: 10,
-        estado_comanda: 'ENVIADA',
-      }),
+    comandaFindUnique: jest.fn().mockResolvedValue({
+      id_comanda: 100,
+      id_pedido_comanda: 10,
+      estado_comanda: 'ENVIADA',
+    }),
     comandaUpdateMany: jest.fn().mockResolvedValue({ count: 1 }),
     comandaUpdate: jest.fn().mockResolvedValue({}),
     queryRaw: jest.fn().mockResolvedValue([{ id_comanda: 100 }]),
     facturaFindFirst: jest.fn().mockResolvedValue(null),
     productoFindUnique: jest.fn().mockResolvedValue(producto),
     recetaFindFirst: jest.fn().mockResolvedValue(receta),
-    dcCreate: jest.fn().mockResolvedValue({ id_detalleComanda: 500 }),
+    dcCreate: jest
+      .fn<Promise<unknown>, [{ data: Record<string, unknown> }]>()
+      .mockResolvedValue({ id_detalleComanda: 500 }),
     recalcular: jest.fn().mockResolvedValue(undefined),
     descontar: jest.fn().mockResolvedValue(undefined),
     imprimir: jest.fn().mockResolvedValue(undefined),
@@ -174,10 +175,7 @@ describe('ComandasService.create (borrador)', () => {
     const { svc, spies } = setup();
     await svc.create(10, comandaDto([{ idProducto: 5, cantidad: 3 }]));
 
-    const data = spies.dcCreate.mock.calls[0][0].data as Record<
-      string,
-      unknown
-    >;
+    const data = spies.dcCreate.mock.calls[0][0].data;
     expect(data.id_producto_dc).toBe(5);
     expect((data.precio_unitario_dc as Prisma.Decimal).toString()).toBe(
       '20000',
@@ -271,14 +269,14 @@ describe('ComandasService.entregarComanda', () => {
       id_comanda: 100,
       id_pedido_comanda: 999,
     });
-    await expect(svc.entregarComanda(10, 100)).rejects.toBeInstanceOf(
+    await expect(svc.entregarComanda(10, 100, 1)).rejects.toBeInstanceOf(
       NotFoundException,
     );
   });
 
   it('marca ENTREGADO los items PREPARANDO de la comanda y recalcula el pedido', async () => {
     const { svc, spies } = setup();
-    await svc.entregarComanda(10, 100);
+    await svc.entregarComanda(10, 100, 1);
     expect(spies.comandaUpdateMany).toHaveBeenCalledWith({
       where: { id_comanda_dc: 100, estado_dc: 'PREPARANDO' },
       data: { estado_dc: 'ENTREGADO', fecha_entrega_dc: expect.any(Date) },

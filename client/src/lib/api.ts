@@ -4,7 +4,7 @@ const BASE_URL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 
 // Origen del backend, para resolver rutas relativas de assets (p. ej. las
 // imagenes servidas en /uploads).
-export const API_BASE_URL = BASE_URL
+const API_BASE_URL = BASE_URL
 
 // Resuelve el valor guardado de una imagen a una URL cargable:
 // - rutas relativas del backend (`/uploads/...`) se anteponen al origen del API;

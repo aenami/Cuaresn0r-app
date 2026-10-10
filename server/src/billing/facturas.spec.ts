@@ -1,3 +1,4 @@
+import { expect } from '@jest/globals';
 import { FacturasService } from './facturas.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { BillingConfigService } from './billing-config.service';
@@ -57,7 +58,7 @@ function setup(
 
 async function emitirData(
   svc: FacturasService,
-  facturaCreate: jest.Mock,
+  facturaCreate: jest.Mock<unknown, [{ data: Record<string, unknown> }]>,
   ...args: [porcentaje?: number, monto?: number]
 ) {
   await svc.emitir(1, ...args);
@@ -154,13 +155,11 @@ function setupAnular(
 
   const spies = {
     queryRaw: jest.fn().mockResolvedValue([{ id_factura: 1 }]),
-    facturaFind: jest
-      .fn()
-      .mockResolvedValue({
-        estado_factura: estadoFactura,
-        id_subcuenta_factura: 7,
-        pagos,
-      }),
+    facturaFind: jest.fn().mockResolvedValue({
+      estado_factura: estadoFactura,
+      id_subcuenta_factura: 7,
+      pagos,
+    }),
     facturaUpdate: jest.fn((args: { data: Record<string, unknown> }) =>
       Promise.resolve({ id_factura: 1, ...args.data }),
     ),
@@ -168,23 +167,23 @@ function setupAnular(
     turnoFindMany: jest
       .fn()
       .mockResolvedValue(turnosAbiertos ?? (turnoPropio ? [turnoPropio] : [])),
-    turnoFind: jest
-      .fn()
-      .mockResolvedValue({
-        id_turno: 3,
-        monto_cierre_esperado: esperado,
-        monto_apertura_turno: new Prisma.Decimal(0),
-      }),
-    turnoUpdate: jest.fn().mockResolvedValue({}),
-    movimientoCreate: jest.fn().mockResolvedValue({}),
+    turnoFind: jest.fn().mockResolvedValue({
+      id_turno: 3,
+      monto_cierre_esperado: esperado,
+      monto_apertura_turno: new Prisma.Decimal(0),
+    }),
+    turnoUpdate: jest
+      .fn<Promise<unknown>, [{ data: Record<string, unknown> }]>()
+      .mockResolvedValue({}),
+    movimientoCreate: jest
+      .fn<Promise<unknown>, [{ data: Record<string, unknown> }]>()
+      .mockResolvedValue({}),
     subFind: jest.fn().mockResolvedValue({ id_pedido_subcuenta: 5 }),
-    pedidoFind: jest
-      .fn()
-      .mockResolvedValue({
-        id_pedido: 5,
-        estado_pedido: estadoPedido,
-        fecha_cierre_pedido: new Date(),
-      }),
+    pedidoFind: jest.fn().mockResolvedValue({
+      id_pedido: 5,
+      estado_pedido: estadoPedido,
+      fecha_cierre_pedido: new Date(),
+    }),
     pedidoUpdate: jest.fn().mockResolvedValue({}),
     dcFindMany: jest.fn().mockResolvedValue([
       {
@@ -280,10 +279,7 @@ describe('FacturasService.anular (efecto sobre caja y pedido)', () => {
     const { svc, spies } = setupAnular({ pagos: [pagoEfectivo(50000)] });
     const res = await svc.anular(1, 'motivo', 5);
 
-    const mov = spies.movimientoCreate.mock.calls[0][0].data as Record<
-      string,
-      unknown
-    >;
+    const mov = spies.movimientoCreate.mock.calls[0][0].data;
     expect(mov.tipo_mc).toBe('EGRESO');
     expect((mov.monto_mc as Prisma.Decimal).toString()).toBe('50000');
     const upd = spies.turnoUpdate.mock.calls[0][0].data as {
@@ -296,10 +292,7 @@ describe('FacturasService.anular (efecto sobre caja y pedido)', () => {
   it('con excedente en efectivo: devuelve tambien el excedente que entro a la caja', async () => {
     const { svc, spies } = setupAnular({ pagos: [pagoEfectivo(40000, 10000)] });
     const res = await svc.anular(1, 'motivo', 5);
-    const mov = spies.movimientoCreate.mock.calls[0][0].data as Record<
-      string,
-      unknown
-    >;
+    const mov = spies.movimientoCreate.mock.calls[0][0].data;
     expect((mov.monto_mc as Prisma.Decimal).toString()).toBe('50000'); // 40k aplicado + 10k excedente
     expect(res.devolucion.efectivoDevuelto.toString()).toBe('50000');
   });
@@ -345,7 +338,12 @@ function facturaPagadaParaReporte(fechaPrimerPago: Date, fechaPagoFinal: Date) {
         monto_excedente_pago: new Prisma.Decimal(0),
         destino_excedente_pago: null,
         fecha_pago: fechaPrimerPago,
-        turno: turno(10, new Date('2026-09-01T07:00:00-05:00'), 'Caja mañana', 'manana@pos.local'),
+        turno: turno(
+          10,
+          new Date('2026-09-01T07:00:00-05:00'),
+          'Caja mañana',
+          'manana@pos.local',
+        ),
       },
       {
         metodo_pago: 'TRANSFERENCIA',
@@ -353,7 +351,12 @@ function facturaPagadaParaReporte(fechaPrimerPago: Date, fechaPagoFinal: Date) {
         monto_excedente_pago: new Prisma.Decimal(0),
         destino_excedente_pago: null,
         fecha_pago: fechaPagoFinal,
-        turno: turno(11, new Date('2026-09-01T14:00:00-05:00'), 'Caja tarde', 'tarde@pos.local'),
+        turno: turno(
+          11,
+          new Date('2026-09-01T14:00:00-05:00'),
+          'Caja tarde',
+          'tarde@pos.local',
+        ),
       },
     ],
     subcuenta: {
@@ -389,7 +392,11 @@ describe('FacturasService.findCuentasPagadas', () => {
     const primerPago = new Date('2026-09-01T09:00:00-05:00');
     const pagoFinal = new Date('2026-09-01T15:00:00-05:00');
     const prisma = {
-      factura: { findMany: jest.fn().mockResolvedValue([facturaPagadaParaReporte(primerPago, pagoFinal)]) },
+      factura: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([facturaPagadaParaReporte(primerPago, pagoFinal)]),
+      },
     } as unknown as PrismaService;
     const servicio = new FacturasService(prisma, {} as BillingConfigService);
 
@@ -399,25 +406,37 @@ describe('FacturasService.findCuentasPagadas', () => {
     );
 
     expect(cuentas).toHaveLength(1);
-    expect(cuentas[0]).toMatchObject({ fecha: pagoFinal, cajero: 'tarde@pos.local' });
-    expect(cuentas[0].turno).toMatchObject({ id: 11, caja: 'Caja tarde', cajero: 'tarde@pos.local' });
+    expect(cuentas[0]).toMatchObject({
+      fecha: pagoFinal,
+      cajero: 'tarde@pos.local',
+    });
+    expect(cuentas[0].turno).toMatchObject({
+      id: 11,
+      caja: 'Caja tarde',
+      cajero: 'tarde@pos.local',
+    });
   });
 
   it('excluye la cuenta si el pago final ocurrio fuera del rango solicitado', async () => {
     const prisma = {
       factura: {
-        findMany: jest.fn().mockResolvedValue([
-          facturaPagadaParaReporte(
-            new Date('2026-09-01T09:00:00-05:00'),
-            new Date('2026-09-01T17:00:00-05:00'),
-          ),
-        ]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            facturaPagadaParaReporte(
+              new Date('2026-09-01T09:00:00-05:00'),
+              new Date('2026-09-01T17:00:00-05:00'),
+            ),
+          ]),
       },
     } as unknown as PrismaService;
     const servicio = new FacturasService(prisma, {} as BillingConfigService);
 
     await expect(
-      servicio.findCuentasPagadas('2026-09-01T08:00:00-05:00', '2026-09-01T16:00:00-05:00'),
+      servicio.findCuentasPagadas(
+        '2026-09-01T08:00:00-05:00',
+        '2026-09-01T16:00:00-05:00',
+      ),
     ).resolves.toEqual([]);
   });
 });

@@ -209,7 +209,19 @@ describe('Confirmar horario de forma atómica', () => {
 });
 
 describe('Consulta de asistencia por fecha', () => {
-  const findMany = jest.fn().mockResolvedValue([]);
+  const findMany = jest
+    .fn<
+      Promise<unknown[]>,
+      [
+        {
+          where: {
+            [key: string]: unknown;
+            OR: { fecha_entrega_dc: unknown }[];
+          };
+        },
+      ]
+    >()
+    .mockResolvedValue([]);
   const service = new JornadasService(
     { jornada: { findMany } } as unknown as PrismaService,
     {} as NominaConfigService,

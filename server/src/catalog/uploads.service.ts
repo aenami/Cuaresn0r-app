@@ -12,7 +12,7 @@ import { DIR_UPLOADS_PRODUCTOS, PREFIJO_UPLOADS } from '../common/uploads';
 
 // Tamano maximo de negocio. El cliente valida antes; el interceptor tiene un
 // tope duro mayor (proteccion de memoria) y aqui se aplica el limite real.
-export const MAX_BYTES_IMAGEN = 5 * 1024 * 1024;
+const MAX_BYTES_IMAGEN = 5 * 1024 * 1024;
 
 // Forma minima del archivo que entrega multer (memoria). Se define local para
 // no depender de @types/multer.
@@ -27,7 +27,12 @@ export interface ArchivoSubido {
 // ni el mimetype del navegador, ambos falsificables) y devuelve la extension a
 // usar, o null si no es una imagen soportada.
 function detectarExtension(buffer: Buffer): string | null {
-  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+  if (
+    buffer.length >= 3 &&
+    buffer[0] === 0xff &&
+    buffer[1] === 0xd8 &&
+    buffer[2] === 0xff
+  ) {
     return 'jpg';
   }
   if (
@@ -67,7 +72,9 @@ const USA_CLOUDINARY = Boolean(process.env.CLOUDINARY_URL);
 
 @Injectable()
 export class UploadsService {
-  async guardarImagenProducto(archivo: ArchivoSubido | undefined): Promise<{ url: string }> {
+  async guardarImagenProducto(
+    archivo: ArchivoSubido | undefined,
+  ): Promise<{ url: string }> {
     if (!archivo) throw new BadRequestException('No se recibio ningun archivo');
     if (archivo.size > MAX_BYTES_IMAGEN) {
       throw new PayloadTooLargeException('La imagen supera el limite de 5 MB');
@@ -105,7 +112,9 @@ export class UploadsService {
         },
         (error, result) => {
           if (error || !result) {
-            reject(error ?? new Error('Cloudinary no devolvio resultado'));
+            reject(
+              new Error(error?.message ?? 'Cloudinary no devolvio resultado'),
+            );
             return;
           }
           resolve(result.secure_url);

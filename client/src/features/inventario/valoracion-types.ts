@@ -17,7 +17,7 @@ export interface ValoracionConteo {
   motivo?: string
 }
 
-export interface ResumenValoracionMensual {
+interface ResumenValoracionMensual {
   mes: string
   area: 'RESTAURANTE' | 'PANADERIA'
   filas: {

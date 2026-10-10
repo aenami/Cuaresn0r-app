@@ -43,12 +43,12 @@ export function pedidoQuery(idPedido: number) {
 
 // ---- payloads (espejo de CreateComandaDto del backend) ----
 
-export interface PersonalizacionPayload {
+interface PersonalizacionPayload {
   idIngrediente: number
   delta: number
 }
 
-export interface AdicionPayload {
+interface AdicionPayload {
   idProducto: number
   cantidad: number
 }

@@ -33,13 +33,6 @@ export const recetasQuery = queryOptions({
   queryFn: () => api.get<Receta[]>('/recipes?activas=false'),
 })
 
-export function movimientosQuery(idIngrediente: number) {
-  return queryOptions({
-    queryKey: ['inventario', 'ingredientes', idIngrediente, 'movimientos'],
-    queryFn: () => api.get<MovimientoInventario[]>(`/recipes/ingredients/${idIngrediente}/movements`),
-  })
-}
-
 export interface SalidaRestaurante {
   id: string
   tipo: 'PRODUCTO' | 'INGREDIENTE'
@@ -200,15 +193,6 @@ export function useEliminarMetaProduccion() {
   })
 }
 
-export function useCrearConteoInventario() {
-  const invalidar = useInvalidarInventario()
-  return useMutation({
-    mutationFn: (payload: ConteoInventarioPayload) =>
-      api.post<ConteoInventarioDiario>('/recipes/inventory-counts', payload),
-    onSuccess: invalidar,
-  })
-}
-
 export function useFinalizarConteoInventario() {
   const invalidar = useInvalidarInventario()
   return useMutation({
@@ -222,14 +206,6 @@ export function useReabrirConteoInventario() {
   const invalidar = useInvalidarInventario()
   return useMutation({
     mutationFn: (id: number) => api.patch<ConteoInventarioDiario>(`/recipes/inventory-counts/${id}/reopen`),
-    onSuccess: invalidar,
-  })
-}
-
-export function useEliminarConteoInventario() {
-  const invalidar = useInvalidarInventario()
-  return useMutation({
-    mutationFn: (id: number) => api.delete(`/recipes/inventory-counts/${id}`),
     onSuccess: invalidar,
   })
 }

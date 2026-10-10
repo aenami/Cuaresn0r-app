@@ -1,3 +1,4 @@
+import { expect } from '@jest/globals';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePagoNominaDto } from './dto/create-pago-nomina.dto';
@@ -41,7 +42,11 @@ function setup(turno: Record<string, unknown> | null) {
     movimientoCaja: { create: spies.movimientoCreate },
   };
   const prisma = {
-    empleado: { findUnique: jest.fn().mockResolvedValue({ id_empleado: 4, area: 'RESTAURANTE' }) },
+    empleado: {
+      findUnique: jest
+        .fn()
+        .mockResolvedValue({ id_empleado: 4, area: 'RESTAURANTE' }),
+    },
     $transaction: (callback: (cliente: typeof tx) => unknown) => callback(tx),
   } as unknown as PrismaService;
   return { service: new PagosNominaService(prisma), spies };

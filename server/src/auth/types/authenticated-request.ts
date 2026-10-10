@@ -1,4 +1,4 @@
-import { Request } from 'express';
+import type { Request } from 'express';
 import { AuthTokenPayload } from '../../common/token/token.service';
 import { AreaNegocio } from '../../generated/prisma/client';
 

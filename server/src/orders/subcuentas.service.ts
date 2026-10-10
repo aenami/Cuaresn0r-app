@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSubcuentaDto } from './dto/create-subcuenta.dto';
 import { RepartoDto } from './dto/split-item.dto';
@@ -8,10 +14,17 @@ export class SubcuentasService {
   constructor(private readonly prisma: PrismaService) {}
 
   private async assertPedidoAbierto(idPedido: number) {
-    const pedido = await this.prisma.pedido.findUnique({ where: { id_pedido: idPedido } });
+    const pedido = await this.prisma.pedido.findUnique({
+      where: { id_pedido: idPedido },
+    });
     if (!pedido) throw new NotFoundException('Pedido no encontrado');
-    if (pedido.estado_pedido === 'CERRADO' || pedido.estado_pedido === 'CANCELADO') {
-      throw new ConflictException(`No se pueden modificar subcuentas: el pedido esta ${pedido.estado_pedido}`);
+    if (
+      pedido.estado_pedido === 'CERRADO' ||
+      pedido.estado_pedido === 'CANCELADO'
+    ) {
+      throw new ConflictException(
+        `No se pueden modificar subcuentas: el pedido esta ${pedido.estado_pedido}`,
+      );
     }
     return pedido;
   }
@@ -28,7 +41,10 @@ export class SubcuentasService {
         factura: { estado_factura: { not: 'ANULADA' } },
       },
     });
-    if (factura) throw new ConflictException('El producto ya esta facturado y no se puede mover ni dividir');
+    if (factura)
+      throw new ConflictException(
+        'El producto ya esta facturado y no se puede mover ni dividir',
+      );
   }
 
   async create(idPedido: number, dto: CreateSubcuentaDto) {
@@ -48,7 +64,9 @@ export class SubcuentasService {
         comentarios: {
           include: {
             usuario: { select: { id_usuario: true, email_usuario: true } },
-            usuarioResuelve: { select: { id_usuario: true, email_usuario: true } },
+            usuarioResuelve: {
+              select: { id_usuario: true, email_usuario: true },
+            },
           },
           orderBy: { fecha_comentarioCuenta: 'desc' },
         },
@@ -57,7 +75,12 @@ export class SubcuentasService {
     });
   }
 
-  async crearComentario(idPedido: number, idSubcuenta: number, idUsuario: number, texto: string) {
+  async crearComentario(
+    idPedido: number,
+    idSubcuenta: number,
+    idUsuario: number,
+    texto: string,
+  ) {
     await this.findSubcuentaDelPedido(idPedido, idSubcuenta);
     return this.prisma.comentarioCuenta.create({
       data: {
@@ -65,19 +88,30 @@ export class SubcuentasService {
         id_usuario_comentarioCuenta: idUsuario,
         texto_comentarioCuenta: texto.trim(),
       },
-      include: { usuario: { select: { id_usuario: true, email_usuario: true } } },
+      include: {
+        usuario: { select: { id_usuario: true, email_usuario: true } },
+      },
     });
   }
 
-  async resolverComentario(idPedido: number, idSubcuenta: number, idComentario: number, idUsuario: number) {
+  async resolverComentario(
+    idPedido: number,
+    idSubcuenta: number,
+    idComentario: number,
+    idUsuario: number,
+  ) {
     await this.findSubcuentaDelPedido(idPedido, idSubcuenta);
     const comentario = await this.prisma.comentarioCuenta.findUnique({
       where: { id_comentarioCuenta: idComentario },
     });
-    if (!comentario || comentario.id_subcuenta_comentarioCuenta !== idSubcuenta) {
+    if (
+      !comentario ||
+      comentario.id_subcuenta_comentarioCuenta !== idSubcuenta
+    ) {
       throw new NotFoundException('Comentario no encontrado en esta cuenta');
     }
-    if (comentario.comentario_resuelto) throw new ConflictException('El comentario ya esta resuelto');
+    if (comentario.comentario_resuelto)
+      throw new ConflictException('El comentario ya esta resuelto');
 
     return this.prisma.comentarioCuenta.update({
       where: { id_comentarioCuenta: idComentario },
@@ -94,15 +128,23 @@ export class SubcuentasService {
   }
 
   private async findItemDelPedido(idPedido: number, idItem: number) {
-    const item = await this.prisma.detalleComanda.findUnique({ where: { id_detalleComanda: idItem }, include: { comanda: true } });
-    if (!item || item.comanda.id_pedido_comanda !== idPedido) throw new NotFoundException('Item no encontrado en este pedido');
+    const item = await this.prisma.detalleComanda.findUnique({
+      where: { id_detalleComanda: idItem },
+      include: { comanda: true },
+    });
+    if (!item || item.comanda.id_pedido_comanda !== idPedido)
+      throw new NotFoundException('Item no encontrado en este pedido');
     return item;
   }
 
   private async findSubcuentaDelPedido(idPedido: number, idSubcuenta: number) {
-    const subcuenta = await this.prisma.subcuenta.findUnique({ where: { id_subcuenta: idSubcuenta } });
+    const subcuenta = await this.prisma.subcuenta.findUnique({
+      where: { id_subcuenta: idSubcuenta },
+    });
     if (!subcuenta || subcuenta.id_pedido_subcuenta !== idPedido) {
-      throw new UnprocessableEntityException(`La subcuenta ${idSubcuenta} no pertenece a este pedido`);
+      throw new UnprocessableEntityException(
+        `La subcuenta ${idSubcuenta} no pertenece a este pedido`,
+      );
     }
     return subcuenta;
   }
@@ -110,8 +152,12 @@ export class SubcuentasService {
   // Reasignacion directa (todo el item a una sola subcuenta). Valida en
   // cualquier momento sin importar estado_dc (seccion 5), excepto si origen
   // o destino ya estan facturados.
-  async reasignar(idPedido: number, idItem: number, idSubcuentaDestino: number) {
-    const item = await this.findItemDelPedido(idPedido, idItem);
+  async reasignar(
+    idPedido: number,
+    idItem: number,
+    idSubcuentaDestino: number,
+  ) {
+    await this.findItemDelPedido(idPedido, idItem);
     await this.findSubcuentaDelPedido(idPedido, idSubcuentaDestino);
 
     await this.assertItemNoFacturado(idItem);
@@ -133,16 +179,20 @@ export class SubcuentasService {
   // SubcuentaDetalleComanda en vez de partir el DetalleComanda (seccion 5).
   // Exclusion mutua con id_subcuenta_dc directo: nunca ambos a la vez.
   async repartir(idPedido: number, idItem: number, reparto: RepartoDto[]) {
-    const item = await this.findItemDelPedido(idPedido, idItem);
+    await this.findItemDelPedido(idPedido, idItem);
 
     const suma = reparto.reduce((acc, r) => acc + r.proporcion, 0);
     if (Math.abs(suma - 1) > 0.0001) {
-      throw new BadRequestException('Las proporciones del reparto deben sumar exactamente 1.0');
+      throw new BadRequestException(
+        'Las proporciones del reparto deben sumar exactamente 1.0',
+      );
     }
 
     const idsSubcuentas = reparto.map((r) => r.idSubcuenta);
     if (new Set(idsSubcuentas).size !== idsSubcuentas.length) {
-      throw new BadRequestException('No se puede repartir dos veces hacia la misma subcuenta');
+      throw new BadRequestException(
+        'No se puede repartir dos veces hacia la misma subcuenta',
+      );
     }
     for (const idSubcuenta of idsSubcuentas) {
       await this.findSubcuentaDelPedido(idPedido, idSubcuenta);
@@ -150,8 +200,13 @@ export class SubcuentasService {
     await this.assertItemNoFacturado(idItem);
 
     return this.prisma.$transaction(async (tx) => {
-      await tx.detalleComanda.update({ where: { id_detalleComanda: idItem }, data: { id_subcuenta_dc: null } });
-      await tx.subcuentaDetalleComanda.deleteMany({ where: { id_detalleComanda_sdc: idItem } });
+      await tx.detalleComanda.update({
+        where: { id_detalleComanda: idItem },
+        data: { id_subcuenta_dc: null },
+      });
+      await tx.subcuentaDetalleComanda.deleteMany({
+        where: { id_detalleComanda_sdc: idItem },
+      });
       await tx.subcuentaDetalleComanda.createMany({
         data: reparto.map((r) => ({
           id_detalleComanda_sdc: idItem,

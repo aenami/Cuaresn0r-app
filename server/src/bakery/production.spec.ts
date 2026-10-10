@@ -1,3 +1,4 @@
+import { expect } from '@jest/globals';
 import {
   BadRequestException,
   ConflictException,
@@ -141,12 +142,15 @@ describe('hojas de produccion de panaderia', () => {
     const { service, tx, bakery } = sheetFixture();
     await service.agregar(7, 'PANADERO', entradaDto);
     expect(bakery.registrarProduccionEnTransaccion).toHaveBeenCalledWith(
-      tx,
+      expect.anything(),
       4,
       7,
       12,
       expect.stringContaining('Hoja #3'),
     );
+    expect(
+      jest.mocked(bakery.registrarProduccionEnTransaccion).mock.calls[0][0],
+    ).toBe(tx);
     expect(tx.entradaHojaProduccion.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         hojaId: 3,
@@ -398,12 +402,10 @@ function inventoryFixture(harina = 20) {
       findUnique: jest.fn().mockResolvedValue({ id: 1, activa: true }),
     },
     recetaPanaderia: {
-      findFirst: jest
-        .fn()
-        .mockResolvedValue({
-          id: 12,
-          detalles: [{ insumoId: 5, cantidadUnidad: decimal(0.5) }],
-        }),
+      findFirst: jest.fn().mockResolvedValue({
+        id: 12,
+        detalles: [{ insumoId: 5, cantidadUnidad: decimal(0.5) }],
+      }),
     },
     movimientoPanaderia: { create: jest.fn().mockResolvedValue({ id: 90 }) },
   };

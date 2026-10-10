@@ -4,7 +4,6 @@ import { OrdersModule } from './orders/orders.module';
 import { AuthModule } from './auth/auth.module';
 import { RecipesModule } from './recipes/recipes.module';
 import { CatalogModule } from './catalog/catalog.module';
-import { SalonModule } from './salon/salon.module';
 import { BillingModule } from './billing/billing.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { PrintingModule } from './printing/printing.module';
@@ -20,7 +19,6 @@ import { BakeryModule } from './bakery/bakery.module';
     AuthModule,
     RecipesModule,
     CatalogModule,
-    SalonModule,
     FichasModule,
     BillingModule,
     BakeryModule,

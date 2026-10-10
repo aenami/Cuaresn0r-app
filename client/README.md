@@ -1,6 +1,6 @@
 # POS — Frontend
 
-Frontend del sistema POS para restaurante. Consume la API del backend NestJS (`../server`).
+Frontend del sistema POS para Panadería y Restaurante. Consume la API del backend NestJS (`../server`) y filtra los módulos según rol y área.
 
 ## Stack
 
@@ -29,6 +29,7 @@ pnpm install
 pnpm dev        # http://localhost:5173 (el backend debe estar en http://localhost:3000)
 pnpm build      # typecheck (tsc -b) + build de produccion
 pnpm lint       # oxlint
+pnpm check:unused # referencias y dependencias sin uso
 ```
 
 La URL del backend se configura en `.env` (ver `.env.example`, variable `VITE_API_URL`).

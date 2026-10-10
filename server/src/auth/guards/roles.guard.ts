@@ -55,7 +55,7 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('Área inválida');
     if (solicitada && !esGlobal(user.rolNombre) && solicitada !== user.area)
       throw new ForbiddenException('No puedes consultar otra área');
-    req.areaSeleccionada = (solicitada as AreaNegocio | undefined) ?? user.area;
+    req.areaSeleccionada = solicitada ?? user.area;
 
     const path = req.path ?? '';
     const lectura = req.method === 'GET';
@@ -83,7 +83,7 @@ export class RolesGuard implements CanActivate {
       esGlobal(user.rolNombre) &&
       (/^\/(orders|billing\/(facturas|pagos))(\/|$)/.test(path) ||
         (!lectura &&
-          /^\/(billing\/(turnos|movimientos)|bakery\/(ventas|transferencias|remisiones)|interarea|payroll\/empleados\/\d+\/pagos)/.test(
+          /^\/(billing\/(turnos|movimientos)|bakery\/(ventas|remisiones)|payroll\/empleados\/\d+\/pagos)/.test(
             path,
           )) ||
         (!lectura && /^\/billing\/cuentas-por-pagar\/\d+\/pagos/.test(path)))

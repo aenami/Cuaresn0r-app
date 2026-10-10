@@ -14,9 +14,11 @@ async function bootstrap() {
   app.enableCors({
     origin: origenesCors ? origenesCors.split(',').map((o) => o.trim()) : true,
   });
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
-  }));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+    }),
+  );
 
   // Imagenes de productos subidas por el usuario, servidas de forma estatica.
   // El middleware estatico corre antes del router de Nest, asi que estas rutas
@@ -26,4 +28,7 @@ async function bootstrap() {
 
   await app.listen(process.env.PORT ?? 3000);
 }
-bootstrap();
+bootstrap().catch((error: unknown) => {
+  console.error('No se pudo iniciar el servidor', error);
+  process.exitCode = 1;
+});

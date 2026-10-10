@@ -1,3 +1,4 @@
+import { expect } from '@jest/globals';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { ItemsService } from './items.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -12,7 +13,7 @@ import { InventoryService } from '../recipes/inventory.service';
 function setup(
   opts: {
     item?: Record<string, unknown> | null;
-    hijos?: { id_detalleComanda: number }[];
+    hijos?: { id_detalleComanda: number; estado_dc?: string }[];
   } = {},
 ) {
   const {

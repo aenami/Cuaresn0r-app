@@ -10,9 +10,9 @@ Cada empleado y usuario local pertenece a una sola área. Un cajero de Panaderí
 | --- | --- | --- |
 | Administrador global (`ADMIN_GLOBAL`; `ADMIN` heredado equivale a global) | Ambas, mediante selector | Conserva inventario, reportes, proveedores, consulta de cierres y remisiones del área seleccionada. No accede a Usuarios, Catálogos, Nómina, Mi nómina ni Impresoras en ninguna área; no administra empleados ni accesos, cobra, factura, paga cuentas o nómina, prepara pedidos ni abre o cierra turnos. |
 | Administrador local (`ADMIN_LOCAL`) | Solo su área | Administra catálogos, empleados, usuarios, proveedores, cajas, nómina y reportes de su área, además de impresoras en Restaurante; también puede operar su caja y los flujos correspondientes a esa área. No concede acceso global ni reasigna a otra área. |
-| Panadero (`PANADERO`) | Panadería | Inventario de ingredientes, recetas, entradas y mermas de insumos, hornadas de Panadería y Pastelería, conteo y recepción de insumos enviados desde Restaurante; Mi nómina. |
+| Panadero (`PANADERO`) | Panadería | Inventario de ingredientes, recetas, entradas y mermas de insumos, hornadas de Panadería y Pastelería, hojas de producción y conteo; Mi nómina. |
 | Cajero (`CAJERO`) | Panadería | Venta de mostrador, entradas y mermas de externos, conteo, proveedores y cuentas, caja, remisiones; Mi nómina. Las hornadas y entradas de ingredientes corresponden al panadero o administrador. |
-| Cajero (`CAJERO`) | Restaurante | Caja y cobro, inventario, impresoras, pedidos, proveedores y cuentas, traslados y pago de remisiones; Mi nómina. |
+| Cajero (`CAJERO`) | Restaurante | Caja y cobro, inventario, impresoras, pedidos, proveedores y cuentas, remisiones y su pago; Mi nómina. |
 | Mesero (`MESERO`) | Restaurante | Pedidos; Mi nómina. |
 | Cocinero (`COCINERO`) | Restaurante | Inventario y pedidos; Mi nómina. |
 
@@ -53,17 +53,17 @@ El catálogo distingue **Panadería · panes**, **Pastelería · postres** y pro
 
 El conteo diario compara inicio del día, entradas, ventas POS, consumo de recetas y demás salidas con la existencia física. La valoración separa ingreso estimado de productos, costo consumido de ingredientes y pérdida por faltantes; no crea ventas, cobros ni ajustes de existencias. Si después del conteo entran o salen artículos, el estado **RECONTAR** excluye sus importes del resumen mensual hasta contar y confirmar otra vez. Reabrir elimina la valoración guardada anterior. Consulta los ejemplos y estados en [Valoración de conteos](VALORACION_CONTEOS.md).
 
-## Entregar Panadería a Restaurante
+## Entregar mercancía entre áreas
 
-El módulo **Remisiones** reúne entregas físicas; cada entrega conserva su propio valor. El formulario trabaja con productos vendibles por piezas (`UNIDADES`) y solicita cantidades enteras. El restaurante debe tener creado el artículo receptor como ingrediente con la **misma unidad** del producto de Panadería. No conviertas unidades al registrar la entrega.
+El módulo **Remisiones** reúne listas de entregas físicas; cada línea conserva cantidad, valor unitario, subtotal y concepto. Panadería entrega productos vendibles al Restaurante; Restaurante entrega únicamente ingredientes con stock a Panadería. El destino debe tener creada la referencia receptora con la **misma unidad**. Los productos por piezas requieren cantidades enteras; los insumos conservan sus unidades y admiten fracciones. No conviertas unidades al registrar la entrega.
 
 1. El cajero o administrador local de Panadería abre su turno y elige cómo agrupar las entregas: una remisión por turno (`TURNO`) o una remisión por día (`DIA`). La primera entrega fija la modalidad de esa fecha; no se permite mezclar ambas en el mismo día de Colombia.
 2. Selecciona el producto activo y vendible de Panadería y el ingrediente receptor de Restaurante de igual unidad. Registra cantidad, valor unitario en COP y concepto. Revisa el subtotal de la línea.
 3. Pulsa **Confirmar entrega** solo cuando la mercancía ya se haya entregado físicamente. Esta acción descuenta la existencia de Panadería y aumenta el stock del ingrediente receptor en Restaurante. No vuelvas a registrarla como recepción o entrada manual.
-4. Repite el registro para las entregas siguientes. La remisión suma sus subtotales; cada línea mantiene cantidad, precio y concepto.
+4. Puedes confirmar varias líneas juntas y añadir nuevas entregas al documento abierto. La remisión suma sus subtotales. Antes de cerrarla puedes corregir cantidad, valor o concepto; el sistema ajusta ambas existencias y conserva auditoría de la corrección.
 5. Cuando todas las entregas del documento estén completas, pulsa **Cerrar remisión**. Una remisión por turno se cierra desde su propio turno. Una diaria se cierra desde un turno de la misma fecha que sea único o tarde-noche; no desde el turno de mañana.
 
-Cerrar la remisión genera una cuenta por pagar del Restaurante al proveedor **Panadería (remisiones)** por el total completo y bloquea nuevas entregas en ese documento. No cierra el turno de caja ni modifica de nuevo el stock. Una remisión diaria cerrada no admite más entregas de esa fecha: completa las entregas antes de cerrarla.
+Cerrar la remisión genera una cuenta por pagar del área receptora a la emisora por el total completo y bloquea nuevas entregas en ese documento. No cierra el turno de caja ni modifica de nuevo el stock. Una remisión diaria cerrada no admite más entregas de esa fecha: completa las entregas antes de cerrarla. Para Restaurante → Panadería aplica el mismo flujo, con Restaurante como emisor.
 
 ## Pagar y confirmar el ingreso
 
@@ -75,7 +75,7 @@ El estado de pago de Restaurante y la confirmación de ingreso de Panadería son
 
 ## Conservar traslados y recepciones anteriores
 
-La sección **Traslados** se retiró por completo de Restaurante. Los documentos anteriores no se borraron: Panadería conserva su historial en **Remisiones → Entradas desde restaurante y traslados anteriores**. No inicies nuevos traslados mediante el flujo antiguo ni recrees sus movimientos como remisiones o entradas manuales. Las remisiones de Panadería hacia Restaurante siguen funcionando por separado.
+Las pantallas y endpoints de traslados y recepciones anteriores se retiraron de ambas áreas. Sus documentos, movimientos y pagos no se borraron: siguen en la base y se consideran en los cálculos históricos de caja e inventario. Ya no pueden completarse mediante el flujo antiguo. No recrees sus movimientos como remisiones o entradas manuales; las nuevas entregas se hacen exclusivamente mediante remisiones.
 
 ## Comprobantes y facturación fiscal
 

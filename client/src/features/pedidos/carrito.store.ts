@@ -16,7 +16,7 @@ export interface PersonalizacionCarrito {
   cantidadReceta: number
 }
 
-export interface ComponenteCarrito {
+interface ComponenteCarrito {
   idProducto: number
   nombre: string
   // Unidades de este producto por unidad de combo (cantidad_detalleCombo).

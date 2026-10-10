@@ -36,7 +36,6 @@ import {
 import type { ArticuloPanaderia, TipoArticulo, UnidadInventario } from './api'
 import { useAuthStore } from '@/stores/auth.store'
 import { esGlobal, puedeEntradaPanaderia } from '@/lib/acceso'
-import { RecepcionesPanaderia } from './recepciones'
 import { ValoracionDelConteo } from '@/features/inventario/valoracion-conteo'
 
 type Operacion = 'entrada' | 'conteo' | 'merma' | 'editar'
@@ -226,7 +225,6 @@ export function InventarioPanaderia({
 
   return (
     <div className="space-y-6">
-      {vista === 'ingredientes' && <RecepcionesPanaderia />}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="font-heading text-xl font-semibold uppercase">

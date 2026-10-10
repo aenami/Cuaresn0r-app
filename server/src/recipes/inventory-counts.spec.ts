@@ -1,3 +1,4 @@
+import { expect } from '@jest/globals';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import {
   EstadoConteoInventario,
@@ -294,7 +295,7 @@ describe('Lista permanente de conteo', () => {
       stock_ingrediente: new Prisma.Decimal(80),
       id_ingrediente: 8,
       unidades_ingrediente: 'kg',
-    } as never);
+    });
     await service.addElement({ tipo: 'INGREDIENTE', idObjetivo: 8 });
     expect(prisma.elementoConteoDiario.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -408,7 +409,7 @@ describe('Lista permanente de conteo', () => {
       .mockResolvedValue(elemento as never);
     spies.ingrediente.mockResolvedValue({
       stock_ingrediente: new Prisma.Decimal(99),
-    } as never);
+    });
     const crear = jest.spyOn(service, 'create').mockResolvedValue({} as never);
     jest.spyOn(service, 'findAll').mockResolvedValue([]);
     await service.prepare('2026-09-20', 2);
@@ -544,7 +545,9 @@ describe('InventoryCountsService', () => {
       valoracion: null,
     };
     const { service, spies, prisma, tx } = setup();
-    jest.spyOn(prisma.conteoInventarioDiario, 'findMany').mockResolvedValue([historico] as never);
+    jest
+      .spyOn(prisma.conteoInventarioDiario, 'findMany')
+      .mockResolvedValue([historico] as never);
     Object.assign(prisma, {
       detalleComanda: tx.detalleComanda,
       transferenciaRestaurantePanaderia: tx.transferenciaRestaurantePanaderia,
@@ -554,9 +557,13 @@ describe('InventoryCountsService', () => {
       detalleCuentaPorPagar: tx.detalleCuentaPorPagar,
     });
     const filas = await service.findAll('2026-09-13');
-    expect(filas).toEqual([expect.objectContaining({ id_conteoInventario: 19 })]);
+    expect(filas).toEqual([
+      expect.objectContaining({ id_conteoInventario: 19 }),
+    ]);
     expect(prisma.conteoInventarioDiario.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { fecha_conteoInventario: new Date('2026-09-13') } }),
+      expect.objectContaining({
+        where: { fecha_conteoInventario: new Date('2026-09-13') },
+      }),
     );
     expect(spies.crear).not.toHaveBeenCalled();
   });
@@ -565,12 +572,17 @@ describe('InventoryCountsService', () => {
     'no crea conteos fuera del dia actual: %s',
     async (fecha) => {
       const { service, spies } = setup();
-      await expect(service.create({
-        fecha,
-        tipo: TipoObjetivoProduccion.INGREDIENTE,
-        idObjetivo: 8,
-        cantidadInicial: 10,
-      }, 2)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(
+        service.create(
+          {
+            fecha,
+            tipo: TipoObjetivoProduccion.INGREDIENTE,
+            idObjetivo: 8,
+            cantidadInicial: 10,
+          },
+          2,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
       expect(spies.crear).not.toHaveBeenCalled();
     },
   );
@@ -585,7 +597,9 @@ describe('InventoryCountsService', () => {
           estado_conteoInventario: EstadoConteoInventario.PENDIENTE,
         },
       });
-      await expect(service.finalize(4, 5, 2)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.finalize(4, 5, 2)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
       expect(spies.actualizar).not.toHaveBeenCalled();
     },
   );
@@ -600,8 +614,12 @@ describe('InventoryCountsService', () => {
           estado_conteoInventario: EstadoConteoInventario.PENDIENTE,
         },
       });
-      await expect(service.reopen(4)).rejects.toBeInstanceOf(BadRequestException);
-      await expect(service.remove(4)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.reopen(4)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      await expect(service.remove(4)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
       expect(spies.actualizar).not.toHaveBeenCalled();
     },
   );

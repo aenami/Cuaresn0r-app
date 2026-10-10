@@ -1,3 +1,4 @@
+import { expect } from '@jest/globals';
 import { Prisma } from '../generated/prisma/client';
 import {
   BadRequestException,
@@ -321,7 +322,7 @@ describe('conciliacion de inventario de panaderia', () => {
     const contado = await servicio.registrarConteo(1, 2, {
       cantidadFisica: 17,
     });
-    expect(contado.cantidadInicial!.toString()).toBe('17');
+    expect(contado.cantidadInicial.toString()).toBe('17');
     expect(contado.valoracion.perdidaEstimada).toBe('0');
     expect(guardar).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -363,7 +364,7 @@ describe('conciliacion de inventario de panaderia', () => {
     const contado = await servicio.registrarConteo(1, 2, {
       cantidadFisica: 20,
     });
-    expect(contado.cantidadInicial!.toString()).toBe('20');
+    expect(contado.cantidadInicial.toString()).toBe('20');
     expect(contado.valoracion.perdidaEstimada).toBe('0');
   });
 
@@ -411,7 +412,7 @@ describe('conciliacion de inventario de panaderia', () => {
     const contado = await servicio.registrarConteo(1, 2, {
       cantidadFisica: 20,
     });
-    expect(contado.cantidadInicial!.toString()).toBe('20');
+    expect(contado.cantidadInicial.toString()).toBe('20');
     expect(tx.movimientoPanaderia.findMany).toHaveBeenLastCalledWith(
       expect.objectContaining({
         where: {

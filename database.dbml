@@ -1,6 +1,7 @@
 // =============================================================================
 // CorePOS — Esquema de base de datos en DBML (Database Markup Language)
-// Traducido 1:1 desde server/prisma/schema.prisma (PostgreSQL).
+// Diagrama histórico del template; NO representa el esquema vigente completo.
+// Fuente actual: server/prisma/schema.prisma y sus migraciones SQL.
 // Visualizable en https://dbdiagram.io
 //
 // NOTA: los indices unicos PARCIALES (WHERE ...) no son expresables en DBML;

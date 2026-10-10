@@ -16,7 +16,7 @@ export function errorATexto(e: unknown): string {
   return e instanceof ApiError ? e.message : 'Error de conexion'
 }
 
-export function detalleEstaPagado(detalle: DetalleComanda): boolean {
+function detalleEstaPagado(detalle: DetalleComanda): boolean {
   if (Number(detalle.precio_unitario_dc) * detalle.cantidad_producto_dc === 0) return true
   const proporcionPagada = (detalle.facturasDetalle ?? [])
     .filter((registro) => registro.factura.estado_factura === 'PAGADA')

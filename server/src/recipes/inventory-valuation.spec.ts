@@ -257,34 +257,58 @@ describe('Valoración conservadora de conteos', () => {
   });
 
   it('el rango de panadería conserva varias referencias históricas y fracciones sin mezclar ingreso con costo', async () => {
-    const conteos = jest.fn().mockResolvedValue([
-      {
-        articuloId: 1,
-        fecha: new Date('2026-12-31'),
-        fechaRegistro: new Date('2027-01-01T03:00:00Z'),
-        valoracion: referencia(),
-      },
-      {
-        articuloId: 1,
-        fecha: new Date('2027-01-01'),
-        fechaRegistro: new Date('2027-01-02T03:00:00Z'),
-        valoracion: referencia({ precioReferencia: 3000 }),
-      },
-      {
-        articuloId: 2,
-        fecha: new Date('2027-01-01'),
-        fechaRegistro: new Date('2027-01-02T03:00:00Z'),
-        valoracion: referencia({
-          tipoReferencia: 'COSTO_UNITARIO',
-          precioReferencia: '1234.5678',
-          salidaFisica: '1.75',
-          cantidadCorroborada: '1.25',
-          nombre: 'Harina',
-          unidad: 'kg',
-        }),
-      },
-    ]);
-    const movimientos = jest.fn().mockResolvedValue([]);
+    const conteos = jest
+      .fn<
+        Promise<unknown[]>,
+        [
+          {
+            where: {
+              [key: string]: unknown;
+              OR: { fecha_entrega_dc: unknown }[];
+            };
+          },
+        ]
+      >()
+      .mockResolvedValue([
+        {
+          articuloId: 1,
+          fecha: new Date('2026-12-31'),
+          fechaRegistro: new Date('2027-01-01T03:00:00Z'),
+          valoracion: referencia(),
+        },
+        {
+          articuloId: 1,
+          fecha: new Date('2027-01-01'),
+          fechaRegistro: new Date('2027-01-02T03:00:00Z'),
+          valoracion: referencia({ precioReferencia: 3000 }),
+        },
+        {
+          articuloId: 2,
+          fecha: new Date('2027-01-01'),
+          fechaRegistro: new Date('2027-01-02T03:00:00Z'),
+          valoracion: referencia({
+            tipoReferencia: 'COSTO_UNITARIO',
+            precioReferencia: '1234.5678',
+            salidaFisica: '1.75',
+            cantidadCorroborada: '1.25',
+            nombre: 'Harina',
+            unidad: 'kg',
+          }),
+        },
+      ]);
+    const movimientos = jest
+      .fn<
+        Promise<unknown[]>,
+        [
+          {
+            where: {
+              [key: string]: unknown;
+              OR: { fecha_entrega_dc: unknown }[];
+            };
+          },
+        ]
+      >()
+      .mockResolvedValue([]);
     const soloRestaurante = jest.fn();
     const prisma = {
       conteoPanaderia: { findMany: conteos },
@@ -336,18 +360,42 @@ describe('Valoración conservadora de conteos', () => {
       fecha_finalizacion_conteoInventario: new Date('2027-01-01T03:00:00Z'),
       valoracion: referencia(),
     });
-    const conteos = jest.fn().mockResolvedValue([
-      datos(1),
-      { ...datos(2), estado_conteoInventario: 'PENDIENTE' },
-      { ...datos(3), valoracion: null },
-      { ...datos(4), valoracion: referencia({ precioReferencia: null }) },
-      {
-        ...datos(5),
-        fecha_anterior_conteoInventario: new Date('2026-12-29'),
-      },
-      datos(6),
-    ]);
-    const movimientos = jest.fn().mockResolvedValue([]);
+    const conteos = jest
+      .fn<
+        Promise<unknown[]>,
+        [
+          {
+            where: {
+              [key: string]: unknown;
+              OR: { fecha_entrega_dc: unknown }[];
+            };
+          },
+        ]
+      >()
+      .mockResolvedValue([
+        datos(1),
+        { ...datos(2), estado_conteoInventario: 'PENDIENTE' },
+        { ...datos(3), valoracion: null },
+        { ...datos(4), valoracion: referencia({ precioReferencia: null }) },
+        {
+          ...datos(5),
+          fecha_anterior_conteoInventario: new Date('2026-12-29'),
+        },
+        datos(6),
+      ]);
+    const movimientos = jest
+      .fn<
+        Promise<unknown[]>,
+        [
+          {
+            where: {
+              [key: string]: unknown;
+              OR: { fecha_entrega_dc: unknown }[];
+            };
+          },
+        ]
+      >()
+      .mockResolvedValue([]);
     const recepciones = jest.fn().mockResolvedValue([
       {
         id_producto_detalleCuenta: 6,
@@ -356,7 +404,19 @@ describe('Valoración conservadora de conteos', () => {
         },
       },
     ]);
-    const detalles = jest.fn().mockResolvedValue([]);
+    const detalles = jest
+      .fn<
+        Promise<unknown[]>,
+        [
+          {
+            where: {
+              [key: string]: unknown;
+              OR: { fecha_entrega_dc: unknown }[];
+            };
+          },
+        ]
+      >()
+      .mockResolvedValue([]);
     const produccion = jest.fn().mockResolvedValue([]);
     const transferencias = jest.fn().mockResolvedValue([]);
     const salidasProductos = jest.fn().mockResolvedValue([]);
@@ -468,7 +528,17 @@ describe('Valoración conservadora de conteos', () => {
       },
     ]);
     const movimientos = jest
-      .fn()
+      .fn<
+        Promise<unknown[]>,
+        [
+          {
+            where: {
+              [key: string]: unknown;
+              OR: { fecha_entrega_dc: unknown }[];
+            };
+          },
+        ]
+      >()
       .mockResolvedValue([
         { articuloId: 2, fecha: new Date('2026-09-02T04:00:00Z') },
       ]);

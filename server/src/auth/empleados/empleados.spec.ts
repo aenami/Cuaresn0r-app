@@ -1,3 +1,4 @@
+import { expect } from '@jest/globals';
 import { ConflictException } from '@nestjs/common';
 import { EmpleadosService } from './empleados.service';
 import { PrismaService } from '../../prisma/prisma.service';

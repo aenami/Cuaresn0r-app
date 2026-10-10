@@ -48,12 +48,6 @@ export const configFacturacionQuery = queryOptions({
   queryFn: () => api.get<ConfiguracionFacturacion>('/billing/config'),
 })
 
-export const configHistorialQuery = queryOptions({
-  queryKey: ['billing', 'config', 'historial'],
-  queryFn: () =>
-    api.get<ConfiguracionFacturacion[]>('/billing/config/historial'),
-})
-
 // Datos del negocio (encabezado de la factura). null si el admin no configuro nada.
 export const negocioConfigQuery = queryOptions({
   queryKey: ['billing', 'negocio'],

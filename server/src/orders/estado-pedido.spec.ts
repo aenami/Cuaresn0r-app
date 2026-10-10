@@ -1,3 +1,4 @@
+import { expect } from '@jest/globals';
 import { Prisma } from '../generated/prisma/client';
 import { recalcularEstadoPedido } from './estado-pedido';
 
@@ -34,13 +35,11 @@ function setup(
   const actualizarComandas = jest.fn().mockResolvedValue({ count: 1 });
   const tx = {
     pedido: {
-      findUniqueOrThrow: jest
-        .fn()
-        .mockResolvedValue({
-          id_pedido: 7,
-          estado_pedido: 'ABIERTO',
-          fecha_cierre_pedido: fechaCierre,
-        }),
+      findUniqueOrThrow: jest.fn().mockResolvedValue({
+        id_pedido: 7,
+        estado_pedido: 'ABIERTO',
+        fecha_cierre_pedido: fechaCierre,
+      }),
       update,
     },
     detalleComanda: { findMany: jest.fn().mockResolvedValue(detalles) },

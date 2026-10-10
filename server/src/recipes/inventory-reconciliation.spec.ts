@@ -31,13 +31,27 @@ function setup(
   traslados: unknown[] = [],
   salidasProductos: unknown[] = [],
 ) {
-  const buscar = jest.fn().mockResolvedValue(detalles);
+  const buscar = jest
+    .fn<
+      Promise<unknown[]>,
+      [
+        {
+          where: {
+            [key: string]: unknown;
+            OR: { fecha_entrega_dc: unknown }[];
+          };
+        },
+      ]
+    >()
+    .mockResolvedValue(detalles);
   const db = {
     detalleComanda: { findMany: buscar },
     transferenciaRestaurantePanaderia: {
       findMany: jest.fn().mockResolvedValue(traslados),
     },
-    salidaProductoRestaurante: { findMany: jest.fn().mockResolvedValue(salidasProductos) },
+    salidaProductoRestaurante: {
+      findMany: jest.fn().mockResolvedValue(salidasProductos),
+    },
     movimientoInventario: { findMany: jest.fn().mockResolvedValue([]) },
     planProduccionDiaria: { findMany: jest.fn().mockResolvedValue([]) },
     detalleCuentaPorPagar: { findMany: jest.fn().mockResolvedValue([]) },
@@ -76,13 +90,17 @@ describe('Conciliación por entregas', () => {
 
   it('reconoce una salida documentada de producto sin convertirla en venta ni faltante', async () => {
     const { db } = setup(
-      [{
-        id_producto_dc: 3,
-        cantidad_producto_dc: 2,
-        fecha_entrega_dc: new Date('2026-09-22T16:00:00Z'),
-        movimientosInventario: [],
-      }],
-      [], [], [],
+      [
+        {
+          id_producto_dc: 3,
+          cantidad_producto_dc: 2,
+          fecha_entrega_dc: new Date('2026-09-22T16:00:00Z'),
+          movimientosInventario: [],
+        },
+      ],
+      [],
+      [],
+      [],
       [{ productoId: 3, cantidad: 1, fecha: new Date('2026-09-22T17:00:00Z') }],
     );
     const salidas = await salidasEntregadas(db, fecha);
@@ -90,21 +108,44 @@ describe('Conciliación por entregas', () => {
     expect(salida.cantidad.toString()).toBe('3');
     expect(salida.cantidadCorroborada?.toString()).toBe('2');
     expect(salida.cantidadJustificada?.toString()).toBe('1');
-    expect(compararConteo(conteo({ cantidad_salida_conteoInventario: new Prisma.Decimal(3) }), salidas))
-      .toMatchObject({ estado: 'COINCIDE', cantidadJustificada: '1', diferencia: '0' });
-    expect(crearValoracion({
-      tipoReferencia: 'PRECIO_VENTA', precioReferencia: 5000, nombre: 'Agua', unidad: 'UNIDADES',
-      salidaFisica: new Prisma.Decimal(3),
-      cantidadCorroborada: salida.cantidadCorroborada!,
-      salidasNoValorables: salida.cantidadJustificada,
-    })).toMatchObject({ ingresoEstimado: '10000', perdidaEstimada: '0' });
+    expect(
+      compararConteo(
+        conteo({ cantidad_salida_conteoInventario: new Prisma.Decimal(3) }),
+        salidas,
+      ),
+    ).toMatchObject({
+      estado: 'COINCIDE',
+      cantidadJustificada: '1',
+      diferencia: '0',
+    });
+    expect(
+      crearValoracion({
+        tipoReferencia: 'PRECIO_VENTA',
+        precioReferencia: 5000,
+        nombre: 'Agua',
+        unidad: 'UNIDADES',
+        salidaFisica: new Prisma.Decimal(3),
+        cantidadCorroborada: salida.cantidadCorroborada!,
+        salidasNoValorables: salida.cantidadJustificada,
+      }),
+    ).toMatchObject({ ingresoEstimado: '10000', perdidaEstimada: '0' });
   });
 
   it('distingue la salida manual de ingrediente de una merma y ambas justifican el conteo', async () => {
     const { db } = setup();
     (db.movimientoInventario.findMany as jest.Mock).mockResolvedValue([
-      { tipo_movimiento: 'SALIDA_MANUAL', id_ingrediente_movimiento: 8, cantidad_movimiento: new Prisma.Decimal('1.5'), fecha_movimiento: new Date('2026-09-22T16:00:00Z') },
-      { tipo_movimiento: 'MERMA', id_ingrediente_movimiento: 8, cantidad_movimiento: new Prisma.Decimal('0.5'), fecha_movimiento: new Date('2026-09-22T16:30:00Z') },
+      {
+        tipo_movimiento: 'SALIDA_MANUAL',
+        id_ingrediente_movimiento: 8,
+        cantidad_movimiento: new Prisma.Decimal('1.5'),
+        fecha_movimiento: new Date('2026-09-22T16:00:00Z'),
+      },
+      {
+        tipo_movimiento: 'MERMA',
+        id_ingrediente_movimiento: 8,
+        cantidad_movimiento: new Prisma.Decimal('0.5'),
+        fecha_movimiento: new Date('2026-09-22T16:30:00Z'),
+      },
     ]);
     const salidas = await salidasEntregadas(db, fecha);
     expect(salidas.get('INGREDIENTE:8')).toMatchObject({
@@ -112,9 +153,17 @@ describe('Conciliación por entregas', () => {
       cantidadJustificada: new Prisma.Decimal('1.5'),
       cantidadMerma: new Prisma.Decimal('0.5'),
     });
-    expect(compararConteo(conteo({ tipo_objetivo_conteoInventario: 'INGREDIENTE', id_producto_conteoInventario: null,
-      id_ingrediente_conteoInventario: 8, cantidad_salida_conteoInventario: new Prisma.Decimal('2') }), salidas))
-      .toMatchObject({ estado: 'COINCIDE', cantidadJustificada: '2' });
+    expect(
+      compararConteo(
+        conteo({
+          tipo_objetivo_conteoInventario: 'INGREDIENTE',
+          id_producto_conteoInventario: null,
+          id_ingrediente_conteoInventario: 8,
+          cantidad_salida_conteoInventario: new Prisma.Decimal('2'),
+        }),
+        salidas,
+      ),
+    ).toMatchObject({ estado: 'COINCIDE', cantidadJustificada: '2' });
   });
 
   it('usa el día colombiano, no UTC ni la zona del servidor', () => {

@@ -43,21 +43,21 @@ function setup(
       id_subcuenta_factura: 7,
       pagos: [],
       ...facturaOverrides,
-    } as FacturaMock),
+    }),
     pagoCreate: jest.fn((args: { data: Record<string, unknown> }) =>
       Promise.resolve({ id_pago: 1, ...args.data }),
     ),
-    turnoUpdate: jest.fn().mockResolvedValue({}),
+    turnoUpdate: jest
+      .fn<Promise<unknown>, [{ data: Record<string, unknown> }]>()
+      .mockResolvedValue({}),
     facturaUpdate: jest.fn().mockResolvedValue({}),
     subFindUnique: jest.fn().mockResolvedValue({ id_pedido_subcuenta: 7 }),
     subFindMany: jest.fn().mockResolvedValue([]), // sin subcuentas con items -> no marca el pedido
-    pedidoFind: jest
-      .fn()
-      .mockResolvedValue({
-        id_pedido: 7,
-        estado_pedido: 'EN_PREPARACION',
-        fecha_cierre_pedido: null,
-      }),
+    pedidoFind: jest.fn().mockResolvedValue({
+      id_pedido: 7,
+      estado_pedido: 'EN_PREPARACION',
+      fecha_cierre_pedido: null,
+    }),
     pedidoUpdate: jest.fn().mockResolvedValue({}),
     dcFindMany: jest.fn().mockResolvedValue([]),
     comandaFindMany: jest.fn().mockResolvedValue([]),

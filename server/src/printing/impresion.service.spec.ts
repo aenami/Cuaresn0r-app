@@ -1,3 +1,4 @@
+import { expect } from '@jest/globals';
 import { ImpresionService } from './impresion.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketBuilderService } from './ticket-builder.service';

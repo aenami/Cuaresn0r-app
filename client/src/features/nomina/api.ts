@@ -64,13 +64,6 @@ export function tarifasEmpleadoQuery(idEmpleado: number) {
   })
 }
 
-export function conceptosEmpleadoQuery(idEmpleado: number) {
-  return queryOptions({
-    queryKey: ['nomina', 'conceptos-empleado', idEmpleado],
-    queryFn: () => api.get<ConceptoNominaEmpleado[]>(`/payroll/empleados/${idEmpleado}/conceptos`),
-  })
-}
-
 // ---- autoservicio: mi propia nomina (cualquier rol; solo lectura) ----
 
 // El empleado sale del JWT en el backend, no de un parametro: cada usuario ve

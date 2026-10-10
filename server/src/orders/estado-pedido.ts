@@ -10,7 +10,7 @@ type DetalleConFacturacion = {
   }>;
 };
 
-export function detalleEstaPagado(detalle: DetalleConFacturacion): boolean {
+function detalleEstaPagado(detalle: DetalleConFacturacion): boolean {
   if (detalle.precio_unitario_dc.times(detalle.cantidad_producto_dc).isZero())
     return true;
 

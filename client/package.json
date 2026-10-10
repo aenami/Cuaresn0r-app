@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "check:unused": "knip",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -41,6 +42,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.2.0",
     "oxlint": "^1.71.0",
+    "knip": "6.41.0",
     "typescript": "~6.0.2",
     "vite": "^7.3.6"
   },

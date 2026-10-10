@@ -8,6 +8,7 @@ import {
   fechaColombia,
   rangoDia,
   salidasEntregadasEnRango,
+  type Salida,
 } from './inventory-reconciliation';
 import { leerValoracion, ValoracionConteo } from './inventory-valuation';
 
@@ -265,7 +266,7 @@ export class InventoryValuationService {
         const dia = c.fecha_conteoInventario.toISOString().slice(0, 10);
         const conciliacion = compararConteo(
           c,
-          salidas.get(dia) ?? new Map(),
+          salidas.get(dia) ?? new Map<string, Salida>(),
           actividad.get(dia),
         );
         const exclusion =

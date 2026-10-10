@@ -1,3 +1,4 @@
+import { expect } from '@jest/globals';
 import { BadRequestException } from '@nestjs/common';
 import { BakeryController } from './bakery.controller';
 import { BakeryService } from './bakery.service';
@@ -10,10 +11,10 @@ describe('Cuentas cobradas de panadería', () => {
   } as unknown as BakeryService);
   beforeEach(() => jest.clearAllMocks());
 
-  it('acepta fecha y turno opcionales', () => {
-    controller.listarVentas('12', '2026-10-09');
+  it('acepta fecha y turno opcionales', async () => {
+    await controller.listarVentas('12', '2026-10-09');
     expect(listarVentas).toHaveBeenCalledWith(12, '2026-10-09');
-    controller.listarVentas();
+    await controller.listarVentas();
     expect(listarVentas).toHaveBeenLastCalledWith(undefined, undefined);
   });
   it.each(['2026-02-30', '2026-2-01', '', 'no-fecha'])(
@@ -33,7 +34,18 @@ describe('Cuentas cobradas de panadería', () => {
   );
 
   it('consulta el día completo en Colombia sin truncarlo a las últimas 100 ventas', async () => {
-    const findMany = jest.fn().mockResolvedValue([]);
+    const findMany = jest
+      .fn<
+        Promise<unknown[]>,
+        [
+          {
+            where?: unknown;
+            take?: number;
+            include: { turno: { select: { usuario?: unknown } } };
+          },
+        ]
+      >()
+      .mockResolvedValue([]);
     const service = new BakeryService({
       ventaPanaderia: { findMany },
     } as unknown as PrismaService);

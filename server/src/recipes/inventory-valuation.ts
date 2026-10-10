@@ -1,6 +1,6 @@
 import { Prisma } from '../generated/prisma/client';
 
-export type EstadoValoracion =
+type EstadoValoracion =
   | 'VALIDA'
   | 'NO_COMPARABLE'
   | 'SIN_REFERENCIA'

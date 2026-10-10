@@ -59,7 +59,7 @@ describe('RolesGuard matriz de acceso', () => {
     const reflector = {
       getAllAndOverride: (key: string) =>
         key === ROLES_KEY ? roles : key === AREA_KEY ? areaRuta : undefined,
-    } as Reflector;
+    } as unknown as Reflector;
     const contexto = {
       getHandler: () => ({}),
       getClass: () => ({}),
@@ -77,7 +77,7 @@ describe('RolesGuard matriz de acceso', () => {
     ['/bakery/remisiones/entregas', 'POST'],
     ['/billing/cuentas-por-pagar/1/pagos', 'POST'],
     ['/payroll/empleados/1/pagos', 'POST'],
-    ['/interarea/restaurante-panaderia/1/pagar', 'POST'],
+    ['/bakery/remisiones/1/confirmar-ingreso', 'POST'],
   ])('el global no puede operar %s %s', (path, method) => {
     expect(
       solicitud('ADMIN_GLOBAL', 'RESTAURANTE', path, method, [

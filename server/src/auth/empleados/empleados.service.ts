@@ -6,8 +6,13 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateEmpleadoDto } from './dto/create-empleado.dto';
 import { UpdateEmpleadoDto } from './dto/update-empleado.dto';
-import { EstadoEmpleado, Prisma } from '../../generated/prisma/client';
-import { accessContext, areaActual, esGlobal, exigirArea } from '../access-context';
+import { EstadoEmpleado } from '../../generated/prisma/client';
+import {
+  accessContext,
+  areaActual,
+  esGlobal,
+  exigirArea,
+} from '../access-context';
 
 @Injectable()
 export class EmpleadosService {
@@ -81,7 +86,10 @@ export class EmpleadosService {
       // esta ACTIVO, desactivarlo revocaria su acceso de inmediato.
       if (empleado.estado_empleado === 'ACTIVO') {
         const usuarioAdmin = await tx.usuario.findFirst({
-          where: { id_empleado_usuario: id, rol: { nombre_rol: { in: ['ADMIN_GLOBAL', 'ADMIN'] } } },
+          where: {
+            id_empleado_usuario: id,
+            rol: { nombre_rol: { in: ['ADMIN_GLOBAL', 'ADMIN'] } },
+          },
           select: { id_usuario: true },
         });
         if (usuarioAdmin) {
@@ -120,7 +128,15 @@ export class EmpleadosService {
   private async exigirGestionPermitida(id: number) {
     const actor = accessContext.getStore()?.user;
     if (!actor || esGlobal(actor.rolNombre)) return;
-    const global = await this.prisma.usuario.findFirst({ where: { id_empleado_usuario: id, rol: { nombre_rol: { in: ['ADMIN_GLOBAL', 'ADMIN'] } } } });
-    if (global) throw new ConflictException('Solo el administrador global puede gestionar al personal con acceso global');
+    const global = await this.prisma.usuario.findFirst({
+      where: {
+        id_empleado_usuario: id,
+        rol: { nombre_rol: { in: ['ADMIN_GLOBAL', 'ADMIN'] } },
+      },
+    });
+    if (global)
+      throw new ConflictException(
+        'Solo el administrador global puede gestionar al personal con acceso global',
+      );
   }
 }

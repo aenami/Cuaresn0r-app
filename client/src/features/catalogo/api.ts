@@ -147,7 +147,7 @@ export function useActualizarProducto() {
 
 // Sube una imagen de producto y devuelve su ruta relativa (`/uploads/...`),
 // que luego se guarda en el campo `image` del producto.
-export function subirImagenProducto(file: File) {
+function subirImagenProducto(file: File) {
   const fd = new FormData()
   fd.append('file', file)
   return api.postForm<{ url: string }>('/catalog/uploads/imagen', fd)

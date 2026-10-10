@@ -26,7 +26,7 @@ import { esGlobal, esAdministrador } from '../auth/access-context';
 
 const BASE_CAJA_COP = new Prisma.Decimal(300_000);
 
-export interface FacturaPendienteCuadre {
+interface FacturaPendienteCuadre {
   idCuenta: number;
   proveedor: string;
   concepto: string;
@@ -247,8 +247,7 @@ export class TurnosService {
             estado_turno: 'CERRADO',
             tipo_turno: tipo,
             ...(inventarioRestaurante && {
-              conteo_inventario_cierre_turno:
-                inventarioRestaurante as unknown as Prisma.InputJsonValue,
+              conteo_inventario_cierre_turno: inventarioRestaurante,
             }),
             ...(inventarioPanaderia && {
               conteo_panaderia_cierre_turno:
@@ -260,8 +259,7 @@ export class TurnosService {
             transferencia_real_cierre: dto.transferenciaReal,
             tarjeta_real_cierre: dto.tarjetaReal,
             ...(cuadreInventario && {
-              cuadre_inventario_diario:
-                cuadreInventario as unknown as Prisma.InputJsonValue,
+              cuadre_inventario_diario: cuadreInventario,
             }),
             ...(dto.conteo !== undefined && {
               conteo_cierre_turno: dto.conteo,
@@ -928,7 +926,7 @@ export class TurnosService {
             diferencia:
               realCard?.minus(original.tarjeta.esperado).toString() ?? null,
           },
-        } as unknown as Prisma.JsonValue;
+        };
       }
     }
     return {

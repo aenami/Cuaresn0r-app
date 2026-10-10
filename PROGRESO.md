@@ -4,6 +4,26 @@ Este archivo registra el estado funcional y las decisiones tomadas al adaptar el
 template POS al restaurante objetivo. Debe actualizarse junto con cada cambio de
 alcance o feature terminada.
 
+### 2026-10-10 — Limpieza de código obsoleto y controles de calidad
+
+- Autorizado retirar por completo el flujo operativo de traslados antiguos,
+  conservando documentos, movimientos y pagos históricos. Se mantiene su lectura
+  cuando participa en los cálculos de caja e inventario.
+- Retirados módulo de mesas físicas, pantallas y API antiguas de traslados,
+  caja duplicada de Panadería y marcaciones de asistencia en vivo. Permanecen
+  pedidos por fichas, caja compartida, remisiones y horarios completos.
+- Eliminados 19 archivos sin uso y referencias huérfanas; retirada de cuatro
+  dependencias de desarrollo del servidor. Sin cambios de esquema ni migraciones.
+- Agregado `check:unused` en ambas aplicaciones. Reparado ESLint del servidor,
+  revisión sin escrituras y con cero advertencias; TypeScript exige variables
+  y parámetros usados. Corregidos tipos de pruebas y validaciones numéricas.
+- Informe y límites de revisión en `docs/REVISION_CODIGO.md`; instrucciones
+  actualizadas en los README y guía de roles. El DBML se identifica como histórico.
+- Verificación: 34 suites/475 pruebas unitarias y 12 e2e; builds, tipos, lint
+  y detección de código sin uso de ambas aplicaciones. Veinte comprobaciones de
+  integración en PostgreSQL local con rollback, sin datos de prueba persistidos.
+- La prueba física de impresoras sigue pendiente; no se publicaron estos cambios.
+
 ### 2026-10-10 — Entregas individuales, stock compartido y cuadres diarios
 
 - Reglas confirmadas: descuadre físico diario de todos los productos de Panadería,

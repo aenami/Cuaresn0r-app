@@ -25,7 +25,9 @@ export const COMANDA_PARA_IMPRESION = {
   },
 } satisfies Prisma.ComandaInclude;
 
-export type ComandaParaImpresion = Prisma.ComandaGetPayload<{ include: typeof COMANDA_PARA_IMPRESION }>;
+export type ComandaParaImpresion = Prisma.ComandaGetPayload<{
+  include: typeof COMANDA_PARA_IMPRESION;
+}>;
 type DetalleImpresion = ComandaParaImpresion['detalles'][number];
 type HijoImpresion = DetalleImpresion['hijos'][number];
 
@@ -40,7 +42,9 @@ export const FACTURA_PARA_IMPRESION = {
           usuario: {
             select: {
               email_usuario: true,
-              empleado: { select: { nombre_empleado: true, apellido_empleado: true } },
+              empleado: {
+                select: { nombre_empleado: true, apellido_empleado: true },
+              },
             },
           },
         },
@@ -74,7 +78,9 @@ export const FACTURA_PARA_IMPRESION = {
   },
 } satisfies Prisma.FacturaInclude;
 
-export type FacturaParaImpresion = Prisma.FacturaGetPayload<{ include: typeof FACTURA_PARA_IMPRESION }>;
+export type FacturaParaImpresion = Prisma.FacturaGetPayload<{
+  include: typeof FACTURA_PARA_IMPRESION;
+}>;
 type ItemFactura = FacturaParaImpresion['detalles'][number];
 
 // Datos del negocio para el encabezado (subconjunto de ConfiguracionNegocio).
@@ -92,24 +98,32 @@ const ETIQUETA_METODO_PAGO: Record<string, string> = {
 };
 
 // El destino de un detalle lo dicta la categoria de SU producto.
-export function destinoDeDetalle(detalle: { producto?: { categoria?: { destino_categoria: DestinoImpresion } | null } | null }): DestinoImpresion {
+function destinoDeDetalle(detalle: {
+  producto?: {
+    categoria?: { destino_categoria: DestinoImpresion } | null;
+  } | null;
+}): DestinoImpresion {
   return detalle.producto?.categoria?.destino_categoria ?? 'COCINA';
 }
 
 // Un ticket por destino solo tiene sentido si algun detalle apunta ahi.
-export function destinosDeComanda(comanda: ComandaParaImpresion): DestinoImpresion[] {
+export function destinosDeComanda(
+  comanda: ComandaParaImpresion,
+): DestinoImpresion[] {
   const destinos = new Set<DestinoImpresion>();
   for (const detalle of comanda.detalles) {
     if (detalle.estado_dc === 'CANCELADO') continue;
     if (detalle.id_detalleComandaPadre_dc !== null) continue; // los hijos se evaluan via su padre
     if (detalle.id_combo_dc !== null) {
       for (const hijo of detalle.hijos) {
-        if (hijo.estado_dc !== 'CANCELADO') destinos.add(destinoDeDetalle(hijo));
+        if (hijo.estado_dc !== 'CANCELADO')
+          destinos.add(destinoDeDetalle(hijo));
       }
     } else {
       destinos.add(destinoDeDetalle(detalle));
       for (const hijo of detalle.hijos) {
-        if (hijo.estado_dc !== 'CANCELADO') destinos.add(destinoDeDetalle(hijo));
+        if (hijo.estado_dc !== 'CANCELADO')
+          destinos.add(destinoDeDetalle(hijo));
       }
     }
   }
@@ -163,7 +177,11 @@ export class TicketBuilderService {
     return t.build();
   }
 
-  armarTicketPrueba(nombreImpresora: string, destino: DestinoImpresion, anchoPapelMm: number): Buffer {
+  armarTicketPrueba(
+    nombreImpresora: string,
+    destino: DestinoImpresion,
+    anchoPapelMm: number,
+  ): Buffer {
     const t = new EscPosBuilder(columnasPorAncho(anchoPapelMm));
     t.centrar().tamanoDoble(true).negrita(true).texto('PRUEBA DE IMPRESION');
     t.tamanoDoble(false).negrita(false);
@@ -195,15 +213,22 @@ export class TicketBuilderService {
     if (negocio?.telefono_negocio) t.texto(`Tel: ${negocio.telefono_negocio}`);
 
     t.izquierda().separador();
-    t.negrita(true).texto(`FACTURA DE VENTA No. ${factura.id_factura}`).negrita(false);
+    t.negrita(true)
+      .texto(`FACTURA DE VENTA No. ${factura.id_factura}`)
+      .negrita(false);
     t.texto(this.formatearFecha(factura.fecha_emision_factura));
     if (pedido.tipo_pedido === 'LOCAL') {
-      t.texto(pedido.ficha ? `Ficha ${pedido.ficha.numero_ficha}` : 'Sin ficha');
+      t.texto(
+        pedido.ficha ? `Ficha ${pedido.ficha.numero_ficha}` : 'Sin ficha',
+      );
     } else {
       t.texto('DOMICILIO');
-      if (pedido.nombre_cliente_pedido) t.texto(`Cliente: ${pedido.nombre_cliente_pedido}`);
-      if (pedido.telefono_cliente_pedido) t.texto(`Tel: ${pedido.telefono_cliente_pedido}`);
-      if (pedido.direccion_cliente_pedido) t.textoEnvuelto(`Dir: ${pedido.direccion_cliente_pedido}`);
+      if (pedido.nombre_cliente_pedido)
+        t.texto(`Cliente: ${pedido.nombre_cliente_pedido}`);
+      if (pedido.telefono_cliente_pedido)
+        t.texto(`Tel: ${pedido.telefono_cliente_pedido}`);
+      if (pedido.direccion_cliente_pedido)
+        t.textoEnvuelto(`Dir: ${pedido.direccion_cliente_pedido}`);
     }
     if (cajero) t.texto(`Cajero: ${cajero}`);
 
@@ -219,7 +244,11 @@ export class TicketBuilderService {
       this.lineaDoble(t, 'Propina', this.monto(factura.monto_servicio_factura));
     }
     if (!factura.monto_impuestos_factura.isZero()) {
-      this.lineaDoble(t, 'Impuestos', this.monto(factura.monto_impuestos_factura));
+      this.lineaDoble(
+        t,
+        'Impuestos',
+        this.monto(factura.monto_impuestos_factura),
+      );
     }
     t.negrita(true);
     this.lineaDoble(t, 'TOTAL', this.monto(factura.monto_total_factura));
@@ -228,12 +257,19 @@ export class TicketBuilderService {
     // Pagos.
     t.separador();
     for (const p of factura.pagos) {
-      this.lineaDoble(t, ETIQUETA_METODO_PAGO[p.metodo_pago] ?? p.metodo_pago, this.monto(p.monto_total_pago));
+      this.lineaDoble(
+        t,
+        ETIQUETA_METODO_PAGO[p.metodo_pago] ?? p.metodo_pago,
+        this.monto(p.monto_total_pago),
+      );
     }
     // Excedente voluntario ("quedese con el vuelto"): se muestra aparte del total.
     for (const p of factura.pagos) {
       if (p.monto_excedente_pago.greaterThan(0)) {
-        const etiqueta = p.destino_excedente_pago === 'PROPINA' ? 'Propina adicional' : 'Excedente';
+        const etiqueta =
+          p.destino_excedente_pago === 'PROPINA'
+            ? 'Propina adicional'
+            : 'Excedente';
         this.lineaDoble(t, etiqueta, this.monto(p.monto_excedente_pago));
       }
     }
@@ -246,10 +282,21 @@ export class TicketBuilderService {
 
   private lineaItemFactura(t: EscPosBuilder, item: ItemFactura) {
     const detalle = item.detalleComanda;
-    const nombre = detalle.producto?.nombre_producto ?? detalle.combo?.nombre_combo ?? 'Item';
-    const cantidad = new Prisma.Decimal(detalle.cantidad_producto_dc).times(item.proporcion_facturada_fd);
-    const cantidadTexto = cantidad.isInteger() ? cantidad.toFixed(0) : cantidad.toFixed(2);
-    this.lineaDoble(t, `${cantidadTexto} x ${nombre}`, this.monto(item.subtotal_facturado_fd));
+    const nombre =
+      detalle.producto?.nombre_producto ??
+      detalle.combo?.nombre_combo ??
+      'Item';
+    const cantidad = new Prisma.Decimal(detalle.cantidad_producto_dc).times(
+      item.proporcion_facturada_fd,
+    );
+    const cantidadTexto = cantidad.isInteger()
+      ? cantidad.toFixed(0)
+      : cantidad.toFixed(2);
+    this.lineaDoble(
+      t,
+      `${cantidadTexto} x ${nombre}`,
+      this.monto(item.subtotal_facturado_fd),
+    );
   }
 
   // Linea de dos columnas: etiqueta a la izquierda, valor pegado a la derecha.
@@ -271,15 +318,23 @@ export class TicketBuilderService {
 
   // Producto directo: se imprime completo en su destino; sus adiciones van
   // cada una al destino de SU categoria (si difiere, con linea de contexto).
-  private bloqueProducto(t: EscPosBuilder, detalle: DetalleImpresion, destino: DestinoImpresion) {
+  private bloqueProducto(
+    t: EscPosBuilder,
+    detalle: DetalleImpresion,
+    destino: DestinoImpresion,
+  ) {
     const nombre = detalle.producto?.nombre_producto ?? 'Producto';
-    const hijosAqui = detalle.hijos.filter((h) => h.estado_dc !== 'CANCELADO' && destinoDeDetalle(h) === destino);
+    const hijosAqui = detalle.hijos.filter(
+      (h) => h.estado_dc !== 'CANCELADO' && destinoDeDetalle(h) === destino,
+    );
     const propio = destinoDeDetalle(detalle) === destino;
 
     if (!propio && hijosAqui.length === 0) return;
 
     if (propio) {
-      t.negrita(true).textoEnvuelto(`${detalle.cantidad_producto_dc} x ${nombre}`).negrita(false);
+      t.negrita(true)
+        .textoEnvuelto(`${detalle.cantidad_producto_dc} x ${nombre}`)
+        .negrita(false);
       this.lineasPersonalizaciones(t, detalle);
       this.lineaIndicaciones(t, detalle.indicaciones_dc);
     } else {
@@ -294,12 +349,20 @@ export class TicketBuilderService {
 
   // Combo: en cada destino se imprime el nombre del combo como agrupador y
   // debajo SOLO los componentes/adiciones que se preparan ahi.
-  private bloqueCombo(t: EscPosBuilder, detalle: DetalleImpresion, destino: DestinoImpresion) {
-    const hijosAqui = detalle.hijos.filter((h) => h.estado_dc !== 'CANCELADO' && destinoDeDetalle(h) === destino);
+  private bloqueCombo(
+    t: EscPosBuilder,
+    detalle: DetalleImpresion,
+    destino: DestinoImpresion,
+  ) {
+    const hijosAqui = detalle.hijos.filter(
+      (h) => h.estado_dc !== 'CANCELADO' && destinoDeDetalle(h) === destino,
+    );
     if (hijosAqui.length === 0) return;
 
     const nombre = detalle.combo?.nombre_combo ?? 'Combo';
-    t.negrita(true).textoEnvuelto(`${detalle.cantidad_producto_dc} x ${nombre}`).negrita(false);
+    t.negrita(true)
+      .textoEnvuelto(`${detalle.cantidad_producto_dc} x ${nombre}`)
+      .negrita(false);
     this.lineaIndicaciones(t, detalle.indicaciones_dc);
 
     for (const hijo of hijosAqui) {
@@ -310,25 +373,43 @@ export class TicketBuilderService {
   private bloqueHijo(t: EscPosBuilder, hijo: HijoImpresion) {
     const nombre = hijo.producto?.nombre_producto ?? 'Producto';
     const esAdicion = !hijo.precio_unitario_dc.isZero();
-    t.textoEnvuelto(`  ${esAdicion ? '+ ' : ''}${hijo.cantidad_producto_dc} x ${nombre}`, 4);
+    t.textoEnvuelto(
+      `  ${esAdicion ? '+ ' : ''}${hijo.cantidad_producto_dc} x ${nombre}`,
+      4,
+    );
     this.lineasPersonalizaciones(t, hijo, 4);
     this.lineaIndicaciones(t, hijo.indicaciones_dc, 4);
   }
 
   private lineasPersonalizaciones(
     t: EscPosBuilder,
-    detalle: { ingredientesPersonalizados: { cantidad_delta: Prisma.Decimal; ingrediente: { nombre_ingrediente: string } }[] },
+    detalle: {
+      ingredientesPersonalizados: {
+        cantidad_delta: Prisma.Decimal;
+        ingrediente: { nombre_ingrediente: string };
+      }[];
+    },
     sangriaBase = 2,
   ) {
     for (const p of detalle.ingredientesPersonalizados) {
       const etiqueta = p.cantidad_delta.isNegative() ? 'SIN' : 'EXTRA';
-      t.textoEnvuelto(`${' '.repeat(sangriaBase)}- ${etiqueta} ${p.ingrediente.nombre_ingrediente}`, sangriaBase + 2);
+      t.textoEnvuelto(
+        `${' '.repeat(sangriaBase)}- ${etiqueta} ${p.ingrediente.nombre_ingrediente}`,
+        sangriaBase + 2,
+      );
     }
   }
 
-  private lineaIndicaciones(t: EscPosBuilder, indicaciones: string | null, sangriaBase = 2) {
+  private lineaIndicaciones(
+    t: EscPosBuilder,
+    indicaciones: string | null,
+    sangriaBase = 2,
+  ) {
     if (!indicaciones) return;
-    t.textoEnvuelto(`${' '.repeat(sangriaBase)}>> ${indicaciones}`, sangriaBase + 3);
+    t.textoEnvuelto(
+      `${' '.repeat(sangriaBase)}>> ${indicaciones}`,
+      sangriaBase + 3,
+    );
   }
 
   // El servidor corre en la zona horaria del restaurante (supuesto

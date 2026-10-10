@@ -32,7 +32,7 @@ export interface Producto {
   tipoMenu?: 'EJECUTIVO' | 'BANDEJA' | null
 }
 
-export interface DetalleCombo {
+interface DetalleCombo {
   id_detalleCombo: number
   id_combo_detalleCombo: number
   id_producto_detalleCombo: number
@@ -64,7 +64,7 @@ export interface Ingrediente {
   estado_stock: 'AGOTADO' | 'BAJO' | 'IDEAL' | 'ALTO' | 'SIN_UMBRALES'
 }
 
-export interface DetalleReceta {
+interface DetalleReceta {
   id_detalleReceta: number
   id_receta_detalleReceta: number
   id_ingrediente_detalleReceta: number
@@ -82,7 +82,7 @@ export interface Receta {
   producto?: Producto
 }
 
-export type TipoMovimientoInventario =
+type TipoMovimientoInventario =
   | 'ENTRADA'
   | 'SALIDA_RECETA'
   | 'MERMA'
@@ -137,7 +137,7 @@ export interface PlanProduccionDiaria {
   usuarioResuelve?: UsuarioMetaProduccion | null
 }
 
-export type EstadoConteoInventario = 'PENDIENTE' | 'FINALIZADO'
+type EstadoConteoInventario = 'PENDIENTE' | 'FINALIZADO'
 
 export interface ElementoConteoDiario {
   id: number
@@ -193,33 +193,14 @@ export interface ConteoInventarioDiario {
   usuarioCierra?: UsuarioMetaProduccion | null
 }
 
-// ---- salon ----
-
-export type EstadoMesa = 'LIBRE' | 'RESERVADA' | 'OCUPADA' | 'DESACTIVADA'
-
-export interface Zona {
-  id_zona: number
-  nombre_zona: string
-  identificador_zona: string
-}
-
-export interface Mesa {
-  id_mesa: number
-  numero_mesa: number
-  capacidad_mesa: number | null
-  id_zona_mesa: number
-  estado_mesa: EstadoMesa
-  zona?: Zona
-}
-
 // ---- pedidos y comandas ----
 
 export type EstadoPedido =
   'ABIERTO' | 'EN_PREPARACION' | 'ENTREGADO' | 'CERRADO' | 'CANCELADO'
-export type EstadoDetalleComanda =
+type EstadoDetalleComanda =
   'PENDIENTE' | 'PREPARANDO' | 'ENTREGADO' | 'CANCELADO'
-export type TipoPedido = 'LOCAL' | 'DOMICILIO'
-export type ModalidadCuentaPedido = 'UNICA' | 'POR_CUENTA'
+type TipoPedido = 'LOCAL' | 'DOMICILIO'
+type ModalidadCuentaPedido = 'UNICA' | 'POR_CUENTA'
 
 export interface Ficha {
   id_ficha: number
@@ -229,7 +210,7 @@ export interface Ficha {
   pedidoActivo?: { id_pedido: number; estado_pedido: EstadoPedido } | null
 }
 
-export interface DetalleComandaIngrediente {
+interface DetalleComandaIngrediente {
   id_detalleComandaIngrediente: number
   id_detalleComanda_dci: number
   id_ingrediente_dci: number
@@ -239,7 +220,7 @@ export interface DetalleComandaIngrediente {
 
 // Tabla puente del reparto proporcional de un item compartido. Un item usa
 // asignacion directa (id_subcuenta_dc) O reparto, nunca ambos.
-export interface SubcuentaDetalleComanda {
+interface SubcuentaDetalleComanda {
   id_subcuentaDetalleComanda: number
   id_detalleComanda_sdc: number
   id_subcuenta_sdc: number
@@ -269,7 +250,7 @@ export interface DetalleComanda {
   }[]
 }
 
-export type EstadoImpresion =
+type EstadoImpresion =
   'PENDIENTE' | 'EN_PROCESO' | 'REINTENTO' | 'IMPRESA' | 'FALLIDA'
 
 export interface Impresora {
@@ -347,7 +328,7 @@ export interface Pedido {
 
 export type MetodoPago = 'TARJETA' | 'TRANSFERENCIA' | 'EFECTIVO'
 export type DestinoExcedente = 'CASA' | 'PROPINA'
-export type EstadoFactura = 'EMITIDA' | 'PAGADA' | 'ANULADA'
+type EstadoFactura = 'EMITIDA' | 'PAGADA' | 'ANULADA'
 export type EstadoTurno = 'ABIERTO' | 'CERRADO'
 export type TipoMovimientoCaja = 'INGRESO' | 'EGRESO'
 
@@ -416,7 +397,7 @@ export interface Factura {
   detalles?: FacturaDetalle[]
 }
 
-export interface FacturaDetalle {
+interface FacturaDetalle {
   id_facturaDetalle: number
   id_detalleComanda_fd: number
   proporcion_facturada_fd: string
@@ -519,14 +500,14 @@ export interface CuadreInventarioDiario {
   }[]
 }
 
-export interface PagoPorMetodo {
+interface PagoPorMetodo {
   metodo: MetodoPago
   cantidad: number
   total: string | null
 }
 
 // Un pago individual del turno para el registro de movimientos (ledger).
-export interface PagoLedger {
+interface PagoLedger {
   id_pago: number
   metodo: MetodoPago
   monto: string
@@ -580,7 +561,7 @@ export interface FacturaPendienteCuadre {
   saldoPendiente: string
 }
 
-export interface FacturasPendientesCuadre {
+interface FacturasPendientesCuadre {
   total: string
   cuentas: FacturaPendienteCuadre[]
   historicoDisponible: boolean
@@ -630,7 +611,7 @@ export interface Proveedor {
   proveedor_activo: boolean
 }
 
-export interface DetalleCuentaPorPagar {
+interface DetalleCuentaPorPagar {
   articuloPanaderia?: {
     id: number
     nombre: string
@@ -644,7 +625,7 @@ export interface DetalleCuentaPorPagar {
   producto: Producto | null
 }
 
-export interface PagoCuentaPorPagar {
+interface PagoCuentaPorPagar {
   id_pagoCuentaPorPagar: number
   metodo_pagoCuentaPorPagar: 'EFECTIVO' | 'TRANSFERENCIA'
   monto_pagoCuentaPorPagar: string
@@ -681,7 +662,7 @@ export interface CuentaPorPagar {
 
 // Un item exactamente incluido en una factura. La proporcion y el subtotal se
 // congelan al emitirla, para que las rondas posteriores no alteren el recibo.
-export interface ItemCuentaPagada {
+interface ItemCuentaPagada {
   id: number
   nombre: string
   cantidad: number
@@ -690,7 +671,7 @@ export interface ItemCuentaPagada {
   subtotal: string
 }
 
-export interface PagoCuenta {
+interface PagoCuenta {
   metodo: MetodoPago
   monto: string
   fecha: string
@@ -737,7 +718,7 @@ export interface CuentaPagada {
 // ---- nomina (empleados, jornadas, tarifas, conceptos, devengos, pagos) ----
 
 export type EstadoEmpleado = 'ACTIVO' | 'INACTIVO'
-export type TipoMarcacion = 'ENTRADA' | 'SALIDA'
+type TipoMarcacion = 'ENTRADA' | 'SALIDA'
 export type EstadoJornada = 'ABIERTA' | 'CERRADA'
 export type TipoConceptoNomina = 'INGRESO' | 'DEDUCCION'
 export type UnidadCalculoConceptoNomina = 'DIA_TRABAJADO'
@@ -752,7 +733,7 @@ export interface Empleado {
   estado_empleado: EstadoEmpleado
 }
 
-export interface Marcacion {
+interface Marcacion {
   id_marcacion: number
   id_jornada_marcacion: number
   tipo_marcacion: TipoMarcacion
@@ -760,7 +741,7 @@ export interface Marcacion {
 }
 
 // El horas devengo (por jornada) trae horas/tarifa; los de concepto van en 0.
-export interface DevengoNomina {
+interface DevengoNomina {
   id_devengoNomina: number
   id_empleado_devengoNomina: number
   id_jornada_devengoNomina: number | null
@@ -795,7 +776,7 @@ export interface TarifaEmpleado {
   fecha_inicio_tarifaEmpleado: string
 }
 
-export interface ValorConceptoNomina {
+interface ValorConceptoNomina {
   id_valorConceptoNomina: number
   id_concepto_valorConceptoNomina: number
   monto_valorConceptoNomina: string
@@ -852,7 +833,7 @@ export interface SaldoResumen {
   saldoPendiente: string
 }
 
-export interface PagoNominaDetalle {
+interface PagoNominaDetalle {
   id_pagoNominaDetalle: number
   id_pagoNomina_pnd: number
   id_devengoNomina_pnd: number
@@ -905,7 +886,7 @@ export interface ConfiguracionNomina {
 
 export type MetodoReparto = 'IGUALES' | 'PRESENCIA'
 
-export interface PropinaAsignacion {
+interface PropinaAsignacion {
   idEmpleado: number
   nombre: string
   monto: number

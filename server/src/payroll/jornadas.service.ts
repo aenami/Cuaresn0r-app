@@ -5,20 +5,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  Prisma,
-  EstadoJornada,
-  TipoMarcacion,
-} from '../generated/prisma/client';
+import { Prisma, EstadoJornada } from '../generated/prisma/client';
 import { NominaConfigService } from './nomina-config.service';
-import { MarcarDto } from './dto/marcar.dto';
 import { RegistrarHorarioDto } from './dto/registrar-horario.dto';
 import { validarHorario } from './horario';
-import {
-  fechaLocalSinHora,
-  horasEnFranjaNocturna,
-  tiempoDbAMinutos,
-} from './fechas';
+import { horasEnFranjaNocturna, tiempoDbAMinutos } from './fechas';
 import { areaActual, exigirArea } from '../auth/access-context';
 
 const JORNADA_INCLUDE = {
@@ -46,103 +37,6 @@ export class JornadasService {
     private readonly prisma: PrismaService,
     private readonly nominaConfigService: NominaConfigService,
   ) {}
-
-  // Registra ENTRADA o SALIDA alternando automaticamente; si el empleado no
-  // tiene jornada ABIERTA, la crea (con fecha = dia local de la marcacion).
-  async marcar(dto: MarcarDto) {
-    const empleado = await this.prisma.empleado.findUnique({
-      where: { id_empleado: dto.idEmpleado },
-    });
-    if (!empleado) throw new NotFoundException('Empleado no encontrado');
-    exigirArea(empleado.area);
-    return this.prisma.$transaction(async (tx) => {
-      // Lock del empleado: dos marcaciones simultaneas del mismo empleado
-      // crearian dos jornadas abiertas o romperian la alternancia.
-      const filas = await tx.$queryRaw<
-        { id_empleado: number; estado_empleado: string }[]
-      >`
-        SELECT id_empleado, estado_empleado FROM "Empleado" WHERE id_empleado = ${dto.idEmpleado} FOR UPDATE
-      `;
-      if (!filas[0]) throw new NotFoundException('Empleado no encontrado');
-      if (filas[0].estado_empleado !== 'ACTIVO') {
-        throw new ConflictException(
-          'No se pueden registrar marcaciones de un empleado inactivo',
-        );
-      }
-
-      const instante =
-        dto.fechaHora !== undefined ? new Date(dto.fechaHora) : new Date();
-      if (instante.getTime() > Date.now() + 60_000) {
-        throw new BadRequestException(
-          'La marcacion no puede estar en el futuro',
-        );
-      }
-
-      let jornada = await tx.jornada.findFirst({
-        where: {
-          id_empleado_jornada: dto.idEmpleado,
-          estado_jornada: 'ABIERTA',
-        },
-        include: { marcaciones: { orderBy: { fecha_hora_marcacion: 'asc' } } },
-      });
-
-      let tipo: TipoMarcacion;
-      if (!jornada) {
-        jornada = await tx.jornada.create({
-          data: {
-            id_empleado_jornada: dto.idEmpleado,
-            fecha_jornada: fechaLocalSinHora(instante),
-          },
-          include: { marcaciones: true },
-        });
-        tipo = 'ENTRADA';
-      } else {
-        const ultima = jornada.marcaciones[jornada.marcaciones.length - 1];
-        if (
-          ultima &&
-          instante.getTime() <= ultima.fecha_hora_marcacion.getTime()
-        ) {
-          throw new BadRequestException(
-            `La marcacion debe ser posterior a la ultima registrada (${ultima.fecha_hora_marcacion.toISOString()})`,
-          );
-        }
-        // Alternancia estricta ENTRADA/SALIDA (seccion 11), por construccion.
-        tipo = ultima?.tipo_marcacion === 'ENTRADA' ? 'SALIDA' : 'ENTRADA';
-      }
-
-      const marcacion = await tx.marcacion.create({
-        data: {
-          id_jornada_marcacion: jornada.id_jornada,
-          tipo_marcacion: tipo,
-          fecha_hora_marcacion: instante,
-        },
-      });
-
-      return {
-        marcacion,
-        jornada: await tx.jornada.findUniqueOrThrow({
-          where: { id_jornada: jornada.id_jornada },
-          include: JORNADA_INCLUDE,
-        }),
-      };
-    });
-  }
-
-  // Cierra la jornada y genera los devengos: el de horas trabajadas
-  // (ordinarias + recargo nocturno) y los de conceptos automaticos por dia
-  // trabajado (ej. auxilio de transporte) — todo en una sola transaccion.
-  async cerrar(idJornada: number) {
-    await this.findOne(idJornada);
-    return this.prisma.$transaction(async (tx) => {
-      // Lock: que no entre una marcacion ni otro cierre a mitad de calculo.
-      const filas = await tx.$queryRaw<{ id_jornada: number }[]>`
-        SELECT id_jornada FROM "Jornada" WHERE id_jornada = ${idJornada} FOR UPDATE
-      `;
-      if (!filas[0]) throw new NotFoundException('Jornada no encontrada');
-
-      return this.liquidar(tx, idJornada);
-    });
-  }
 
   private async liquidar(tx: Prisma.TransactionClient, idJornada: number) {
     const jornada = await tx.jornada.findUniqueOrThrow({
@@ -185,7 +79,7 @@ export class JornadasService {
       : 0;
     const finMin = hayRecargo ? tiempoDbAMinutos(config.hora_fin_nocturno!) : 0;
 
-    // Pares (ENTRADA, SALIDA): la alternancia la garantizo marcar().
+    // Pares (ENTRADA, SALIDA) generados desde los tramos de horario validados.
     let horasTotales = 0;
     let horasNocturnas = 0;
     for (let i = 0; i + 1 < marcaciones.length; i += 2) {
@@ -290,70 +184,6 @@ export class JornadasService {
     };
   }
 
-  // Deshace la ultima marcacion de una jornada ABIERTA (el "ctrl+z" del
-  // cajero que marco por error). Si la jornada queda sin marcaciones, se
-  // elimina completa. Una jornada CERRADA se corrige reabriendola primero.
-  async deshacerUltimaMarcacion(idJornada: number) {
-    await this.findOne(idJornada);
-    return this.prisma.$transaction(async (tx) => {
-      const filas = await tx.$queryRaw<{ id_jornada: number }[]>`
-        SELECT id_jornada FROM "Jornada" WHERE id_jornada = ${idJornada} FOR UPDATE
-      `;
-      if (!filas[0]) throw new NotFoundException('Jornada no encontrada');
-
-      const jornada = await tx.jornada.findUniqueOrThrow({
-        where: { id_jornada: idJornada },
-        include: {
-          marcaciones: { orderBy: { fecha_hora_marcacion: 'desc' }, take: 1 },
-        },
-      });
-      if (jornada.estado_jornada === 'CERRADA') {
-        throw new ConflictException(
-          'La jornada esta cerrada; reabrela antes de corregir marcaciones',
-        );
-      }
-
-      const ultima = jornada.marcaciones[0];
-      if (!ultima)
-        throw new ConflictException(
-          'La jornada no tiene marcaciones para deshacer',
-        );
-
-      await tx.marcacion.delete({
-        where: { id_marcacion: ultima.id_marcacion },
-      });
-
-      const restantes = await tx.marcacion.count({
-        where: { id_jornada_marcacion: idJornada },
-      });
-      if (restantes === 0) {
-        await tx.jornada.delete({ where: { id_jornada: idJornada } });
-        return { marcacionEliminada: ultima, jornadaEliminada: true as const };
-      }
-
-      return {
-        marcacionEliminada: ultima,
-        jornadaEliminada: false as const,
-        jornada: await tx.jornada.findUniqueOrThrow({
-          where: { id_jornada: idJornada },
-          include: JORNADA_INCLUDE,
-        }),
-      };
-    });
-  }
-
-  // Reabre una jornada CERRADA para corregirla (solo ADMIN): elimina los
-  // devengos que genero el cierre (horas + conceptos automaticos) y vuelve
-  // a ABIERTA para deshacer/remarcar y recerrar. Solo es posible mientras
-  // NINGUN devengo tenga pagos aplicados: si ya se pago, la historia no se
-  // toca y la diferencia se compensa con un concepto manual de ajuste.
-  async reabrir(idJornada: number) {
-    await this.findOne(idJornada);
-    return this.prisma.$transaction((tx) =>
-      this.reabrirEnTransaccion(tx, idJornada),
-    );
-  }
-
   private async reabrirEnTransaccion(
     tx: Prisma.TransactionClient,
     idJornada: number,
@@ -427,95 +257,98 @@ export class JornadasService {
     });
     if (!empleado) throw new NotFoundException('Empleado no encontrado');
     exigirArea(empleado.area);
-    return this.prisma.$transaction(async (tx) => {
-      const filas = await tx.$queryRaw<{ estado_empleado: string }[]>`
+    return this.prisma.$transaction(
+      async (tx) => {
+        const filas = await tx.$queryRaw<{ estado_empleado: string }[]>`
         SELECT estado_empleado FROM "Empleado" WHERE id_empleado = ${dto.idEmpleado} FOR UPDATE
       `;
-      if (!filas[0]) throw new NotFoundException('Empleado no encontrado');
-      if (filas[0].estado_empleado !== 'ACTIVO')
-        throw new ConflictException('El empleado está inactivo');
-      const jornadas = await tx.jornada.findMany({
-        where: {
-          id_empleado_jornada: dto.idEmpleado,
-          OR: [{ fecha_jornada: fecha }, { estado_jornada: 'ABIERTA' }],
-        },
-        include: JORNADA_INCLUDE,
-      });
-      const delDia = jornadas.filter(
-        (j) => j.fecha_jornada.getTime() === fecha.getTime(),
-      );
-      if (!dto.idJornada && delDia.length > 1)
-        throw new ConflictException(
-          'Hay varias jornadas para esa fecha; selecciona la que deseas editar',
-        );
-      let jornada = dto.idJornada
-        ? delDia.find((j) => j.id_jornada === dto.idJornada)
-        : delDia[0];
-      if (dto.idJornada && !jornada)
-        throw new ConflictException(
-          'La jornada no corresponde al empleado y fecha seleccionados',
-        );
-      const otraAbierta = jornadas.find(
-        (j) =>
-          j.estado_jornada === 'ABIERTA' &&
-          j.id_jornada !== jornada?.id_jornada,
-      );
-      if (otraAbierta)
-        throw new ConflictException(
-          `Completa primero el horario pendiente de la jornada #${otraAbierta.id_jornada}`,
-        );
-      if (jornada) {
-        await tx.$queryRaw`SELECT id_jornada FROM "Jornada" WHERE id_jornada = ${jornada.id_jornada} FOR UPDATE`;
-        jornada = await tx.jornada.findUniqueOrThrow({
-          where: { id_jornada: jornada.id_jornada },
+        if (!filas[0]) throw new NotFoundException('Empleado no encontrado');
+        if (filas[0].estado_empleado !== 'ACTIVO')
+          throw new ConflictException('El empleado está inactivo');
+        const jornadas = await tx.jornada.findMany({
+          where: {
+            id_empleado_jornada: dto.idEmpleado,
+            OR: [{ fecha_jornada: fecha }, { estado_jornada: 'ABIERTA' }],
+          },
           include: JORNADA_INCLUDE,
         });
-        const marcas = tramos.flatMap((t) => [
-          { tipo: 'ENTRADA', fecha: t.entrada },
-          { tipo: 'SALIDA', fecha: t.salida },
-        ]);
-        const mismoHorario =
-          jornada.marcaciones.length === marcas.length &&
-          jornada.marcaciones.every(
-            (m, i) =>
-              m.tipo_marcacion === marcas[i].tipo &&
-              m.fecha_hora_marcacion.getTime() === marcas[i].fecha.getTime(),
+        const delDia = jornadas.filter(
+          (j) => j.fecha_jornada.getTime() === fecha.getTime(),
+        );
+        if (!dto.idJornada && delDia.length > 1)
+          throw new ConflictException(
+            'Hay varias jornadas para esa fecha; selecciona la que deseas editar',
           );
-        // Reintentar una confirmación no duplica ni recalcula una nómina pagada.
-        if (jornada.estado_jornada === 'CERRADA' && mismoHorario)
-          return { jornada };
-        if (jornada.estado_jornada === 'CERRADA') {
-          if (!dto.idJornada)
-            throw new ConflictException(
-              'Ya hay un horario confirmado; usa Editar horario para corregirlo',
+        let jornada = dto.idJornada
+          ? delDia.find((j) => j.id_jornada === dto.idJornada)
+          : delDia[0];
+        if (dto.idJornada && !jornada)
+          throw new ConflictException(
+            'La jornada no corresponde al empleado y fecha seleccionados',
+          );
+        const otraAbierta = jornadas.find(
+          (j) =>
+            j.estado_jornada === 'ABIERTA' &&
+            j.id_jornada !== jornada?.id_jornada,
+        );
+        if (otraAbierta)
+          throw new ConflictException(
+            `Completa primero el horario pendiente de la jornada #${otraAbierta.id_jornada}`,
+          );
+        if (jornada) {
+          await tx.$queryRaw`SELECT id_jornada FROM "Jornada" WHERE id_jornada = ${jornada.id_jornada} FOR UPDATE`;
+          jornada = await tx.jornada.findUniqueOrThrow({
+            where: { id_jornada: jornada.id_jornada },
+            include: JORNADA_INCLUDE,
+          });
+          const marcas = tramos.flatMap((t) => [
+            { tipo: 'ENTRADA', fecha: t.entrada },
+            { tipo: 'SALIDA', fecha: t.salida },
+          ]);
+          const mismoHorario =
+            jornada.marcaciones.length === marcas.length &&
+            jornada.marcaciones.every(
+              (m, i) =>
+                m.tipo_marcacion === marcas[i].tipo &&
+                m.fecha_hora_marcacion.getTime() === marcas[i].fecha.getTime(),
             );
-          await this.reabrirEnTransaccion(tx, jornada.id_jornada);
+          // Reintentar una confirmación no duplica ni recalcula una nómina pagada.
+          if (jornada.estado_jornada === 'CERRADA' && mismoHorario)
+            return { jornada };
+          if (jornada.estado_jornada === 'CERRADA') {
+            if (!dto.idJornada)
+              throw new ConflictException(
+                'Ya hay un horario confirmado; usa Editar horario para corregirlo',
+              );
+            await this.reabrirEnTransaccion(tx, jornada.id_jornada);
+          }
+          await tx.marcacion.deleteMany({
+            where: { id_jornada_marcacion: jornada.id_jornada },
+          });
+        } else {
+          jornada = await tx.jornada.create({
+            data: { id_empleado_jornada: dto.idEmpleado, fecha_jornada: fecha },
+            include: JORNADA_INCLUDE,
+          });
         }
-        await tx.marcacion.deleteMany({
-          where: { id_jornada_marcacion: jornada.id_jornada },
+        await tx.marcacion.createMany({
+          data: tramos.flatMap((t) => [
+            {
+              id_jornada_marcacion: jornada.id_jornada,
+              tipo_marcacion: 'ENTRADA' as const,
+              fecha_hora_marcacion: t.entrada,
+            },
+            {
+              id_jornada_marcacion: jornada.id_jornada,
+              tipo_marcacion: 'SALIDA' as const,
+              fecha_hora_marcacion: t.salida,
+            },
+          ]),
         });
-      } else {
-        jornada = await tx.jornada.create({
-          data: { id_empleado_jornada: dto.idEmpleado, fecha_jornada: fecha },
-          include: JORNADA_INCLUDE,
-        });
-      }
-      await tx.marcacion.createMany({
-        data: tramos.flatMap((t) => [
-          {
-            id_jornada_marcacion: jornada!.id_jornada,
-            tipo_marcacion: 'ENTRADA' as const,
-            fecha_hora_marcacion: t.entrada,
-          },
-          {
-            id_jornada_marcacion: jornada!.id_jornada,
-            tipo_marcacion: 'SALIDA' as const,
-            fecha_hora_marcacion: t.salida,
-          },
-        ]),
-      });
-      return this.liquidar(tx, jornada.id_jornada);
-    }, { timeout: 20000 });
+        return this.liquidar(tx, jornada.id_jornada);
+      },
+      { timeout: 20000 },
+    );
   }
 
   async findAll(idEmpleado?: number, estado?: EstadoJornada, fecha?: string) {

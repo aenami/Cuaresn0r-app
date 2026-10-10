@@ -43,7 +43,7 @@ async function main() {
       },
     });
 
-    console.log(`Usuario ADMIN creado: ${adminEmail} / ${adminPassword}`);
+    console.log(`Usuario ADMIN_GLOBAL creado: ${adminEmail}`);
     console.log('Cambia esta contraseña (PATCH /auth/usuarios/me/password) apenas inicies sesion.');
   }
 
@@ -119,11 +119,11 @@ async function seedUsuariosDemo(prisma: PrismaService, crypto: CryptoService, ro
         password_usuario: await crypto.hashPassword(demo.password),
       },
     });
-    console.log(`Usuario ${demo.rol} demo creado: ${demo.email} / ${demo.password}`);
+    console.log(`Usuario ${demo.rol} demo creado: ${demo.email}`);
   }
 }
 
-// Menu demo de comida rapida: salon, ingredientes, productos con receta
+// Menu demo de comida rapida: ingredientes, productos con receta
 // activa, adiciones y combos. Solo se siembra sobre un catalogo vacio.
 async function seedDatosDemo(prisma: PrismaService) {
   if ((await prisma.categoria.count()) > 0) {
@@ -132,21 +132,6 @@ async function seedDatosDemo(prisma: PrismaService) {
   }
 
   console.log('Sembrando menu demo de comida rapida...');
-
-  // ---- salon ----
-  if ((await prisma.zona.count()) === 0) {
-    const salon = await prisma.zona.create({ data: { nombre_zona: 'Salon', identificador_zona: 'S' } });
-    const terraza = await prisma.zona.create({ data: { nombre_zona: 'Terraza', identificador_zona: 'T' } });
-    const barra = await prisma.zona.create({ data: { nombre_zona: 'Barra', identificador_zona: 'B' } });
-    await prisma.mesa.createMany({
-      data: [
-        ...[1, 2, 3, 4, 5, 6].map((n) => ({ numero_mesa: n, capacidad_mesa: 4, id_zona_mesa: salon.id_zona })),
-        ...[7, 8, 9, 10].map((n) => ({ numero_mesa: n, capacidad_mesa: 6, id_zona_mesa: terraza.id_zona })),
-        ...[11, 12].map((n) => ({ numero_mesa: n, capacidad_mesa: 2, id_zona_mesa: barra.id_zona })),
-      ],
-    });
-    console.log('Zonas y 12 mesas creadas.');
-  }
 
   // ---- ingredientes ----
   const defIngredientes = [
