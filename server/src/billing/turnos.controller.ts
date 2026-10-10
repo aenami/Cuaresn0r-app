@@ -1,7 +1,18 @@
-import { Controller, Get, Post, Body, Param, Patch, ParseIntPipe, Query, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Patch,
+  ParseIntPipe,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { TurnosService } from './turnos.service';
 import { AbrirTurnoDto } from './dto/abrir-turno.dto';
 import { CerrarTurnoDto } from './dto/cerrar-turno.dto';
+import { CorregirCuadreDto } from './dto/corregir-cuadre.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Area } from '../auth/decorators/area.decorator';
 import { AuthenticatedRequest } from '../auth/types/authenticated-request';
@@ -15,24 +26,52 @@ export class TurnosController {
 
   // El turno queda a nombre del usuario autenticado, nunca de un tercero.
   @Post()
-  abrir(@Body() abrirTurnoDto: AbrirTurnoDto, @Req() req: AuthenticatedRequest) {
-    return this.turnosService.abrir(req.user.id, abrirTurnoDto, req.user.area, req.user.rolNombre);
+  abrir(
+    @Body() abrirTurnoDto: AbrirTurnoDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.turnosService.abrir(
+      req.user.id,
+      abrirTurnoDto,
+      req.user.area,
+      req.user.rolNombre,
+    );
   }
 
   @Get()
-  findAll(@Req() req: AuthenticatedRequest, @Query('estado') estado?: EstadoTurno, @Query('area') area?: AreaNegocio) {
-    return this.turnosService.findAll(estado, area ?? req.areaSeleccionada ?? req.user.area, req.user.area, req.user.rolNombre);
+  findAll(
+    @Req() req: AuthenticatedRequest,
+    @Query('estado') estado?: EstadoTurno,
+    @Query('area') area?: AreaNegocio,
+  ) {
+    return this.turnosService.findAll(
+      estado,
+      area ?? req.areaSeleccionada ?? req.user.area,
+      req.user.area,
+      req.user.rolNombre,
+    );
   }
 
   // OJO: declarado antes de ':id' — Express matchea en orden de registro y
   // ':id' capturaria "actual" (mismo bug que hubo en /recipes/ingredients).
   @Get('actual')
-  findActual(@Req() req: AuthenticatedRequest, @Query('area') area?: AreaNegocio) {
-    return this.turnosService.findActual(req.user.id, area ?? req.areaSeleccionada ?? req.user.area, req.user.area, req.user.rolNombre);
+  findActual(
+    @Req() req: AuthenticatedRequest,
+    @Query('area') area?: AreaNegocio,
+  ) {
+    return this.turnosService.findActual(
+      req.user.id,
+      area ?? req.areaSeleccionada ?? req.user.area,
+      req.user.area,
+      req.user.rolNombre,
+    );
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number, @Req() req: AuthenticatedRequest) {
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
     return this.turnosService.findOne(id, req.user.area, req.user.rolNombre);
   }
 
@@ -42,11 +81,39 @@ export class TurnosController {
     @Body() cerrarTurnoDto: CerrarTurnoDto,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.turnosService.cerrar(id, req.user.id, req.user.rolNombre, cerrarTurnoDto, req.user.area);
+    return this.turnosService.cerrar(
+      id,
+      req.user.id,
+      req.user.rolNombre,
+      cerrarTurnoDto,
+      req.user.area,
+    );
   }
 
+  @Patch(':id/corregir')
+  @Roles('ADMIN_LOCAL')
+  corregir(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CorregirCuadreDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.turnosService.corregir(
+      id,
+      req.user.id,
+      req.user.rolNombre,
+      req.user.area,
+      dto,
+    );
+  }
   @Get(':id/conteo-inventario')
-  estadoInventario(@Param('id', ParseIntPipe) id: number, @Req() req: AuthenticatedRequest) {
-    return this.turnosService.estadoInventario(id, req.user.area, req.user.rolNombre);
+  estadoInventario(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.turnosService.estadoInventario(
+      id,
+      req.user.area,
+      req.user.rolNombre,
+    );
   }
 }

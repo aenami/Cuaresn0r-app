@@ -22,7 +22,11 @@ const abrirDto = (idCaja = 1) => ({ idCaja, tipo: 'MANANA' }) as AbrirTurnoDto;
 function setupAbrir(
   opts: { caja?: unknown; turnoUsuario?: unknown; turnoCaja?: unknown } = {},
 ) {
-  const { caja = { id_caja: 1, area: 'RESTAURANTE' }, turnoUsuario = null, turnoCaja = null } = opts;
+  const {
+    caja = { id_caja: 1, area: 'RESTAURANTE' },
+    turnoUsuario = null,
+    turnoCaja = null,
+  } = opts;
   const spies = {
     queryRaw: jest.fn().mockResolvedValue(caja ? [caja] : []),
     // Los dos findFirst comparten metodo; se distinguen por el filtro.
@@ -119,14 +123,18 @@ function setupCerrar(
   } = opts;
   const spies = {
     queryRaw: jest.fn().mockResolvedValue(encontrado ? [{ id_turno: 3 }] : []),
-    turnoFind: jest.fn().mockResolvedValue(turno && { caja: { area: 'RESTAURANTE' }, ...turno }),
+    turnoFind: jest
+      .fn()
+      .mockResolvedValue(turno && { caja: { area: 'RESTAURANTE' }, ...turno }),
     turnoUpdate: jest.fn((args: { data: Record<string, unknown> }) =>
       Promise.resolve({ id_turno: 3, ...args.data }),
     ),
     pagoAggregate: jest.fn().mockResolvedValue({
       _sum: { monto_total_pago: efectivo, monto_excedente_pago: excedente },
     }),
-    pagoPanaderiaAggregate: jest.fn().mockResolvedValue({ _sum: { monto: null } }),
+    pagoPanaderiaAggregate: jest
+      .fn()
+      .mockResolvedValue({ _sum: { monto: null } }),
     movimientoAggregate: jest.fn((args: { where: { tipo_mc: string } }) =>
       Promise.resolve({
         _sum: {
@@ -141,7 +149,11 @@ function setupCerrar(
   const tx = {
     $queryRaw: spies.queryRaw,
     $executeRaw: spies.estabilizarInventario,
-    turno: { findUniqueOrThrow: spies.turnoFind, update: spies.turnoUpdate },
+    turno: {
+      findUniqueOrThrow: spies.turnoFind,
+      update: spies.turnoUpdate,
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     pago: { aggregate: spies.pagoAggregate },
     pagoVentaPanaderia: { aggregate: spies.pagoPanaderiaAggregate },
     movimientoCaja: { aggregate: spies.movimientoAggregate },
@@ -165,8 +177,21 @@ function setupCerrar(
   const prisma = {
     $transaction: (cb: (t: typeof tx) => unknown) => cb(tx),
   } as unknown as PrismaService;
-  const bakery = { aplicarConteoCierre: jest.fn().mockResolvedValue({ completo: true, fecha: '2026-09-22', valorDiferencia: '3000', detalle: [] }) };
-  return { svc: new TurnosService(prisma, bakery as unknown as BakeryService), spies, bakery };
+  const bakery = {
+    aplicarConteoCierre: jest
+      .fn()
+      .mockResolvedValue({
+        completo: true,
+        fecha: '2026-09-22',
+        valorDiferencia: '3000',
+        detalle: [],
+      }),
+  };
+  return {
+    svc: new TurnosService(prisma, bakery as unknown as BakeryService),
+    spies,
+    bakery,
+  };
 }
 
 describe('TurnosService.cerrar (guardas)', () => {
@@ -362,12 +387,24 @@ describe('TurnosService.cerrar (cuadre)', () => {
         monto_apertura_turno: new Prisma.Decimal(300000),
         caja: { area: 'PANADERIA' },
       },
-      efectivo: new Prisma.Decimal(0), ingresos: new Prisma.Decimal(0), egresos: new Prisma.Decimal(0),
+      efectivo: new Prisma.Decimal(0),
+      ingresos: new Prisma.Decimal(0),
+      egresos: new Prisma.Decimal(0),
     });
-    spies.pagoPanaderiaAggregate.mockResolvedValue({ _sum: { monto: new Prisma.Decimal(12000) } });
-    await svc.cerrar(3, 1, 'CAJERO', cerrarDto(312000));
+    spies.pagoPanaderiaAggregate.mockResolvedValue({
+      _sum: { monto: new Prisma.Decimal(12000) },
+    });
+    await svc.cerrar(3, 1, 'CAJERO', {
+      ...cerrarDto(312000),
+      transferenciaReal: 0,
+      tarjetaReal: 0,
+    });
     expect(bakery.aplicarConteoCierre).toHaveBeenCalledTimes(1);
-    expect(spies.turnoUpdate.mock.calls[0][0].data.conteo_panaderia_cierre_turno).toMatchObject({ valorDiferencia: '3000' });
-    expect(spies.turnoUpdate.mock.calls[0][0].data.monto_cierre_esperado.toString()).toBe('312000');
+    expect(
+      spies.turnoUpdate.mock.calls[0][0].data.conteo_panaderia_cierre_turno,
+    ).toMatchObject({ valorDiferencia: '3000' });
+    expect(
+      spies.turnoUpdate.mock.calls[0][0].data.monto_cierre_esperado.toString(),
+    ).toBe('312000');
   });
 });

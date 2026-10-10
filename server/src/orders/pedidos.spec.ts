@@ -48,6 +48,7 @@ function setup(
     revertir: jest.fn().mockResolvedValue(undefined),
   };
   const tx = {
+    reservaPanaderia: { findUnique: jest.fn().mockResolvedValue(null) },
     $queryRaw: spies.queryRaw,
     pedido: {
       create: spies.pedidoCreate,

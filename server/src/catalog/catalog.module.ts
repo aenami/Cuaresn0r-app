@@ -7,9 +7,21 @@ import { CombosController } from './combos.controller';
 import { CombosService } from './combos.service';
 import { UploadsController } from './uploads.controller';
 import { UploadsService } from './uploads.service';
+import { MenuDiarioController } from './menu-diario.controller';
 
 @Module({
-  controllers: [CategoriesController, ProductsController, CombosController, UploadsController],
-  providers: [CategoriesService, ProductsService, CombosService, UploadsService],
+  controllers: [
+    CategoriesController,
+    ProductsController,
+    CombosController,
+    UploadsController,
+    MenuDiarioController,
+  ],
+  providers: [
+    CategoriesService,
+    ProductsService,
+    CombosService,
+    UploadsService,
+  ],
 })
 export class CatalogModule {}

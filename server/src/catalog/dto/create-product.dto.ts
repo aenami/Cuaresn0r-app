@@ -1,6 +1,21 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, MaxLength } from 'class-validator'
+import {
+  IsString,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  MaxLength,
+  IsInt,
+  Min,
+  IsIn,
+} from 'class-validator';
 
 export class CreateProductDto {
+  @IsOptional() @IsInt() @Min(1) articuloCompartidoId?: number | null;
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(1)
+  precioInternoCompartido?: number | null;
+  @IsOptional() @IsIn(['EJECUTIVO', 'BANDEJA']) tipoMenu?: string | null;
   @IsNotEmpty()
   @IsString()
   name!: string;

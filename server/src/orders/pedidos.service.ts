@@ -14,12 +14,16 @@ import { InventoryService } from '../recipes/inventory.service';
 import { CreatePedidoDto } from './dto/create-pedido.dto';
 import { recalcularEstadoPedido } from './estado-pedido';
 import { PEDIDO_INCLUDE } from './orders.includes';
+import { StockCompartidoService } from './stock-compartido.service';
 
 @Injectable()
 export class PedidosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
+    private readonly stockCompartido: StockCompartidoService = new StockCompartidoService(
+      prisma,
+    ),
   ) {}
 
   async create(idMesero: number, dto: CreatePedidoDto) {
@@ -159,67 +163,72 @@ export class PedidosService {
   }
 
   async cancel(idPedido: number) {
-    return this.prisma.$transaction(async (tx) => {
-      const pedido = await tx.pedido.findUnique({
-        where: { id_pedido: idPedido },
-      });
-      if (!pedido) throw new NotFoundException('Pedido no encontrado');
-      if (pedido.estado_pedido === 'CERRADO')
-        throw new ConflictException('No se puede cancelar un pedido cerrado');
-      if (pedido.estado_pedido === 'CANCELADO')
-        throw new ConflictException('Este pedido ya esta cancelado');
-
-      const facturaVigente = await tx.factura.findFirst({
-        where: {
-          subcuenta: { id_pedido_subcuenta: idPedido },
-          estado_factura: { not: 'ANULADA' },
-        },
-      });
-      if (facturaVigente) {
-        throw new ConflictException(
-          'Este pedido tiene facturas vigentes; anulalas antes de cancelarlo',
-        );
-      }
-
-      const hayEntregados = await tx.detalleComanda.findFirst({
-        where: {
-          comanda: { id_pedido_comanda: idPedido },
-          estado_dc: 'ENTREGADO',
-        },
-      });
-      if (hayEntregados)
-        throw new ConflictException(
-          'Ya se entregaron productos de este pedido; no se puede cancelar completo',
-        );
-
-      const detalles = await tx.detalleComanda.findMany({
-        where: {
-          comanda: { id_pedido_comanda: idPedido },
-          estado_dc: { in: ['PENDIENTE', 'PREPARANDO'] },
-        },
-      });
-      for (const detalle of detalles) {
-        await tx.detalleComanda.update({
-          where: { id_detalleComanda: detalle.id_detalleComanda },
-          data: { estado_dc: 'CANCELADO' },
+    return this.prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id_pedido FROM "Pedido" WHERE id_pedido = ${idPedido} FOR UPDATE`;
+        const pedido = await tx.pedido.findUnique({
+          where: { id_pedido: idPedido },
         });
-        if (detalle.estado_dc === 'PREPARANDO') {
-          await this.inventoryService.revertirPorDetalleComanda(
-            tx,
-            detalle.id_detalleComanda,
+        if (!pedido) throw new NotFoundException('Pedido no encontrado');
+        if (pedido.estado_pedido === 'CERRADO')
+          throw new ConflictException('No se puede cancelar un pedido cerrado');
+        if (pedido.estado_pedido === 'CANCELADO')
+          throw new ConflictException('Este pedido ya esta cancelado');
+
+        const facturaVigente = await tx.factura.findFirst({
+          where: {
+            subcuenta: { id_pedido_subcuenta: idPedido },
+            estado_factura: { not: 'ANULADA' },
+          },
+        });
+        if (facturaVigente) {
+          throw new ConflictException(
+            'Este pedido tiene facturas vigentes; anulalas antes de cancelarlo',
           );
         }
-      }
 
-      await tx.pedido.update({
-        where: { id_pedido: idPedido },
-        data: { estado_pedido: 'CANCELADO', fecha_cierre_pedido: new Date() },
-      });
+        const hayEntregados = await tx.detalleComanda.findFirst({
+          where: {
+            comanda: { id_pedido_comanda: idPedido },
+            estado_dc: 'ENTREGADO',
+          },
+        });
+        if (hayEntregados)
+          throw new ConflictException(
+            'Ya se entregaron productos de este pedido; no se puede cancelar completo',
+          );
 
-      return tx.pedido.findUniqueOrThrow({
-        where: { id_pedido: idPedido },
-        include: PEDIDO_INCLUDE,
-      });
-    });
+        const detalles = await tx.detalleComanda.findMany({
+          where: {
+            comanda: { id_pedido_comanda: idPedido },
+            estado_dc: { in: ['PENDIENTE', 'PREPARANDO'] },
+          },
+        });
+        for (const detalle of detalles) {
+          await this.stockCompartido.liberar(tx, detalle.id_detalleComanda);
+          await tx.detalleComanda.update({
+            where: { id_detalleComanda: detalle.id_detalleComanda },
+            data: { estado_dc: 'CANCELADO' },
+          });
+          if (detalle.estado_dc === 'PREPARANDO') {
+            await this.inventoryService.revertirPorDetalleComanda(
+              tx,
+              detalle.id_detalleComanda,
+            );
+          }
+        }
+
+        await tx.pedido.update({
+          where: { id_pedido: idPedido },
+          data: { estado_pedido: 'CANCELADO', fecha_cierre_pedido: new Date() },
+        });
+
+        return tx.pedido.findUniqueOrThrow({
+          where: { id_pedido: idPedido },
+          include: PEDIDO_INCLUDE,
+        });
+      },
+      { timeout: 30000 },
+    );
   }
 }

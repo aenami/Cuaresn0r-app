@@ -234,6 +234,43 @@ enum MetodoPagoCuentaPorPagar {
 // 1. Roles y usuarios
 // =========================================================================
 
+model ReservaPanaderia {
+  id Int @id @default(autoincrement())
+  detalleId Int @unique
+  articuloId Int
+  cantidad Decimal @db.Decimal(20,4)
+  precioInterno Decimal @db.Decimal(20,4)
+  estado String @default("RESERVADA") @db.VarChar(12)
+  fechaCreacion DateTime @default(now()) @db.Timestamp(6)
+  detalle DetalleComanda @relation(fields: [detalleId], references: [id_detalleComanda], onDelete: Restrict)
+  articulo ArticuloPanaderia @relation(fields: [articuloId], references: [id], onDelete: Restrict)
+  @@index([articuloId, estado])
+}
+
+model MenuOpcionDiaria {
+  id Int @id @default(autoincrement())
+  productoId Int
+  componenteId Int
+  fecha DateTime @db.Date
+  grupo String @db.VarChar(12)
+  producto Producto @relation("MenuPrincipal", fields: [productoId], references: [id_producto], onDelete: Restrict)
+  componente Producto @relation("MenuComponente", fields: [componenteId], references: [id_producto], onDelete: Restrict)
+  @@unique([productoId, fecha, grupo, componenteId])
+}
+
+model CorreccionCuadre {
+  id Int @id @default(autoincrement())
+  turnoId Int
+  usuarioId Int
+  motivo String @db.VarChar(300)
+  anterior Json @db.JsonB
+  nuevo Json @db.JsonB
+  fecha DateTime @default(now()) @db.Timestamp(6)
+  turno Turno @relation(fields: [turnoId], references: [id_turno], onDelete: Restrict)
+  usuario Usuario @relation(fields: [usuarioId], references: [id_usuario], onDelete: Restrict)
+  @@index([turnoId, fecha])
+}
+
 model Rol {
   id_rol     Int    @id @default(autoincrement())
   nombre_rol String @unique @db.VarChar(20)
@@ -254,6 +291,8 @@ model RemisionPanaderia {
   fechaIngreso DateTime? @db.Timestamp(6)
   metodoIngreso MetodoPago?
   montoTotal Decimal @default(0) @db.Decimal(20,4)
+  areaOrigen AreaNegocio @default(PANADERIA)
+  areaDestino AreaNegocio @default(RESTAURANTE)
   turno Turno @relation("RemisionTurno", fields: [turnoId], references: [id_turno])
   turnoIngreso Turno? @relation("RemisionIngreso", fields: [turnoIngresoId], references: [id_turno])
   cuentaPorPagar CuentaPorPagar? @relation(fields: [cuentaPorPagarId], references: [id_cuentaPorPagar])
@@ -265,8 +304,12 @@ model DetalleRemisionPanaderia {
   id Int @id @default(autoincrement())
   claveOperacion String @unique @db.VarChar(50)
   remisionId Int
-  articuloId Int
-  ingredienteDestinoId Int
+  articuloId Int?
+  ingredienteDestinoId Int?
+  ingredienteOrigenId Int?
+  articuloDestinoId Int?
+  detalleComandaId Int? @unique
+  historialEdiciones Json? @db.JsonB
   usuarioId Int
   nombreSnapshot String @db.VarChar(80)
   cantidad Decimal @db.Decimal(20,4)
@@ -275,8 +318,11 @@ model DetalleRemisionPanaderia {
   concepto String @db.VarChar(150)
   fechaEntrega DateTime @default(now()) @db.Timestamp(6)
   remision RemisionPanaderia @relation(fields: [remisionId], references: [id])
-  articulo ArticuloPanaderia @relation(fields: [articuloId], references: [id])
-  ingrediente Ingrediente @relation(fields: [ingredienteDestinoId], references: [id_ingrediente])
+  articulo ArticuloPanaderia? @relation("RemisionArticuloOrigen", fields: [articuloId], references: [id])
+  ingrediente Ingrediente? @relation("RemisionIngredienteDestino", fields: [ingredienteDestinoId], references: [id_ingrediente])
+  ingredienteOrigen Ingrediente? @relation("RemisionIngredienteOrigen", fields: [ingredienteOrigenId], references: [id_ingrediente])
+  articuloDestino ArticuloPanaderia? @relation("RemisionArticuloDestino", fields: [articuloDestinoId], references: [id])
+  detalleComanda DetalleComanda? @relation(fields: [detalleComandaId], references: [id_detalleComanda])
   usuario Usuario @relation(fields: [usuarioId], references: [id_usuario])
 }
 
@@ -295,6 +341,7 @@ model Usuario {
 
   pedidosComoMesero         Pedido[]
   turnos                    Turno[]
+  correccionesCuadre        CorreccionCuadre[]
   movimientosInventario     MovimientoInventario[]
   salidasProductoRestaurante SalidaProductoRestaurante[]
   pagosNominaRegistrados    PagoNomina[]
@@ -399,6 +446,8 @@ model Comanda {
 }
 
 model DetalleComanda {
+  reservaPanaderia ReservaPanaderia?
+  entregaRemision DetalleRemisionPanaderia?
   id_detalleComanda         Int                  @id @default(autoincrement())
   id_comanda_dc             Int
   id_detalleComandaPadre_dc Int?
@@ -568,6 +617,10 @@ model Caja {
 }
 
 model Turno {
+  correcciones CorreccionCuadre[]
+  transferencia_real_cierre Decimal? @db.Decimal(20,4)
+  tarjeta_real_cierre Decimal? @db.Decimal(20,4)
+  cuadre_inventario_diario Json? @db.JsonB
   remisionesPanaderia RemisionPanaderia[] @relation("RemisionTurno")
   ingresosRemisiones RemisionPanaderia[] @relation("RemisionIngreso")
   id_turno                         Int         @id @default(autoincrement())
@@ -641,6 +694,12 @@ model Categoria {
 }
 
 model Producto {
+  articuloCompartidoId Int?
+  precioInternoCompartido Decimal? @db.Decimal(20,4)
+  articuloCompartido ArticuloPanaderia? @relation(fields: [articuloCompartidoId], references: [id], onDelete: Restrict)
+  tipoMenu String? @db.VarChar(10)
+  opcionesMenu MenuOpcionDiaria[] @relation("MenuPrincipal")
+  usosMenu MenuOpcionDiaria[] @relation("MenuComponente")
   id_producto          Int     @id @default(autoincrement())
   nombre_producto      String  @db.VarChar(25)
   precio_producto      Decimal @db.Decimal(20, 4)
@@ -693,7 +752,8 @@ model DetalleReceta {
 }
 
 model Ingrediente {
-  entregasRemision DetalleRemisionPanaderia[]
+  entregasRemision DetalleRemisionPanaderia[] @relation("RemisionIngredienteDestino")
+  remisionesEnviadas DetalleRemisionPanaderia[] @relation("RemisionIngredienteOrigen")
   id_ingrediente          Int               @id @default(autoincrement())
   nombre_ingrediente      String            @db.VarChar(25)
   stock_ingrediente       Decimal           @default(0) @db.Decimal(20, 4)
@@ -1282,7 +1342,10 @@ model TrabajoImpresion {
 // permiten reconstruir el dia sin alterar el inventario del restaurante.
 model ArticuloPanaderia {
   detallesCompras DetalleCuentaPorPagar[]
-  detallesRemision DetalleRemisionPanaderia[]
+  detallesRemision DetalleRemisionPanaderia[] @relation("RemisionArticuloOrigen")
+  remisionesRecibidas DetalleRemisionPanaderia[] @relation("RemisionArticuloDestino")
+  productosCompartidos Producto[]
+  reservas ReservaPanaderia[]
   id              Int                   @id @default(autoincrement())
   nombre          String                @db.VarChar(80)
   tipo            TipoArticuloPanaderia

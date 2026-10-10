@@ -9,10 +9,22 @@ import { ItemsController } from './items.controller';
 import { ItemsService } from './items.service';
 import { SubcuentasController } from './subcuentas.controller';
 import { SubcuentasService } from './subcuentas.service';
+import { StockCompartidoService } from './stock-compartido.service';
 
 @Module({
   imports: [RecipesModule, PrintingModule],
-  controllers: [PedidosController, ComandasController, ItemsController, SubcuentasController],
-  providers: [PedidosService, ComandasService, ItemsService, SubcuentasService],
+  controllers: [
+    PedidosController,
+    ComandasController,
+    ItemsController,
+    SubcuentasController,
+  ],
+  providers: [
+    PedidosService,
+    ComandasService,
+    ItemsService,
+    SubcuentasService,
+    StockCompartidoService,
+  ],
 })
 export class OrdersModule {}

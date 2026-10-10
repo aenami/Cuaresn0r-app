@@ -9,8 +9,20 @@ import { InventoryService } from '../recipes/inventory.service';
 // sobre sus hijos, cada uno con su propio reverso de inventario. Prisma
 // simulado; recalcularEstadoPedido y el inventario se mockean.
 
-function setup(opts: { item?: Record<string, unknown> | null; hijos?: { id_detalleComanda: number }[] } = {}) {
-  const { item = { id_detalleComanda: 1, estado_dc: 'PREPARANDO', comanda: { id_pedido_comanda: 10 } }, hijos = [] } = opts;
+function setup(
+  opts: {
+    item?: Record<string, unknown> | null;
+    hijos?: { id_detalleComanda: number }[];
+  } = {},
+) {
+  const {
+    item = {
+      id_detalleComanda: 1,
+      estado_dc: 'PREPARANDO',
+      comanda: { id_pedido_comanda: 10 },
+    },
+    hijos = [],
+  } = opts;
   const spies = {
     dcFindUnique: jest.fn().mockResolvedValue(item),
     dcUpdate: jest.fn().mockResolvedValue({}),
@@ -21,8 +33,11 @@ function setup(opts: { item?: Record<string, unknown> | null; hijos?: { id_detal
     revertir: jest.fn().mockResolvedValue(undefined),
   };
   const tx = {
+    $queryRaw: jest.fn(),
+    reservaPanaderia: { findUnique: jest.fn().mockResolvedValue(null) },
     detalleComanda: {
       findUnique: spies.dcFindUnique,
+      findFirst: jest.fn().mockResolvedValue(null),
       update: spies.dcUpdate,
       updateMany: spies.dcUpdate,
       findMany: spies.dcFindMany,
@@ -30,34 +45,76 @@ function setup(opts: { item?: Record<string, unknown> | null; hijos?: { id_detal
     },
     facturaDetalle: { findFirst: spies.facturaDetalleFindFirst },
   };
-  const prisma = { $transaction: (cb: (t: typeof tx) => unknown) => cb(tx) } as unknown as PrismaService;
-  const pedidos = { recalcularEstadoPedido: spies.recalcular } as unknown as PedidosService;
-  const inventory = { revertirPorDetalleComanda: spies.revertir } as unknown as InventoryService;
+  const prisma = {
+    $transaction: (cb: (t: typeof tx) => unknown) => cb(tx),
+  } as unknown as PrismaService;
+  const pedidos = {
+    recalcularEstadoPedido: spies.recalcular,
+  } as unknown as PedidosService;
+  const inventory = {
+    revertirPorDetalleComanda: spies.revertir,
+  } as unknown as InventoryService;
   return { svc: new ItemsService(prisma, pedidos, inventory), spies };
 }
 
 describe('ItemsService.entregar', () => {
   it('404 si el item no pertenece al pedido', async () => {
-    const { svc } = setup({ item: { id_detalleComanda: 1, estado_dc: 'PREPARANDO', comanda: { id_pedido_comanda: 999 } } });
+    const { svc } = setup({
+      item: {
+        id_detalleComanda: 1,
+        estado_dc: 'PREPARANDO',
+        comanda: { id_pedido_comanda: 999 },
+      },
+    });
     await expect(svc.entregar(10, 1)).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('409 si el item ya no esta PREPARANDO', async () => {
-    const { svc } = setup({ item: { id_detalleComanda: 1, estado_dc: 'ENTREGADO', comanda: { id_pedido_comanda: 10 } } });
-    await expect(svc.entregar(10, 1)).rejects.toBeInstanceOf(ConflictException);
+  it('no duplica una entrega ya confirmada', async () => {
+    const { svc } = setup({
+      item: {
+        id_detalleComanda: 1,
+        estado_dc: 'ENTREGADO',
+        comanda: { id_pedido_comanda: 10 },
+      },
+    });
+    await expect(svc.entregar(10, 1)).resolves.toBeDefined();
   });
 
   it('marca ENTREGADO y recalcula el estado del pedido', async () => {
     const { svc, spies } = setup();
     await svc.entregar(10, 1);
-    expect(spies.dcUpdate).toHaveBeenCalledWith({ where: { id_detalleComanda: 1, estado_dc: 'PREPARANDO' }, data: { estado_dc: 'ENTREGADO', fecha_entrega_dc: expect.any(Date) } });
+    expect(spies.dcUpdate).toHaveBeenCalledWith({
+      where: { id_detalleComanda: { in: [1] }, estado_dc: 'PREPARANDO' },
+      data: { estado_dc: 'ENTREGADO', fecha_entrega_dc: expect.any(Date) },
+    });
     expect(spies.recalcular).toHaveBeenCalledWith(expect.anything(), 10);
+  });
+
+  it('entrega un padre con sus componentes pendientes sin afectar otros productos', async () => {
+    const { svc, spies } = setup({
+      hijos: [{ id_detalleComanda: 2 }, { id_detalleComanda: 3 }],
+    });
+    await svc.entregar(10, 1, 7);
+    expect(spies.dcFindMany).toHaveBeenCalledWith({
+      where: { id_detalleComandaPadre_dc: 1, estado_dc: 'PREPARANDO' },
+    });
+    expect(spies.dcUpdate).toHaveBeenCalledWith({
+      where: { id_detalleComanda: { in: [1, 2, 3] }, estado_dc: 'PREPARANDO' },
+      data: { estado_dc: 'ENTREGADO', fecha_entrega_dc: expect.any(Date) },
+    });
+    expect(spies.revertir).not.toHaveBeenCalled();
   });
 });
 
 describe('ItemsService.cancelar', () => {
   it('409 si el item ya fue entregado (solo se cancela PREPARANDO)', async () => {
-    const { svc } = setup({ item: { id_detalleComanda: 1, estado_dc: 'ENTREGADO', comanda: { id_pedido_comanda: 10 } } });
+    const { svc } = setup({
+      item: {
+        id_detalleComanda: 1,
+        estado_dc: 'ENTREGADO',
+        comanda: { id_pedido_comanda: 10 },
+      },
+    });
     await expect(svc.cancelar(10, 1)).rejects.toBeInstanceOf(ConflictException);
   });
 
@@ -65,7 +122,9 @@ describe('ItemsService.cancelar', () => {
     const { svc, spies } = setup();
     await svc.cancelar(10, 1);
     expect(spies.dcUpdate).toHaveBeenCalledTimes(1);
-    expect(spies.dcUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: { estado_dc: 'CANCELADO' } }));
+    expect(spies.dcUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { estado_dc: 'CANCELADO' } }),
+    );
     expect(spies.revertir).toHaveBeenCalledTimes(1);
     expect(spies.revertir).toHaveBeenCalledWith(expect.anything(), 1);
   });

@@ -2,6 +2,13 @@ import { IsEnum, IsNumber, Min, IsObject, IsOptional } from 'class-validator';
 import { TipoTurno } from '../../generated/prisma/client';
 
 export class CerrarTurnoDto {
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 4 })
+  transferenciaReal?: number;
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  tarjetaReal?: number;
   // Solo para clasificar un turno abierto antes de esta funcionalidad.
   @IsOptional()
   @IsEnum(TipoTurno)

@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, ParseIntPipe, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  ParseIntPipe,
+  Query,
+} from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -16,7 +26,20 @@ export class ProductsController {
 
   @Get()
   findAll(@Query('habilitado') habilitado?: string) {
-    return this.productsService.findAll(habilitado === undefined ? undefined : habilitado === 'true');
+    return this.productsService.findAll(
+      habilitado === undefined ? undefined : habilitado === 'true',
+    );
+  }
+
+  @Get('compartibles')
+  @Roles('ADMIN_LOCAL')
+  compartibles() {
+    return this.productsService.compartibles();
+  }
+
+  @Get('disponibilidad-panaderia')
+  disponibilidad() {
+    return this.productsService.disponibilidadCompartida();
   }
 
   @Get(':id')
@@ -26,7 +49,10 @@ export class ProductsController {
 
   @Roles('ADMIN')
   @Patch(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() updateProductDto: UpdateProductDto) {
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateProductDto: UpdateProductDto,
+  ) {
     return this.productsService.update(id, updateProductDto);
   }
 

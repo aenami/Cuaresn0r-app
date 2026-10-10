@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsEnum,
@@ -244,6 +245,31 @@ export class EntregaRemisionDto {
   @IsIn(['TURNO', 'DIA']) modalidad!: 'TURNO' | 'DIA';
   @IsInt() @Min(1) articuloId!: number;
   @IsInt() @Min(1) ingredienteDestinoId!: number;
+  @IsNumber({ maxDecimalPlaces: 4 }) @Min(0.0001) cantidad!: number;
+  @IsInt() @Min(1) precioUnitario!: number;
+  @IsString() @IsNotEmpty() @MaxLength(150) concepto!: string;
+}
+
+export class LineaRemisionDto {
+  @IsUUID() claveOperacion!: string;
+  @IsOptional() @IsInt() @Min(1) articuloId?: number;
+  @IsOptional() @IsInt() @Min(1) ingredienteDestinoId?: number;
+  @IsOptional() @IsInt() @Min(1) ingredienteOrigenId?: number;
+  @IsOptional() @IsInt() @Min(1) articuloDestinoId?: number;
+  @IsNumber({ maxDecimalPlaces: 4 }) @Min(0.0001) cantidad!: number;
+  @IsInt() @Min(1) precioUnitario!: number;
+  @IsString() @IsNotEmpty() @MaxLength(150) concepto!: string;
+}
+export class EntregaListaRemisionDto {
+  @IsIn(['TURNO', 'DIA']) modalidad!: 'TURNO' | 'DIA';
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => LineaRemisionDto)
+  lineas!: LineaRemisionDto[];
+}
+export class EditarLineaRemisionDto {
   @IsNumber({ maxDecimalPlaces: 4 }) @Min(0.0001) cantidad!: number;
   @IsInt() @Min(1) precioUnitario!: number;
   @IsString() @IsNotEmpty() @MaxLength(150) concepto!: string;

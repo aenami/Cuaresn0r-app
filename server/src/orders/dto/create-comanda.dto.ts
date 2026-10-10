@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
+  ArrayMaxSize,
   IsArray,
   IsInt,
   IsNegative,
@@ -65,6 +66,12 @@ export class AdicionDto {
 }
 
 export class ComandaItemDto {
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(3)
+  @IsInt({ each: true })
+  @IsPositive({ each: true })
+  opcionesMenu?: number[];
   // Exactamente uno de idProducto / idCombo (se valida en ComandasService).
   @IsOptional()
   @IsInt()

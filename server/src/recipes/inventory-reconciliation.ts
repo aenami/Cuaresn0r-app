@@ -138,7 +138,13 @@ export async function salidasEntregadasEnRango(
     );
   const salidasIngredientes = await db.movimientoInventario.findMany({
     where: {
-      tipo_movimiento: { in: ['MERMA', 'SALIDA_MANUAL'] },
+      OR: [
+        { tipo_movimiento: { in: ['MERMA', 'SALIDA_MANUAL'] } },
+        {
+          tipo_movimiento: 'TRANSFERENCIA',
+          motivo_movimiento: { startsWith: 'Remisión #' },
+        },
+      ],
       fecha_movimiento: { gte: inicio, lt: fin },
     },
     select: {
@@ -154,7 +160,11 @@ export async function salidasEntregadasEnRango(
       salida.cantidad_movimiento,
       salida.fecha_movimiento,
       salida.fecha_movimiento,
-      salida.tipo_movimiento === 'MERMA' ? 'MERMA' : 'JUSTIFICADA',
+      salida.tipo_movimiento === 'MERMA'
+        ? 'MERMA'
+        : salida.tipo_movimiento === 'TRANSFERENCIA'
+          ? 'TRASLADO'
+          : 'JUSTIFICADA',
     );
   const productosJustificados = await db.salidaProductoRestaurante.findMany({
     where: { fecha: { gte: inicio, lt: fin } },
@@ -176,37 +186,40 @@ export async function actividadRestauranteEnRango(
   inicio: Date,
   fin: Date,
 ) {
-  const [movimientos, produccion, recepciones, salidasProductos] = await Promise.all([
-    db.movimientoInventario.findMany({
-      where: { fecha_movimiento: { gte: inicio, lt: fin } },
-      select: { id_ingrediente_movimiento: true, fecha_movimiento: true },
-    }),
-    db.planProduccionDiaria.findMany({
-      where: {
-        estado_planProduccion: 'PRODUCIDO',
-        fecha_resolucion_planProduccion: { gte: inicio, lt: fin },
-      },
-      select: {
-        id_producto_planProduccion: true,
-        id_ingrediente_planProduccion: true,
-        fecha_resolucion_planProduccion: true,
-      },
-    }),
-    db.detalleCuentaPorPagar.findMany({
-      where: {
-        id_producto_detalleCuenta: { not: null },
-        cuentaPorPagar: { fecha_recepcion_mercancia: { gte: inicio, lt: fin } },
-      },
-      select: {
-        id_producto_detalleCuenta: true,
-        cuentaPorPagar: { select: { fecha_recepcion_mercancia: true } },
-      },
-    }),
-    db.salidaProductoRestaurante.findMany({
-      where: { fecha: { gte: inicio, lt: fin } },
-      select: { productoId: true, fecha: true },
-    }),
-  ]);
+  const [movimientos, produccion, recepciones, salidasProductos] =
+    await Promise.all([
+      db.movimientoInventario.findMany({
+        where: { fecha_movimiento: { gte: inicio, lt: fin } },
+        select: { id_ingrediente_movimiento: true, fecha_movimiento: true },
+      }),
+      db.planProduccionDiaria.findMany({
+        where: {
+          estado_planProduccion: 'PRODUCIDO',
+          fecha_resolucion_planProduccion: { gte: inicio, lt: fin },
+        },
+        select: {
+          id_producto_planProduccion: true,
+          id_ingrediente_planProduccion: true,
+          fecha_resolucion_planProduccion: true,
+        },
+      }),
+      db.detalleCuentaPorPagar.findMany({
+        where: {
+          id_producto_detalleCuenta: { not: null },
+          cuentaPorPagar: {
+            fecha_recepcion_mercancia: { gte: inicio, lt: fin },
+          },
+        },
+        select: {
+          id_producto_detalleCuenta: true,
+          cuentaPorPagar: { select: { fecha_recepcion_mercancia: true } },
+        },
+      }),
+      db.salidaProductoRestaurante.findMany({
+        where: { fecha: { gte: inicio, lt: fin } },
+        select: { productoId: true, fecha: true },
+      }),
+    ]);
   const dias = new Map<string, Map<string, Date>>();
   const agregar = (clave: string, fecha: Date | null) => {
     if (!fecha) return;

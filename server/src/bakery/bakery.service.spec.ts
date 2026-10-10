@@ -1,5 +1,9 @@
 import { Prisma } from '../generated/prisma/client';
-import { BadRequestException, ConflictException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { BakeryService, resumenConteo } from './bakery.service';
 import { BakeryController } from './bakery.controller';
 import { PrismaService } from '../prisma/prisma.service';
@@ -73,6 +77,9 @@ function conteoFixture({
       }),
   );
   const tx = {
+    reservaPanaderia: {
+      aggregate: jest.fn().mockResolvedValue({ _sum: { cantidad: null } }),
+    },
     $queryRaw: jest.fn().mockResolvedValue([{ id: 1 }]),
     articuloPanaderia: {
       findMany: jest.fn().mockResolvedValue([articulo]),
@@ -125,11 +132,12 @@ describe('conciliacion de inventario de panaderia', () => {
     expect(tx.articuloPanaderia.update).not.toHaveBeenCalled();
   });
 
-  it('no permite contar un articulo que el administrador retiro de la lista', async () => {
-    const { servicio, tx } = conteoFixture();
+  it('no permite contar un insumo que el administrador retiro de la lista', async () => {
+    const { servicio, tx } = conteoFixture({ tipo: 'INSUMO' });
     tx.elementoConteoPanaderia.findFirst.mockResolvedValue(null);
-    await expect(servicio.registrarConteo(1, 2, { cantidadFisica: 12 }))
-      .rejects.toThrow(ConflictException);
+    await expect(
+      servicio.registrarConteo(1, 2, { cantidadFisica: 12 }),
+    ).rejects.toThrow(ConflictException);
     expect(tx.conteoPanaderia.upsert).not.toHaveBeenCalled();
   });
 
@@ -154,34 +162,56 @@ describe('conciliacion de inventario de panaderia', () => {
     expect(estado.proyeccion).toEqual([]);
     expect(estado.faltantes).toEqual(['Pan']);
     expect(estado.completo).toBe(false);
-    expect(tx.elementoConteoPanaderia.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ fechaInicio: { lte: new Date('2026-09-28') } }),
-    }));
+    expect(tx.elementoConteoPanaderia.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          fechaInicio: { lte: new Date('2026-09-28') },
+        }),
+      }),
+    );
   });
 
   it('registra una salida manual con razon sin confundirla con venta ni perdida', async () => {
     const { servicio, tx } = conteoFixture({
       existencia: 8,
-      movimientos: [{
-        id: 8, articuloId: 1, tipo: 'SALIDA_MANUAL', cantidad: decimal(2),
-        existenciaAntes: decimal(10), fecha: new Date('2026-09-29T15:00:00Z'),
-      }],
+      movimientos: [
+        {
+          id: 8,
+          articuloId: 1,
+          tipo: 'SALIDA_MANUAL',
+          cantidad: decimal(2),
+          existenciaAntes: decimal(10),
+          fecha: new Date('2026-09-29T15:00:00Z'),
+        },
+      ],
     });
     const conteo = await servicio.registrarConteo(1, 2, { cantidadFisica: 8 });
     expect(conteo.salidasJustificadas.toString()).toBe('2');
     expect(conteo.conciliacion.ventaFisicaEstimada).toBe('0');
     expect(conteo.valoracion.perdidaEstimada).toBe('0');
-    await servicio.registrarSalidaManual(1, 2, { cantidad: 2, concepto: ' Degustacion ' });
+    await servicio.registrarSalidaManual(1, 2, {
+      cantidad: 2,
+      concepto: ' Degustacion ',
+    });
     expect(tx.movimientoPanaderia.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        articuloId: 1, tipo: 'SALIDA_MANUAL', cantidad: decimal(2), concepto: 'Degustacion',
-        existenciaAntes: decimal(8), existenciaDespues: decimal(6),
+        articuloId: 1,
+        tipo: 'SALIDA_MANUAL',
+        cantidad: decimal(2),
+        concepto: 'Degustacion',
+        existenciaAntes: decimal(8),
+        existenciaDespues: decimal(6),
       }),
     });
-    await expect(servicio.registrarSalidaManual(1, 2, { cantidad: 20, concepto: 'Prueba' }))
-      .rejects.toThrow(ConflictException);
-    await expect(servicio.registrarSalidaManual(1, 2, { cantidad: 1, concepto: '   ' }))
-      .rejects.toThrow(UnprocessableEntityException);
+    await expect(
+      servicio.registrarSalidaManual(1, 2, {
+        cantidad: 20,
+        concepto: 'Prueba',
+      }),
+    ).rejects.toThrow(ConflictException);
+    await expect(
+      servicio.registrarSalidaManual(1, 2, { cantidad: 1, concepto: '   ' }),
+    ).rejects.toThrow(UnprocessableEntityException);
   });
 
   it('el primer conteo conserva apertura del libro, no vuelve a sumar la entrada al stock actual', async () => {
@@ -448,9 +478,14 @@ describe('conciliacion de inventario de panaderia', () => {
           { id: 2, nombre: 'Postre', existencia: decimal(29) },
         ]),
       },
-      elementoConteoPanaderia: { findMany: jest.fn().mockResolvedValue([
-        elemento({ id: 1, nombre: 'Pan' }), elemento({ id: 2, nombre: 'Postre' }),
-      ]) },
+      elementoConteoPanaderia: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            elemento({ id: 1, nombre: 'Pan' }),
+            elemento({ id: 2, nombre: 'Postre' }),
+          ]),
+      },
       conteoPanaderia: {
         findMany: jest.fn(
           ({ where }: { where: { fecha: Date | { lt: Date } } }) =>
@@ -482,9 +517,11 @@ describe('conciliacion de inventario de panaderia', () => {
               { id: 1, nombre: 'Pan', existencia: decimal(99) },
             ]),
         },
-        elementoConteoPanaderia: { findMany: jest.fn().mockResolvedValue([
-          elemento({ id: 1, nombre: 'Pan' }),
-        ]) },
+        elementoConteoPanaderia: {
+          findMany: jest
+            .fn()
+            .mockResolvedValue([elemento({ id: 1, nombre: 'Pan' })]),
+        },
         conteoPanaderia: { findMany: jest.fn().mockResolvedValue([]) },
         movimientoPanaderia: { findMany: jest.fn().mockResolvedValue([]) },
       } as unknown as PrismaService;
@@ -516,42 +553,59 @@ describe('conciliacion de inventario de panaderia', () => {
     };
     const prisma = {
       articuloPanaderia: {
-        findMany: jest.fn().mockResolvedValue([{ id: 1, nombre: 'Pan nuevo', activo: true }]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ id: 1, nombre: 'Pan nuevo', activo: true }]),
       },
       elementoConteoPanaderia: { findMany: jest.fn().mockResolvedValue([]) },
       conteoPanaderia: { findMany: jest.fn().mockResolvedValue([conteo]) },
-      movimientoPanaderia: { findMany: jest.fn().mockResolvedValue([{
-        articuloId: 2,
-        tipo: 'VENTA',
-        fecha: new Date('2026-09-28T22:30:00Z'),
-      }]) },
+      movimientoPanaderia: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            articuloId: 2,
+            tipo: 'VENTA',
+            fecha: new Date('2026-09-28T22:30:00Z'),
+          },
+        ]),
+      },
     } as unknown as PrismaService;
-    const estado = await new BakeryService(prisma).estadoConteo(new Date('2026-09-28'));
+    const estado = await new BakeryService(prisma).estadoConteo(
+      new Date('2026-09-28'),
+    );
     expect(estado.detalle).toHaveLength(1);
     expect(estado.detalle[0].articulo.nombre).toBe('Pan antiguo');
     expect(estado.detalle[0].requiereReconteo).toBe(true);
     expect(estado.completo).toBe(false);
     expect(estado.recontar).toEqual(['Pan antiguo']);
-    expect(estado.proyeccion).toEqual([expect.objectContaining({
-      articuloId: 2,
-      cantidadInicial: decimal(12),
-      entradas: decimal(3),
-      ventasRegistradas: decimal(4),
-    })]);
+    expect(estado.proyeccion).toEqual([
+      expect.objectContaining({
+        articuloId: 2,
+        cantidadInicial: decimal(12),
+        entradas: decimal(3),
+        ventasRegistradas: decimal(4),
+      }),
+    ]);
     expect(prisma.conteoPanaderia.findMany).toHaveBeenCalledTimes(1);
-    expect(prisma.movimientoPanaderia.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ articuloId: { in: [2] } }),
-    }));
+    expect(prisma.movimientoPanaderia.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ articuloId: { in: [2] } }),
+      }),
+    );
   });
 
   it('no certifica un cierre anterior a la configuracion solo por una foto aislada', async () => {
     const conteo = {
       articuloId: 1,
       articulo: { id: 1, nombre: 'Pan' },
-      cantidadInicial: decimal(10), entradas: decimal(0),
-      ventasRegistradas: decimal(0), transferencias: decimal(0),
-      mermas: decimal(0), salidasJustificadas: decimal(0), consumoReceta: decimal(0),
-      cantidadFisica: decimal(10), precioReferencia: decimal(2000),
+      cantidadInicial: decimal(10),
+      entradas: decimal(0),
+      ventasRegistradas: decimal(0),
+      transferencias: decimal(0),
+      mermas: decimal(0),
+      salidasJustificadas: decimal(0),
+      consumoReceta: decimal(0),
+      cantidadFisica: decimal(10),
+      precioReferencia: decimal(2000),
       fechaRegistro: new Date('2026-09-28T20:00:00Z'),
     };
     const prisma = {
@@ -559,7 +613,9 @@ describe('conciliacion de inventario de panaderia', () => {
       conteoPanaderia: { findMany: jest.fn().mockResolvedValue([conteo]) },
       movimientoPanaderia: { findMany: jest.fn().mockResolvedValue([]) },
     } as unknown as PrismaService;
-    const estado = await new BakeryService(prisma).estadoConteo(new Date('2026-09-28'));
+    const estado = await new BakeryService(prisma).estadoConteo(
+      new Date('2026-09-28'),
+    );
     expect(estado.detalle).toHaveLength(1);
     expect(estado.faltantes).toEqual([]);
     expect(estado.completo).toBe(false);
@@ -568,28 +624,53 @@ describe('conciliacion de inventario de panaderia', () => {
   it('proyecta la lista vigente para una fecha futura sin calcular saldos ni escribir conteos', async () => {
     const prisma = {
       articuloPanaderia: {
-        findMany: jest.fn().mockResolvedValue([{ id: 1, nombre: 'Pan', activo: true, existencia: decimal(12) }]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { id: 1, nombre: 'Pan', activo: true, existencia: decimal(12) },
+          ]),
       },
-      elementoConteoPanaderia: { findMany: jest.fn().mockResolvedValue([
-        elemento({ id: 1, nombre: 'Pan', existencia: decimal(21) }),
-      ]) },
-      conteoPanaderia: { findMany: jest.fn().mockResolvedValue([]), upsert: jest.fn() },
+      elementoConteoPanaderia: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            elemento({ id: 1, nombre: 'Pan', existencia: decimal(21) }),
+          ]),
+      },
+      conteoPanaderia: {
+        findMany: jest.fn().mockResolvedValue([]),
+        upsert: jest.fn(),
+      },
       movimientoPanaderia: { findMany: jest.fn() },
     } as unknown as PrismaService;
-    const estado = await new BakeryService(prisma).estadoConteo(new Date('2026-09-30'));
-    expect(estado.proyeccion).toEqual([expect.objectContaining({ articuloId: 1, cantidadInicial: null })]);
+    const estado = await new BakeryService(prisma).estadoConteo(
+      new Date('2026-09-30'),
+    );
+    expect(estado.proyeccion).toEqual([
+      expect.objectContaining({ articuloId: 1, cantidadInicial: null }),
+    ]);
     expect(prisma.conteoPanaderia.findMany).toHaveBeenCalledTimes(1);
     expect(prisma.conteoPanaderia.upsert).not.toHaveBeenCalled();
     expect(prisma.movimientoPanaderia.findMany).not.toHaveBeenCalled();
   });
 
   it('valida la fecha de la consulta de conteos de panaderia', async () => {
-    const servicio = { estadoConteo: jest.fn().mockResolvedValue({ detalle: [] }) };
-    const controller = new BakeryController(servicio as unknown as BakeryService);
-    await expect(controller.estadoConteo('2026-09-28')).resolves.toEqual({ detalle: [] });
+    const servicio = {
+      estadoConteo: jest.fn().mockResolvedValue({ detalle: [] }),
+    };
+    const controller = new BakeryController(
+      servicio as unknown as BakeryService,
+    );
+    await expect(controller.estadoConteo('2026-09-28')).resolves.toEqual({
+      detalle: [],
+    });
     expect(servicio.estadoConteo).toHaveBeenCalledWith(new Date('2026-09-28'));
-    expect(() => controller.estadoConteo('2026-02-30')).toThrow(BadRequestException);
-    expect(() => controller.estadoConteo('30/09/2026')).toThrow(BadRequestException);
+    expect(() => controller.estadoConteo('2026-02-30')).toThrow(
+      BadRequestException,
+    );
+    expect(() => controller.estadoConteo('30/09/2026')).toThrow(
+      BadRequestException,
+    );
   });
 
   it('la proyección de hoy sin movimientos usa existencia, sin escribir un conteo', async () => {
@@ -601,9 +682,13 @@ describe('conciliacion de inventario de panaderia', () => {
             { id: 1, nombre: 'Pan', existencia: decimal(21) },
           ]),
       },
-      elementoConteoPanaderia: { findMany: jest.fn().mockResolvedValue([
-        elemento({ id: 1, nombre: 'Pan', existencia: decimal(21) }),
-      ]) },
+      elementoConteoPanaderia: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            elemento({ id: 1, nombre: 'Pan', existencia: decimal(21) }),
+          ]),
+      },
       conteoPanaderia: {
         findMany: jest.fn().mockResolvedValue([]),
         upsert: jest.fn(),
@@ -615,26 +700,50 @@ describe('conciliacion de inventario de panaderia', () => {
     expect(prisma.conteoPanaderia.upsert).not.toHaveBeenCalled();
   });
 
-  it('hoy solo exige articulos de la lista fija y conserva fotos de los retirados', async () => {
+  it('hoy exige todos los productos y conserva fotos de los retirados', async () => {
     const pan = { id: 1, nombre: 'Pan', existencia: decimal(10), activo: true };
-    const retirado = { id: 2, nombre: 'Postre', existencia: decimal(3), activo: true };
+    const retirado = {
+      id: 2,
+      nombre: 'Postre',
+      existencia: decimal(3),
+      activo: true,
+    };
     const conteoRetirado = {
-      articuloId: 2, articulo: retirado, cantidadInicial: decimal(3),
-      entradas: decimal(0), ventasRegistradas: decimal(0), transferencias: decimal(0),
-      mermas: decimal(0), salidasJustificadas: decimal(0), consumoReceta: decimal(0),
-      cantidadFisica: decimal(3), precioReferencia: decimal(5000), fechaRegistro: new Date(),
+      articuloId: 2,
+      articulo: retirado,
+      cantidadInicial: decimal(3),
+      entradas: decimal(0),
+      ventasRegistradas: decimal(0),
+      transferencias: decimal(0),
+      mermas: decimal(0),
+      salidasJustificadas: decimal(0),
+      consumoReceta: decimal(0),
+      cantidadFisica: decimal(3),
+      precioReferencia: decimal(5000),
+      fechaRegistro: new Date(),
     };
     const prisma = {
-      elementoConteoPanaderia: { findMany: jest.fn().mockResolvedValue([elemento(pan)]) },
-      conteoPanaderia: { findMany: jest.fn(({ where }: { where: { fecha: Date | { lt: Date } } }) =>
-        Promise.resolve(where.fecha instanceof Date ? [conteoRetirado] : [])) },
+      articuloPanaderia: {
+        findMany: jest.fn().mockResolvedValue([pan, retirado]),
+      },
+      elementoConteoPanaderia: {
+        findMany: jest.fn().mockResolvedValue([elemento(pan)]),
+      },
+      conteoPanaderia: {
+        findMany: jest.fn(
+          ({ where }: { where: { fecha: Date | { lt: Date } } }) =>
+            Promise.resolve(
+              where.fecha instanceof Date ? [conteoRetirado] : [],
+            ),
+        ),
+      },
       movimientoPanaderia: { findMany: jest.fn().mockResolvedValue([]) },
     } as unknown as PrismaService;
     const estado = await new BakeryService(prisma).estadoConteo();
-    expect(estado.proyeccion.map((fila) => fila.articuloId)).toEqual([1]);
+    expect(estado.proyeccion.map((fila) => fila.articuloId)).toEqual([1, 2]);
     expect(estado.faltantes).toEqual(['Pan']);
     expect(estado.detalle.map((fila) => fila.articuloId)).toEqual([2]);
-    expect(estado.articulosConfigurados).toEqual([1]);
+    expect(estado.articulosConfigurados).toEqual([1, 2]);
     expect(estado.completo).toBe(false);
   });
 
@@ -709,7 +818,9 @@ describe('conciliacion de inventario de panaderia', () => {
     };
     const prisma = {
       articuloPanaderia: { findMany: jest.fn().mockResolvedValue([articulo]) },
-      elementoConteoPanaderia: { findMany: jest.fn().mockResolvedValue([elemento(articulo)]) },
+      elementoConteoPanaderia: {
+        findMany: jest.fn().mockResolvedValue([elemento(articulo)]),
+      },
       conteoPanaderia: { findMany: jest.fn().mockResolvedValue([conteo]) },
       movimientoPanaderia: {
         findMany: jest.fn().mockResolvedValue([
