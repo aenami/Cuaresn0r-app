@@ -110,6 +110,7 @@ export function SeccionConteoDiario({ esAdmin }: { esAdmin: boolean }) {
   const [fecha, setFecha] = useState(() => fechaLocalIso())
   const [dialogoAbierto, setDialogoAbierto] = useState(false)
   const [busqueda, setBusqueda] = useState('')
+  const [filtroTipo, setFiltroTipo] = useState('TODOS')
   const esHoy = fecha === fechaLocalIso()
   const esFuturo = fecha > fechaLocalIso()
   const {
@@ -154,19 +155,37 @@ export function SeccionConteoDiario({ esAdmin }: { esAdmin: boolean }) {
       ).length,
     }
   }, [conteos])
-  const conteosVisibles = (conteos ?? []).filter((conteo) =>
-    coincideConteo(conteo.nombre_objetivo_conteoInventario, busqueda),
+  const conteosVisibles = (conteos ?? []).filter(
+    (conteo) =>
+      coincideConteo(conteo.nombre_objetivo_conteoInventario, busqueda) &&
+      (filtroTipo === 'TODOS' ||
+        conteo.tipo_objetivo_conteoInventario === filtroTipo),
   )
-  const futurosVisibles = listaFutura.filter((elemento) =>
-    coincideConteo(
-      elemento.producto?.nombre_producto ??
-        elemento.ingrediente?.nombre_ingrediente ??
-        '',
-      busqueda,
-    ),
+  const futurosVisibles = listaFutura.filter(
+    (elemento) =>
+      coincideConteo(
+        elemento.producto?.nombre_producto ??
+          elemento.ingrediente?.nombre_ingrediente ??
+          '',
+        busqueda,
+      ) &&
+      (filtroTipo === 'TODOS' || elemento.tipo === filtroTipo),
   )
   return (
     <div>
+      <Select value={filtroTipo} onValueChange={setFiltroTipo}>
+        <SelectTrigger
+          className="mb-4 w-52"
+          aria-label="Filtrar conteo por tipo"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="TODOS">Productos e ingredientes</SelectItem>
+          <SelectItem value="PRODUCTO">Solo productos</SelectItem>
+          <SelectItem value="INGREDIENTE">Solo ingredientes</SelectItem>
+        </SelectContent>
+      </Select>
       <section className="relative overflow-hidden rounded-xl bg-surface-low p-5 sm:p-6">
         <div className="pointer-events-none absolute -right-8 -top-14 size-52 rounded-full bg-secondary/10 blur-3xl" />
         <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">

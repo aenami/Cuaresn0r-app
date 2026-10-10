@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge'
 import type { CuentaCobro } from '@/features/billing/cobro-tipos'
 import { TarjetaCuenta } from '@/features/billing/cobro-cuentas'
 import { PanelPago } from '@/features/billing/cobro-panel'
+import { navegarConFlechas } from '@/lib/navegacion-direccional'
 
 export const Route = createFileRoute('/_auth/cobro/$idPedido')({
   component: PaginaCobro,
@@ -37,56 +38,88 @@ function PaginaCobro() {
     const detalles = (pedido.comandas ?? []).flatMap((c) => c.detalles ?? [])
     const facturaDe = new Map<number, Factura>()
     for (const f of facturas ?? []) {
-      if (f.estado_factura === 'EMITIDA') facturaDe.set(f.id_subcuenta_factura, f)
+      if (f.estado_factura === 'EMITIDA')
+        facturaDe.set(f.id_subcuenta_factura, f)
     }
-    const subcuentas = [...(pedido.subcuentas ?? [])].sort((a, b) => a.id_subcuenta - b.id_subcuenta)
+    const subcuentas = [...(pedido.subcuentas ?? [])].sort(
+      (a, b) => a.id_subcuenta - b.id_subcuenta,
+    )
 
-    return subcuentas
-      .map((sub, i): CuentaCobro => {
-        const idsFacturasSubcuenta = new Set(
-          (facturas ?? [])
-            .filter((f) => f.id_subcuenta_factura === sub.id_subcuenta && f.estado_factura !== 'ANULADA')
-            .map((f) => f.id_factura),
-        )
-        const asignaciones = detalles.flatMap((detalle) => {
-          if (detalle.estado_dc === 'CANCELADO') return []
-          const reparto = (detalle.subcuentasReparto ?? []).find((r) => r.id_subcuenta_sdc === sub.id_subcuenta)
-          const proporcionAsignada = detalle.id_subcuenta_dc === sub.id_subcuenta ? 1 : reparto ? Number(reparto.proporcion_sdc) : 0
-          if (proporcionAsignada <= 0) return []
-          const usada = (detalle.facturasDetalle ?? [])
-            .filter((registro) => registro.factura.id_factura !== undefined && idsFacturasSubcuenta.has(registro.factura.id_factura))
-            .reduce((total, registro) => total + Number(registro.proporcion_facturada_fd), 0)
-          const proporcionPendiente = Math.max(0, proporcionAsignada - usada)
-          return proporcionPendiente > 0 ? [{ detalle, proporcionPendiente }] : []
+    return (
+      subcuentas
+        .map((sub, i): CuentaCobro => {
+          const idsFacturasSubcuenta = new Set(
+            (facturas ?? [])
+              .filter(
+                (f) =>
+                  f.id_subcuenta_factura === sub.id_subcuenta &&
+                  f.estado_factura !== 'ANULADA',
+              )
+              .map((f) => f.id_factura),
+          )
+          const asignaciones = detalles.flatMap((detalle) => {
+            if (detalle.estado_dc === 'CANCELADO') return []
+            const reparto = (detalle.subcuentasReparto ?? []).find(
+              (r) => r.id_subcuenta_sdc === sub.id_subcuenta,
+            )
+            const proporcionAsignada =
+              detalle.id_subcuenta_dc === sub.id_subcuenta
+                ? 1
+                : reparto
+                  ? Number(reparto.proporcion_sdc)
+                  : 0
+            if (proporcionAsignada <= 0) return []
+            const usada = (detalle.facturasDetalle ?? [])
+              .filter(
+                (registro) =>
+                  registro.factura.id_factura !== undefined &&
+                  idsFacturasSubcuenta.has(registro.factura.id_factura),
+              )
+              .reduce(
+                (total, registro) =>
+                  total + Number(registro.proporcion_facturada_fd),
+                0,
+              )
+            const proporcionPendiente = Math.max(0, proporcionAsignada - usada)
+            return proporcionPendiente > 0
+              ? [{ detalle, proporcionPendiente }]
+              : []
+          })
+          const idsPendientes = new Set(
+            asignaciones.map(
+              (asignacion) => asignacion.detalle.id_detalleComanda,
+            ),
+          )
+          const items = detalles.filter(
+            (detalle) =>
+              detalle.id_detalleComandaPadre_dc === null &&
+              (idsPendientes.has(detalle.id_detalleComanda) ||
+                (detalle.hijos ?? []).some((hijo) =>
+                  idsPendientes.has(hijo.id_detalleComanda),
+                )),
+          )
+          const subtotal = asignaciones.reduce(
+            (total, asignacion) =>
+              total +
+              Number(asignacion.detalle.precio_unitario_dc) *
+                asignacion.detalle.cantidad_producto_dc *
+                asignacion.proporcionPendiente,
+            0,
+          )
+          return {
+            id: sub.id_subcuenta,
+            nombre: sub.nombre_subcuenta ?? `Cuenta ${i + 1}`,
+            esPrincipal: i === 0,
+            items,
+            subtotal,
+            hayPreparando: false,
+            idsDetalleFacturar: [...idsPendientes],
+            factura: facturaDe.get(sub.id_subcuenta),
+          }
         })
-        const idsPendientes = new Set(asignaciones.map((asignacion) => asignacion.detalle.id_detalleComanda))
-        const items = detalles.filter(
-          (detalle) =>
-            detalle.id_detalleComandaPadre_dc === null &&
-            (idsPendientes.has(detalle.id_detalleComanda) ||
-              (detalle.hijos ?? []).some((hijo) => idsPendientes.has(hijo.id_detalleComanda))),
-        )
-        const subtotal = asignaciones.reduce(
-          (total, asignacion) =>
-            total +
-            Number(asignacion.detalle.precio_unitario_dc) *
-              asignacion.detalle.cantidad_producto_dc *
-              asignacion.proporcionPendiente,
-          0,
-        )
-        return {
-          id: sub.id_subcuenta,
-          nombre: sub.nombre_subcuenta ?? `Cuenta ${i + 1}`,
-          esPrincipal: i === 0,
-          items,
-          subtotal,
-          hayPreparando: false,
-          idsDetalleFacturar: [...idsPendientes],
-          factura: facturaDe.get(sub.id_subcuenta),
-        }
-      })
-      // Solo cuentas con algo que cobrar: items o una factura vigente.
-      .filter((c) => c.items.length > 0 || c.factura !== undefined)
+        // Solo cuentas con algo que cobrar: items o una factura vigente.
+        .filter((c) => c.items.length > 0 || c.factura !== undefined)
+    )
   }, [pedido, facturas])
 
   const [idSel, setIdSel] = useState<number | null>(null)
@@ -95,19 +128,30 @@ function PaginaCobro() {
 
   if (!esCaja) {
     return (
-      <MensajeCentrado icono={Lock}>Solo cajeros y administradores pueden cobrar.</MensajeCentrado>
+      <MensajeCentrado icono={Lock}>
+        Solo cajeros y administradores pueden cobrar.
+      </MensajeCentrado>
     )
   }
   if (isPending) {
-    return <p className="p-6 text-sm text-muted-foreground md:p-10">Cargando cuenta…</p>
+    return (
+      <p className="p-6 text-sm text-muted-foreground md:p-10">
+        Cargando cuenta…
+      </p>
+    )
   }
   if (error || !pedido) {
     return (
       <div className="p-6 md:p-10">
         <p className="text-sm text-destructive">
-          {error instanceof ApiError ? error.message : 'No se pudo cargar el pedido'}
+          {error instanceof ApiError
+            ? error.message
+            : 'No se pudo cargar el pedido'}
         </p>
-        <Link to="/mesas" className="mt-4 inline-block text-sm text-primary underline-offset-4 hover:underline">
+        <Link
+          to="/mesas"
+          className="mt-4 inline-block text-sm text-primary underline-offset-4 hover:underline"
+        >
           Volver a pedidos
         </Link>
       </div>
@@ -115,13 +159,17 @@ function PaginaCobro() {
   }
 
   const checkTotal = cuentas.reduce(
-    (acc, c) => acc + (c.factura ? Number(c.factura.monto_total_factura) : c.subtotal),
+    (acc, c) =>
+      acc + (c.factura ? Number(c.factura.monto_total_factura) : c.subtotal),
     0,
   )
   const pagado = pedido.estado_pedido === 'CERRADO'
 
   return (
-    <div className="flex min-h-svh flex-col xl:h-svh xl:flex-row xl:overflow-hidden">
+    <div
+      onKeyDown={navegarConFlechas}
+      className="flex min-h-svh flex-col xl:h-svh xl:flex-row xl:overflow-hidden"
+    >
       {/* Columna central: la cuenta y sus subcuentas */}
       <div className="scrollbar-fina min-w-0 flex-1 overflow-y-auto p-6 md:p-8">
         <header>
@@ -145,7 +193,9 @@ function PaginaCobro() {
                 <ArrowLeft className="size-3.5" /> Pedido
               </Link>
             )}
-            {pagado && <Badge className="bg-primary/15 text-primary">Pagado</Badge>}
+            {pagado && (
+              <Badge className="bg-primary/15 text-primary">Pagado</Badge>
+            )}
           </div>
           <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
             <h1 className="font-heading text-3xl font-semibold tracking-tighter md:text-4xl">
@@ -171,7 +221,8 @@ function PaginaCobro() {
           <div className="mt-6 flex items-center gap-3 rounded-xl border-l-4 border-primary bg-surface-high p-4">
             <CheckCircle2 className="size-5 shrink-0 text-primary" />
             <p className="text-sm">
-              Pedido entregado y pagado por completo; la ficha vuelve a estar disponible.
+              Pedido entregado y pagado por completo; la ficha vuelve a estar
+              disponible.
             </p>
           </div>
         )}
@@ -201,7 +252,9 @@ function PaginaCobro() {
           <PanelPago
             key={activa.id}
             cuenta={activa}
-            porcentajeImpuestos={config ? Number(config.porcentaje_impuestos) : 0}
+            porcentajeImpuestos={
+              config ? Number(config.porcentaje_impuestos) : 0
+            }
             propinaSugerida={config ? Number(config.porcentaje_servicio) : 0}
             hayTurno={turno != null}
           />
@@ -215,7 +268,13 @@ function PaginaCobro() {
   )
 }
 
-function MensajeCentrado({ icono: Icono, children }: { icono: typeof Lock; children: ReactNode }) {
+function MensajeCentrado({
+  icono: Icono,
+  children,
+}: {
+  icono: typeof Lock
+  children: ReactNode
+}) {
   return (
     <div className="grid min-h-full place-items-center p-10 text-center">
       <div>

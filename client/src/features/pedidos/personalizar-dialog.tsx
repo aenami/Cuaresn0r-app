@@ -1,40 +1,43 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { productosQuery } from '@/features/catalogo/api'
-import { recetasQuery } from '@/features/inventario/api'
-import { formatearPrecio } from '@/lib/formato'
-import type { Combo, Producto, Receta } from '@/types/api'
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  productosQuery,
+  menuDiarioQuery,
+  disponibilidadPanaderiaQuery,
+} from "@/features/catalogo/api";
+import { recetasQuery } from "@/features/inventario/api";
+import { formatearPrecio } from "@/lib/formato";
+import type { Combo, Producto, Receta } from "@/types/api";
 import type {
   AdicionCarrito,
   ItemCarrito,
   PersonalizacionCarrito,
-} from '@/features/pedidos/carrito.store'
-import { Search } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
+} from "@/features/pedidos/carrito.store";
+import { Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { cn } from '@/lib/utils'
+} from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
 export type SeleccionMenu =
-  | { tipo: 'producto'; producto: Producto }
-  | { tipo: 'combo'; combo: Combo }
+  { tipo: "producto"; producto: Producto } | { tipo: "combo"; combo: Combo };
 
 // Los ingredientes de la receta solo se pueden dejar o quitar; un "extra" con
 // precio se pide como adicion.
-type ModoIngrediente = 'normal' | 'sin'
+type ModoIngrediente = "normal" | "sin";
 // Clave "contexto:idIngrediente" — contexto 0 = producto directo, para combos
 // es el id del producto componente.
-type EstadoIngredientes = Map<string, ModoIngrediente>
+type EstadoIngredientes = Map<string, ModoIngrediente>;
 
 function claveIngrediente(contexto: number, idIngrediente: number): string {
-  return `${contexto}:${idIngrediente}`
+  return `${contexto}:${idIngrediente}`;
 }
 
 export function PersonalizarDialog({
@@ -42,109 +45,173 @@ export function PersonalizarDialog({
   onAgregar,
   onCerrar,
 }: {
-  seleccion: SeleccionMenu | null
-  onAgregar: (item: ItemCarrito) => void
-  onCerrar: () => void
+  seleccion: SeleccionMenu | null;
+  onAgregar: (item: ItemCarrito) => void;
+  onCerrar: () => void;
 }) {
-  const { data: recetas } = useQuery(recetasQuery)
-  const { data: productos } = useQuery(productosQuery)
+  const { data: recetas } = useQuery(recetasQuery);
+  const { data: productos } = useQuery(productosQuery);
+  const {
+    data: opciones,
+    isPending: cargandoMenu,
+    error: errorMenu,
+  } = useQuery(menuDiarioQuery());
+  const { data: disponibilidad } = useQuery(disponibilidadPanaderiaQuery);
 
-  const [cantidad, setCantidad] = useState(1)
-  const [indicaciones, setIndicaciones] = useState('')
-  const [ingredientes, setIngredientes] = useState<EstadoIngredientes>(new Map())
-  const [adiciones, setAdiciones] = useState<Map<number, number>>(new Map())
-  const [busquedaAdicion, setBusquedaAdicion] = useState('')
+  const [cantidad, setCantidad] = useState(1);
+  const [indicaciones, setIndicaciones] = useState("");
+  const [ingredientes, setIngredientes] = useState<EstadoIngredientes>(
+    new Map(),
+  );
+  const [adiciones, setAdiciones] = useState<Map<number, number>>(new Map());
+  const [busquedaAdicion, setBusquedaAdicion] = useState("");
+  const [elecciones, setElecciones] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (seleccion) {
-      setCantidad(1)
-      setIndicaciones('')
-      setIngredientes(new Map())
-      setAdiciones(new Map())
-      setBusquedaAdicion('')
+      setCantidad(1);
+      setIndicaciones("");
+      setIngredientes(new Map());
+      setAdiciones(new Map());
+      setBusquedaAdicion("");
+      setElecciones({});
     }
-  }, [seleccion])
+  }, [seleccion]);
 
   const recetaActivaPorProducto = useMemo(() => {
-    const mapa = new Map<number, Receta>()
+    const mapa = new Map<number, Receta>();
     for (const receta of recetas ?? []) {
-      if (receta.receta_activa) mapa.set(receta.id_producto_receta, receta)
+      if (receta.receta_activa) mapa.set(receta.id_producto_receta, receta);
     }
-    return mapa
-  }, [recetas])
+    return mapa;
+  }, [recetas]);
 
   // Adiciones ofrecidas: productos habilitados de cualquier categoria marcada
   // como "de adiciones". Se agrupan por categoria y se filtran por el buscador.
   const productosAdicion = useMemo(
-    () => (productos ?? []).filter((p) => p.habilitado_producto && p.categoria?.es_adicion),
+    () =>
+      (productos ?? []).filter(
+        (p) => p.habilitado_producto && p.categoria?.es_adicion,
+      ),
     [productos],
-  )
+  );
 
   const gruposAdicion = useMemo(() => {
-    const term = busquedaAdicion.trim().toLowerCase()
+    const term = busquedaAdicion.trim().toLowerCase();
     const filtrados = term
-      ? productosAdicion.filter((p) => p.nombre_producto.toLowerCase().includes(term))
-      : productosAdicion
-    const grupos = new Map<string, Producto[]>()
+      ? productosAdicion.filter((p) =>
+          p.nombre_producto.toLowerCase().includes(term),
+        )
+      : productosAdicion;
+    const grupos = new Map<string, Producto[]>();
     for (const p of filtrados) {
-      const g = p.categoria?.nombre_categoria ?? 'Adiciones'
-      if (!grupos.has(g)) grupos.set(g, [])
-      grupos.get(g)!.push(p)
+      const g = p.categoria?.nombre_categoria ?? "Adiciones";
+      if (!grupos.has(g)) grupos.set(g, []);
+      grupos.get(g)!.push(p);
     }
-    return [...grupos.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-  }, [productosAdicion, busquedaAdicion])
+    return [...grupos.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [productosAdicion, busquedaAdicion]);
 
-  if (!seleccion) return null
+  if (!seleccion) return null;
 
-  const nombre = seleccion.tipo === 'producto' ? seleccion.producto.nombre_producto : seleccion.combo.nombre_combo
+  const nombre =
+    seleccion.tipo === "producto"
+      ? seleccion.producto.nombre_producto
+      : seleccion.combo.nombre_combo;
   const precio = Number(
-    seleccion.tipo === 'producto' ? seleccion.producto.precio_producto : seleccion.combo.precio_combo,
-  )
+    seleccion.tipo === "producto"
+      ? seleccion.producto.precio_producto
+      : seleccion.combo.precio_combo,
+  );
 
-  const totalAdiciones = [...adiciones.entries()].reduce((acc, [idProducto, cant]) => {
-    const producto = productosAdicion.find((p) => p.id_producto === idProducto)
-    return acc + (producto ? Number(producto.precio_producto) * cant : 0)
-  }, 0)
-  const total = precio * cantidad + totalAdiciones
+  const totalAdiciones = [...adiciones.entries()].reduce(
+    (acc, [idProducto, cant]) => {
+      const producto = productosAdicion.find(
+        (p) => p.id_producto === idProducto,
+      );
+      return acc + (producto ? Number(producto.precio_producto) * cant : 0);
+    },
+    0,
+  );
+  const total = precio * cantidad + totalAdiciones;
+  const productoMenu =
+    seleccion.tipo === "producto" ? seleccion.producto : null;
+  const grupos =
+    productoMenu?.tipoMenu === "EJECUTIVO"
+      ? ["CALDO", "PRINCIPIO", "PROTEINA"]
+      : productoMenu?.tipoMenu === "BANDEJA"
+        ? ["PRINCIPIO", "PROTEINA"]
+        : [];
+  const opcionesProducto = (opciones ?? []).filter(
+    (o) => o.productoId === productoMenu?.id_producto,
+  );
+  const menuCompleto =
+    !grupos.length ||
+    (!cargandoMenu &&
+      !errorMenu &&
+      grupos.every((g) =>
+        opcionesProducto.some((o) => o.grupo === g && o.id === elecciones[g]),
+      ));
+  const stock = disponibilidad?.find(
+    (d) => d.idProducto === productoMenu?.id_producto,
+  );
+  const stockSuficiente =
+    !productoMenu?.articuloCompartidoId ||
+    (!!stock && cantidad <= Number(stock.disponible));
 
-  function cambiarModo(contexto: number, idIngrediente: number, modo: ModoIngrediente) {
+  function cambiarModo(
+    contexto: number,
+    idIngrediente: number,
+    modo: ModoIngrediente,
+  ) {
     setIngredientes((prev) => {
-      const siguiente = new Map(prev)
-      siguiente.set(claveIngrediente(contexto, idIngrediente), modo)
-      return siguiente
-    })
+      const siguiente = new Map(prev);
+      siguiente.set(claveIngrediente(contexto, idIngrediente), modo);
+      return siguiente;
+    });
   }
 
-  function personalizacionesDe(contexto: number, receta: Receta | undefined): PersonalizacionCarrito[] {
-    if (!receta?.detalles) return []
-    const resultado: PersonalizacionCarrito[] = []
+  function personalizacionesDe(
+    contexto: number,
+    receta: Receta | undefined,
+  ): PersonalizacionCarrito[] {
+    if (!receta?.detalles) return [];
+    const resultado: PersonalizacionCarrito[] = [];
     for (const detalle of receta.detalles) {
-      const modo = ingredientes.get(claveIngrediente(contexto, detalle.id_ingrediente_detalleReceta)) ?? 'normal'
-      if (modo === 'normal') continue
+      const modo =
+        ingredientes.get(
+          claveIngrediente(contexto, detalle.id_ingrediente_detalleReceta),
+        ) ?? "normal";
+      if (modo === "normal") continue;
       resultado.push({
         idIngrediente: detalle.id_ingrediente_detalleReceta,
-        nombre: detalle.ingrediente?.nombre_ingrediente ?? `Ingrediente ${detalle.id_ingrediente_detalleReceta}`,
+        nombre:
+          detalle.ingrediente?.nombre_ingrediente ??
+          `Ingrediente ${detalle.id_ingrediente_detalleReceta}`,
         modo,
         cantidadReceta: Number(detalle.cantidad_ingrediente_detalleReceta),
-      })
+      });
     }
-    return resultado
+    return resultado;
   }
 
   function agregar() {
-    const sel = seleccion
-    if (!sel) return
+    const sel = seleccion;
+    if (!sel) return;
+    if (!menuCompleto || !stockSuficiente) return;
     const listaAdiciones: AdicionCarrito[] = [...adiciones.entries()]
       .filter(([, cant]) => cant > 0)
       .map(([idProducto, cant]) => {
-        const producto = productosAdicion.find((p) => p.id_producto === idProducto)!
+        const producto = productosAdicion.find(
+          (p) => p.id_producto === idProducto,
+        )!;
         return {
           idProducto,
           nombre: producto.nombre_producto,
           precio: Number(producto.precio_producto),
           cantidad: cant,
-        }
-      })
+        };
+      });
 
     const base = {
       uid: crypto.randomUUID(),
@@ -153,55 +220,141 @@ export function PersonalizarDialog({
       cantidad,
       ...(indicaciones.trim() ? { indicaciones: indicaciones.trim() } : {}),
       adiciones: listaAdiciones,
-    }
+    };
 
-    if (sel.tipo === 'producto') {
-      const producto = sel.producto
+    if (sel.tipo === "producto") {
+      const producto = sel.producto;
       onAgregar({
         ...base,
-        tipo: 'producto',
+        tipo: "producto",
         id: producto.id_producto,
-        personalizaciones: personalizacionesDe(0, recetaActivaPorProducto.get(producto.id_producto)),
+        personalizaciones: personalizacionesDe(
+          0,
+          recetaActivaPorProducto.get(producto.id_producto),
+        ),
         componentes: [],
-      })
+        ...(grupos.length
+          ? {
+              opcionesMenu: grupos.map((g) => elecciones[g]),
+              nombresMenu: grupos.map(
+                (g) =>
+                  opcionesProducto.find(
+                    (o) => o.grupo === g && o.id === elecciones[g],
+                  )!.componente.nombre_producto,
+              ),
+            }
+          : {}),
+      });
     } else {
-      const combo = sel.combo
+      const combo = sel.combo;
       onAgregar({
         ...base,
-        tipo: 'combo',
+        tipo: "combo",
         id: combo.id_combo,
         personalizaciones: [],
         componentes: (combo.detallesCombo ?? []).map((d) => ({
           idProducto: d.id_producto_detalleCombo,
-          nombre: d.producto?.nombre_producto ?? `Producto ${d.id_producto_detalleCombo}`,
+          nombre:
+            d.producto?.nombre_producto ??
+            `Producto ${d.id_producto_detalleCombo}`,
           cantidadComponente: Number(d.cantidad_detalleCombo),
           personalizaciones: personalizacionesDe(
             d.id_producto_detalleCombo,
             recetaActivaPorProducto.get(d.id_producto_detalleCombo),
           ),
         })),
-      })
+      });
     }
-    onCerrar()
+    onCerrar();
   }
 
   return (
     <Dialog open onOpenChange={(open) => !open && onCerrar()}>
       <DialogContent className="flex max-h-[90svh] flex-col gap-0 p-0 sm:max-w-lg">
-        <DialogHeader className="border-b-4 border-primary p-5 pb-4">
+        <DialogHeader className="border-b-4 border-primary p-5 pb-4 pr-12">
           <DialogTitle className="flex items-baseline justify-between gap-3 font-heading tracking-tight">
-            <span>{nombre}</span>
-            <span className="tabular-nums text-primary">{formatearPrecio(precio)}</span>
+            <span className="min-w-0 break-words">{nombre}</span>
+            <span className="shrink-0 whitespace-nowrap tabular-nums text-primary">
+              {formatearPrecio(precio)}
+            </span>
           </DialogTitle>
           <DialogDescription>
-            {seleccion.tipo === 'combo'
-              ? 'Personaliza cada producto del combo antes de enviarlo.'
-              : 'Ajusta ingredientes, indicaciones y adiciones.'}
+            {seleccion.tipo === "combo"
+              ? "Personaliza cada producto del combo antes de enviarlo."
+              : "Ajusta ingredientes, indicaciones y adiciones."}
           </DialogDescription>
         </DialogHeader>
 
         <div className="scrollbar-fina min-h-0 flex-1 overflow-y-auto">
           <div className="space-y-6 p-5">
+            {grupos.length ? (
+              <section className="space-y-4" aria-label="Opciones del almuerzo">
+                <p className="text-sm text-muted-foreground">
+                  Arroz y ensalada incluidos. Elige una opción por grupo; el
+                  precio es fijo.
+                </p>
+                {cargandoMenu ? (
+                  <p role="status">Cargando opciones…</p>
+                ) : errorMenu ? (
+                  <p role="alert" className="text-destructive">
+                    No se pudieron cargar las opciones del día. Intenta
+                    nuevamente.
+                  </p>
+                ) : (
+                  grupos.map((g) => (
+                    <fieldset key={g} className="space-y-2">
+                      <legend className="mb-2 text-sm font-semibold">
+                        {g === "PROTEINA"
+                          ? "Proteína"
+                          : g === "CALDO"
+                            ? "Caldo"
+                            : "Principio"}
+                      </legend>
+                      {opcionesProducto.filter((o) => o.grupo === g).length ? (
+                        opcionesProducto
+                          .filter((o) => o.grupo === g)
+                          .map((o) => (
+                            <label
+                              key={o.id}
+                              className="flex cursor-pointer items-center gap-3 rounded-lg bg-surface-high p-3"
+                            >
+                              <input
+                                type="radio"
+                                name={`menu-${g}`}
+                                value={o.id}
+                                checked={elecciones[g] === o.id}
+                                onChange={() =>
+                                  setElecciones((e) => ({ ...e, [g]: o.id }))
+                                }
+                                className="accent-primary"
+                              />
+                              {o.componente.nombre_producto}
+                            </label>
+                          ))
+                      ) : (
+                        <p className="text-sm text-destructive">
+                          El administrador debe configurar las opciones de hoy.
+                        </p>
+                      )}
+                    </fieldset>
+                  ))
+                )}
+              </section>
+            ) : null}
+            {productoMenu?.articuloCompartidoId ? (
+              <p
+                role="status"
+                className={
+                  stockSuficiente
+                    ? "text-sm text-tertiary"
+                    : "text-sm text-destructive"
+                }
+              >
+                Disponibles en Panadería: {stock?.disponible ?? "consultando…"}.
+                Se reservan al confirmar el pedido y se descuentan al
+                entregarlos.
+              </p>
+            ) : null}
             {/* Cantidad */}
             <section className="flex items-center justify-between">
               <p className="micro-label">Cantidad</p>
@@ -216,13 +369,19 @@ export function PersonalizarDialog({
                 >
                   −
                 </Button>
-                <span className="w-6 text-center font-heading text-lg tabular-nums">{cantidad}</span>
+                <span className="w-6 text-center font-heading text-lg tabular-nums">
+                  {cantidad}
+                </span>
                 <Button
                   type="button"
                   variant="secondary"
                   size="sm"
                   className="h-9 w-9 text-lg"
                   onClick={() => setCantidad((c) => c + 1)}
+                  disabled={
+                    !!productoMenu?.articuloCompartidoId &&
+                    (!stock || cantidad >= Number(stock.disponible))
+                  }
                   aria-label="Sumar cantidad"
                 >
                   +
@@ -231,11 +390,13 @@ export function PersonalizarDialog({
             </section>
 
             {/* Ingredientes */}
-            {seleccion.tipo === 'producto' ? (
+            {seleccion.tipo === "producto" ? (
               <SeccionIngredientes
                 titulo="Ingredientes"
                 contexto={0}
-                receta={recetaActivaPorProducto.get(seleccion.producto.id_producto)}
+                receta={recetaActivaPorProducto.get(
+                  seleccion.producto.id_producto,
+                )}
                 estado={ingredientes}
                 onCambiar={cambiarModo}
               />
@@ -243,9 +404,11 @@ export function PersonalizarDialog({
               (seleccion.combo.detallesCombo ?? []).map((d) => (
                 <SeccionIngredientes
                   key={d.id_detalleCombo}
-                  titulo={`${d.producto?.nombre_producto ?? 'Producto'}${Number(d.cantidad_detalleCombo) > 1 ? ` ×${Number(d.cantidad_detalleCombo)}` : ''}`}
+                  titulo={`${d.producto?.nombre_producto ?? "Producto"}${Number(d.cantidad_detalleCombo) > 1 ? ` ×${Number(d.cantidad_detalleCombo)}` : ""}`}
                   contexto={d.id_producto_detalleCombo}
-                  receta={recetaActivaPorProducto.get(d.id_producto_detalleCombo)}
+                  receta={recetaActivaPorProducto.get(
+                    d.id_producto_detalleCombo,
+                  )}
                   estado={ingredientes}
                   onCambiar={cambiarModo}
                 />
@@ -257,8 +420,8 @@ export function PersonalizarDialog({
               <p className="micro-label mb-2">Adiciones (se cobran)</p>
               {productosAdicion.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  No hay adiciones en el catalogo. Crealas como productos en una categoria marcada
-                  “de adiciones”.
+                  No hay adiciones en el catalogo. Crealas como productos en una
+                  categoria marcada “de adiciones”.
                 </p>
               ) : (
                 <>
@@ -272,7 +435,9 @@ export function PersonalizarDialog({
                     />
                   </div>
                   {gruposAdicion.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Ninguna adicion coincide con la busqueda.</p>
+                    <p className="text-sm text-muted-foreground">
+                      Ninguna adicion coincide con la busqueda.
+                    </p>
                   ) : (
                     <div className="space-y-4">
                       {gruposAdicion.map(([grupo, items]) => (
@@ -288,11 +453,17 @@ export function PersonalizarDialog({
                                 cant={adiciones.get(producto.id_producto) ?? 0}
                                 onMenos={() =>
                                   setAdiciones((prev) => {
-                                    const siguiente = new Map(prev)
-                                    const c = siguiente.get(producto.id_producto) ?? 0
-                                    if (c <= 1) siguiente.delete(producto.id_producto)
-                                    else siguiente.set(producto.id_producto, c - 1)
-                                    return siguiente
+                                    const siguiente = new Map(prev);
+                                    const c =
+                                      siguiente.get(producto.id_producto) ?? 0;
+                                    if (c <= 1)
+                                      siguiente.delete(producto.id_producto);
+                                    else
+                                      siguiente.set(
+                                        producto.id_producto,
+                                        c - 1,
+                                      );
+                                    return siguiente;
                                   })
                                 }
                                 onMas={() =>
@@ -329,14 +500,19 @@ export function PersonalizarDialog({
         </div>
 
         <div className="glass-panel border-t border-border p-4">
-          <Button type="button" className="btn-heat w-full justify-between font-heading" onClick={agregar}>
+          <Button
+            type="button"
+            className="btn-heat w-full justify-between font-heading"
+            onClick={agregar}
+            disabled={!menuCompleto || !stockSuficiente}
+          >
             <span>Agregar a la comanda</span>
             <span className="tabular-nums">{formatearPrecio(total)}</span>
           </Button>
         </div>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 function SeccionIngredientes({
@@ -346,11 +522,15 @@ function SeccionIngredientes({
   estado,
   onCambiar,
 }: {
-  titulo: string
-  contexto: number
-  receta: Receta | undefined
-  estado: EstadoIngredientes
-  onCambiar: (contexto: number, idIngrediente: number, modo: ModoIngrediente) => void
+  titulo: string;
+  contexto: number;
+  receta: Receta | undefined;
+  estado: EstadoIngredientes;
+  onCambiar: (
+    contexto: number,
+    idIngrediente: number,
+    modo: ModoIngrediente,
+  ) => void;
 }) {
   return (
     <section>
@@ -358,26 +538,51 @@ function SeccionIngredientes({
       {receta?.detalles?.length ? (
         <ul className="space-y-1.5">
           {receta.detalles.map((detalle) => {
-            const modo = estado.get(claveIngrediente(contexto, detalle.id_ingrediente_detalleReceta)) ?? 'normal'
+            const modo =
+              estado.get(
+                claveIngrediente(
+                  contexto,
+                  detalle.id_ingrediente_detalleReceta,
+                ),
+              ) ?? "normal";
             return (
-              <li key={detalle.id_detalleReceta} className="flex items-center justify-between gap-3">
-                <span className={cn('text-sm', modo === 'sin' && 'text-muted-foreground line-through')}>
-                  {detalle.ingrediente?.nombre_ingrediente ?? `Ingrediente ${detalle.id_ingrediente_detalleReceta}`}
+              <li
+                key={detalle.id_detalleReceta}
+                className="flex items-center justify-between gap-3"
+              >
+                <span
+                  className={cn(
+                    "text-sm",
+                    modo === "sin" && "text-muted-foreground line-through",
+                  )}
+                >
+                  {detalle.ingrediente?.nombre_ingrediente ??
+                    `Ingrediente ${detalle.id_ingrediente_detalleReceta}`}
                 </span>
-                <div className="flex overflow-hidden rounded-md bg-surface-lowest" role="group" aria-label={`Modo de ${detalle.ingrediente?.nombre_ingrediente}`}>
-                  {(['normal', 'sin'] as const).map((opcion) => (
+                <div
+                  className="flex overflow-hidden rounded-md bg-surface-lowest"
+                  role="group"
+                  aria-label={`Modo de ${detalle.ingrediente?.nombre_ingrediente}`}
+                >
+                  {(["normal", "sin"] as const).map((opcion) => (
                     <button
                       key={opcion}
                       type="button"
-                      onClick={() => onCambiar(contexto, detalle.id_ingrediente_detalleReceta, opcion)}
+                      onClick={() =>
+                        onCambiar(
+                          contexto,
+                          detalle.id_ingrediente_detalleReceta,
+                          opcion,
+                        )
+                      }
                       aria-pressed={modo === opcion}
                       className={cn(
-                        'px-2.5 py-1 text-xs uppercase tracking-wide transition-colors',
+                        "px-2.5 py-1 text-xs uppercase tracking-wide transition-colors",
                         modo === opcion
-                          ? opcion === 'sin'
-                            ? 'bg-destructive/20 font-semibold text-destructive'
-                            : 'bg-secondary font-semibold text-secondary-foreground'
-                          : 'text-muted-foreground hover:text-foreground',
+                          ? opcion === "sin"
+                            ? "bg-destructive/20 font-semibold text-destructive"
+                            : "bg-secondary font-semibold text-secondary-foreground"
+                          : "text-muted-foreground hover:text-foreground",
                       )}
                     >
                       {opcion}
@@ -385,14 +590,16 @@ function SeccionIngredientes({
                   ))}
                 </div>
               </li>
-            )
+            );
           })}
         </ul>
       ) : (
-        <p className="text-sm text-muted-foreground">Sin receta: no hay ingredientes para ajustar.</p>
+        <p className="text-sm text-muted-foreground">
+          Sin receta: no hay ingredientes para ajustar.
+        </p>
       )}
     </section>
-  )
+  );
 }
 
 // Una adicion con su stepper de cantidad.
@@ -402,16 +609,18 @@ function FilaAdicion({
   onMenos,
   onMas,
 }: {
-  producto: Producto
-  cant: number
-  onMenos: () => void
-  onMas: () => void
+  producto: Producto;
+  cant: number;
+  onMenos: () => void;
+  onMas: () => void;
 }) {
   return (
     <li className="flex items-center justify-between gap-3">
       <span className="text-sm">
         {producto.nombre_producto}
-        <span className="ml-2 text-muted-foreground tabular-nums">{formatearPrecio(producto.precio_producto)}</span>
+        <span className="ml-2 text-muted-foreground tabular-nums">
+          {formatearPrecio(producto.precio_producto)}
+        </span>
       </span>
       <div className="flex items-center gap-2">
         <Button
@@ -425,7 +634,12 @@ function FilaAdicion({
         >
           −
         </Button>
-        <span className={cn('w-4 text-center text-sm tabular-nums', cant > 0 && 'font-semibold text-primary')}>
+        <span
+          className={cn(
+            "w-4 text-center text-sm tabular-nums",
+            cant > 0 && "font-semibold text-primary",
+          )}
+        >
           {cant}
         </span>
         <Button
@@ -440,5 +654,5 @@ function FilaAdicion({
         </Button>
       </div>
     </li>
-  )
+  );
 }

@@ -28,6 +28,9 @@ export interface ArticuloPanaderia {
   precioVenta: string
   costoReferencia?: string | null
   existencia: string
+  reservado?: string
+  compartido?: boolean
+  disponible?: string
   activo: boolean
   categoriaId: number | null
 }
@@ -58,6 +61,7 @@ export interface ConteoPanaderia {
 }
 
 export interface EstadoConteoPanaderia {
+  articulosObligatorios?: ArticuloPanaderia[]
   fecha: string
   totalArticulos: number
   faltantes: string[]
@@ -181,6 +185,7 @@ export const bakeryKeys = {
 export const articulosQuery = queryOptions({
   queryKey: bakeryKeys.articulos,
   queryFn: () => api.get<ArticuloPanaderia[]>('/bakery/articulos'),
+  refetchInterval: 10000,
 })
 export const categoriasPanaderiaQuery = queryOptions({
   queryKey: bakeryKeys.categorias,

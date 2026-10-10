@@ -4,6 +4,70 @@ Este archivo registra el estado funcional y las decisiones tomadas al adaptar el
 template POS al restaurante objetivo. Debe actualizarse junto con cada cambio de
 alcance o feature terminada.
 
+### 2026-10-10 — Entregas individuales, stock compartido y cuadres diarios
+
+- Reglas confirmadas: descuadre físico diario de todos los productos de Panadería,
+  incluyendo entradas y excluyendo mermas/remisiones, separado en efectivo y
+  digital; solo estimación, sin crear ventas POS. Las bases de cada turno quedan
+  excluidas y se suma el dinero retirado al cerrar el turno anterior.
+- Panes compartidos: reserva al confirmar pedido, descuento al entregar y remisión
+  automática. Se habilitan entregas por producto y se conserva entregar todo.
+- Remisiones bidireccionales de varias líneas, editables antes de cerrar;
+  Ejecutivo/Bandeja a precio fijo con recetas según las alternativas del día.
+- Correcciones de cuadres cerrados limitadas al administrador local del área, con
+  motivo e historial. Se mantiene Pagos a personal.
+- Panadería agrega un segundo descuadre por inventario al cierre del turno único
+  o tarde-noche. Exige contar todos los productos activos, no los ingredientes
+  fuera de la lista fija. Conserva una foto del cálculo por producto y compara
+  lo estimado con lo declarado en efectivo, transferencias/Nequi y tarjeta.
+  Las ventas físicas estimadas no registradas en POS se atribuyen a efectivo;
+  no crean ventas ni cuentas por cobrar. Se mantiene el cuadre POS existente.
+- Remisiones permite confirmar una lista de entregas, agregar líneas y corregir
+  cantidad, valor unitario o concepto mientras la remisión esté abierta. Una
+  corrección ajusta ambas existencias y conserva historial; un reintento idéntico
+  no duplica entregas. Se agrupan por día o turno, se cierran antes del cuadre y
+  se pagan completas, sin abonos parciales. Restaurante puede enviar únicamente
+  ingredientes con stock; se conservan unidades y cantidades fraccionarias.
+  Las pantallas de traslados anteriores se retiran sin borrar datos históricos.
+- Para panes compartidos, el administrador local de Restaurante vincula un
+  producto de su catálogo con un artículo de Panadería y configura su valor
+  interno de remisión. El pedido muestra disponible y reservado, reserva al
+  guardar la ronda, libera al cancelar y descuenta físicamente al entregar.
+  La entrega genera una sola línea automática en la remisión. Requiere un turno
+  abierto de Panadería del día actual. Las ventas, mermas y salidas de Panadería
+  no pueden consumir unidades reservadas. El cajero puede registrar una hornada
+  fresca compartida con consumo de receta, sin duplicar la hoja del panadero.
+- Ejecutivo y Bandeja se configuran como tipos de producto a precio fijo. La
+  receta base representa arroz y ensalada; las alternativas son productos con
+  recetas propias, seleccionables en Catálogo → Almuerzos del día. Ejecutivo
+  requiere caldo, principio y proteína; Bandeja solo principio y proteína.
+  Se guardan las elecciones del cliente y se consumen sus recetas al enviar.
+- Entregar un producto marca la cantidad completa de esa línea; no fracciona
+  unidades dentro de la misma línea. Puede hacerse desde la vista por comanda o
+  por cuenta. Los componentes de un almuerzo también se muestran y se pueden
+  entregar individualmente. Se mantiene Entregar todo y se impide cancelar una
+  línea principal cuando alguno de sus componentes ya se entregó.
+- Corrección de cuadres cerrados: solo ADMIN_LOCAL de la misma área. Modifica
+  importes declarados, requiere motivo y conserva valores anteriores, autor y
+  fecha; no reabre el turno ni altera ventas, pagos o conteos. El histórico diario
+  refleja las declaraciones corregidas de los turnos que lo componen.
+- Conteo diario tiene filtro Productos/Ingredientes en ambas áreas. Cobro de
+  Restaurante permite navegar acciones con las flechas, conservando los campos
+  de texto y el comportamiento de Tab/Enter. Se conserva Pagos a personal.
+- Migración `20261010100000_stock_compartido_menu_cuadres` aplicada a la base POS
+  local, con copia PostgreSQL verificada previamente en `server/backups`.
+  No se reinició ni se vació la base; no se aplicó esta migración a Neon.
+- Verificación: 34 suites/475 pruebas del servidor, compilaciones de servidor y
+  cliente, lint del cliente y diff sin errores de espacios. Integración real
+  PostgreSQL: 20 comprobaciones, incluyendo cierre completo, reservas, reintentos,
+  entregas, remisión inversa de 2,5 kg, recetas de ambos menús y auditoría de caja.
+  Todos los datos de integración se revirtieron. Navegador: ocho flujos correctos,
+  sin errores de ejecución ni escrituras de negocio; formularios revisados en
+  escritorio y móvil conservando el diseño existente. Revisión visual final:
+  `ship` para el hallazgo precio/botón de cierre, resuelto sin regresiones visibles.
+- Despliegue y migración de producción pendientes; las verificaciones y la
+  migración descritas corresponden únicamente al entorno local.
+
 ## Contexto actual
 
 - El repositorio parte de un template POS para restaurante.

@@ -127,7 +127,9 @@ export function VentaPanaderia({
     claveOperacion.current = null
     const maximo = Math.floor(
       Number(
-        disponibles.find((articulo) => articulo.id === id)?.existencia ?? 0,
+        disponibles.find((articulo) => articulo.id === id)?.disponible ??
+          disponibles.find((articulo) => articulo.id === id)?.existencia ??
+          0,
       ),
     )
     setCarrito((anterior) => {
@@ -266,7 +268,10 @@ export function VentaPanaderia({
                 data-producto={articulo.id}
                 type="button"
                 onClick={() => cambiarCantidad(articulo.id, 1)}
-                disabled={!turno || Number(articulo.existencia) < 1}
+                disabled={
+                  !turno ||
+                  Number(articulo.disponible ?? articulo.existencia) < 1
+                }
                 className="min-h-28 rounded-lg bg-surface-high p-4 text-left transition-colors hover:bg-surface-high/70 focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-tertiary">
@@ -284,7 +289,7 @@ export function VentaPanaderia({
                     {formatearPrecio(articulo.precioVenta)}
                   </strong>
                   <span className="text-muted-foreground">
-                    {articulo.existencia} disponibles
+                    {articulo.disponible ?? articulo.existencia} disponibles
                   </span>
                 </span>
               </button>
@@ -383,7 +388,8 @@ export function VentaPanaderia({
                     variant="ghost"
                     aria-label={`Agregar ${articulo.nombre}`}
                     disabled={
-                      carrito[articulo.id] >= Number(articulo.existencia)
+                      carrito[articulo.id] >=
+                      Number(articulo.disponible ?? articulo.existencia)
                     }
                     onClick={() => cambiarCantidad(articulo.id, 1)}
                   >

@@ -99,6 +99,7 @@ export function ConteoDiarioPanaderia({
   const [fecha, setFecha] = useState(hoyColombia)
   const [configurando, setConfigurando] = useState(false)
   const [busqueda, setBusqueda] = useState('')
+  const [filtroTipo, setFiltroTipo] = useState('TODOS')
   const hoy = hoyColombia()
   const esHoy = fecha === hoy
   const esPasado = fecha < hoy
@@ -125,6 +126,10 @@ export function ConteoDiarioPanaderia({
     : (lista ?? [])
         .filter((elemento) => elemento.articulo.activo)
         .map((elemento) => elemento.articulo)
+  if (!esPasado)
+    for (const articulo of estado?.articulosObligatorios ?? []) {
+      if (!articulos.some((a) => a.id === articulo.id)) articulos.push(articulo)
+    }
   // Un conteo confirmado hoy sigue visible aunque se retire de la lista fija.
   if (esHoy)
     for (const conteo of estado?.detalle ?? []) {
@@ -137,12 +142,27 @@ export function ConteoDiarioPanaderia({
   const confirmados = articulos.filter((articulo) =>
     conteos.has(articulo.id),
   ).length
-  const visibles = articulos.filter((articulo) =>
-    coincideConteo(articulo.nombre, busqueda),
+  const visibles = articulos.filter(
+    (articulo) =>
+      coincideConteo(articulo.nombre, busqueda) &&
+      (filtroTipo === 'TODOS' ||
+        (filtroTipo === 'INGREDIENTE'
+          ? articulo.tipo === 'INSUMO'
+          : articulo.tipo !== 'INSUMO')),
   )
 
   return (
     <div className="space-y-6">
+      <Select value={filtroTipo} onValueChange={setFiltroTipo}>
+        <SelectTrigger className="w-52" aria-label="Filtrar conteo por tipo">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="TODOS">Productos e ingredientes</SelectItem>
+          <SelectItem value="PRODUCTO">Solo productos</SelectItem>
+          <SelectItem value="INGREDIENTE">Solo ingredientes</SelectItem>
+        </SelectContent>
+      </Select>
       <section className="rounded-xl bg-surface-low p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-5">
           <div>
@@ -151,9 +171,9 @@ export function ConteoDiarioPanaderia({
               panadería
             </h2>
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-              Cuenta solo los productos e ingredientes definidos en la lista
-              fija. Las ventas y salidas justificadas se comparan con lo que
-              queda físicamente.
+              El cierre requiere todos los productos de catálogo y los
+              ingredientes de la lista fija. Mermas y remisiones justificadas no
+              cuentan como ventas.
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-2">

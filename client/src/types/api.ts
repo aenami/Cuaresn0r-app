@@ -27,6 +27,9 @@ export interface Producto {
   habilitado_producto: boolean
   imagen_producto: string | null
   categoria?: Categoria | null
+  articuloCompartidoId?: number | null
+  precioInternoCompartido?: string | null
+  tipoMenu?: 'EJECUTIVO' | 'BANDEJA' | null
 }
 
 export interface DetalleCombo {
@@ -47,7 +50,8 @@ export interface Combo {
 
 // ---- recetas e inventario ----
 
-export type UnidadIngrediente = 'kg' | 'g' | 'dg' | 'mg' | 'ml' | 'L' | 'UNIDADES'
+export type UnidadIngrediente =
+  'kg' | 'g' | 'dg' | 'mg' | 'ml' | 'L' | 'UNIDADES'
 
 export interface Ingrediente {
   id_ingrediente: number
@@ -79,7 +83,12 @@ export interface Receta {
 }
 
 export type TipoMovimientoInventario =
-  'ENTRADA' | 'SALIDA_RECETA' | 'MERMA' | 'AJUSTE_POSITIVO' | 'AJUSTE_NEGATIVO' | 'REVERSO'
+  | 'ENTRADA'
+  | 'SALIDA_RECETA'
+  | 'MERMA'
+  | 'AJUSTE_POSITIVO'
+  | 'AJUSTE_NEGATIVO'
+  | 'REVERSO'
 
 export interface MovimientoInventario {
   id_movimiento: number
@@ -116,8 +125,14 @@ export interface PlanProduccionDiaria {
   id_usuario_resuelve_planProduccion: number | null
   fecha_creacion_planProduccion: string
   fecha_resolucion_planProduccion: string | null
-  producto?: Pick<Producto, 'id_producto' | 'nombre_producto' | 'habilitado_producto'> | null
-  ingrediente?: Pick<Ingrediente, 'id_ingrediente' | 'nombre_ingrediente' | 'unidades_ingrediente'> | null
+  producto?: Pick<
+    Producto,
+    'id_producto' | 'nombre_producto' | 'habilitado_producto'
+  > | null
+  ingrediente?: Pick<
+    Ingrediente,
+    'id_ingrediente' | 'nombre_ingrediente' | 'unidades_ingrediente'
+  > | null
   usuarioCrea: UsuarioMetaProduccion
   usuarioResuelve?: UsuarioMetaProduccion | null
 }
@@ -134,12 +149,14 @@ export interface ElementoConteoDiario {
 }
 
 export interface ConteoInventarioDiario {
-  valoracion?: import('@/features/inventario/valoracion-types').ValoracionConteo | null
+  valoracion?:
+    import('@/features/inventario/valoracion-types').ValoracionConteo | null
   conciliacion?: {
     cantidadSistema: string
     cantidadJustificada?: string
     diferencia: string | null
-    estado: 'PENDIENTE' | 'COINCIDE' | 'DIFERENCIA' | 'RECONTAR' | 'NO_COMPARABLE'
+    estado:
+      'PENDIENTE' | 'COINCIDE' | 'DIFERENCIA' | 'RECONTAR' | 'NO_COMPARABLE'
     motivoNoComparable: string | null
     requiereReconteo: boolean
   }
@@ -161,10 +178,16 @@ export interface ConteoInventarioDiario {
   id_usuario_cierra_conteoInventario: number | null
   fecha_creacion_conteoInventario: string
   fecha_finalizacion_conteoInventario: string | null
-  producto?: Pick<Producto, 'id_producto' | 'nombre_producto' | 'habilitado_producto'> | null
+  producto?: Pick<
+    Producto,
+    'id_producto' | 'nombre_producto' | 'habilitado_producto'
+  > | null
   ingrediente?: Pick<
     Ingrediente,
-    'id_ingrediente' | 'nombre_ingrediente' | 'unidades_ingrediente' | 'stock_ingrediente'
+    | 'id_ingrediente'
+    | 'nombre_ingrediente'
+    | 'unidades_ingrediente'
+    | 'stock_ingrediente'
   > | null
   usuarioCrea: UsuarioMetaProduccion
   usuarioCierra?: UsuarioMetaProduccion | null
@@ -191,8 +214,10 @@ export interface Mesa {
 
 // ---- pedidos y comandas ----
 
-export type EstadoPedido = 'ABIERTO' | 'EN_PREPARACION' | 'ENTREGADO' | 'CERRADO' | 'CANCELADO'
-export type EstadoDetalleComanda = 'PENDIENTE' | 'PREPARANDO' | 'ENTREGADO' | 'CANCELADO'
+export type EstadoPedido =
+  'ABIERTO' | 'EN_PREPARACION' | 'ENTREGADO' | 'CERRADO' | 'CANCELADO'
+export type EstadoDetalleComanda =
+  'PENDIENTE' | 'PREPARANDO' | 'ENTREGADO' | 'CANCELADO'
 export type TipoPedido = 'LOCAL' | 'DOMICILIO'
 export type ModalidadCuentaPedido = 'UNICA' | 'POR_CUENTA'
 
@@ -244,7 +269,8 @@ export interface DetalleComanda {
   }[]
 }
 
-export type EstadoImpresion = 'PENDIENTE' | 'EN_PROCESO' | 'REINTENTO' | 'IMPRESA' | 'FALLIDA'
+export type EstadoImpresion =
+  'PENDIENTE' | 'EN_PROCESO' | 'REINTENTO' | 'IMPRESA' | 'FALLIDA'
 
 export interface Impresora {
   id_impresora: number
@@ -420,9 +446,31 @@ export interface EstadoConteoCierre {
 }
 
 export interface Turno {
+  transferencia_real_cierre?: string | null
+  tarjeta_real_cierre?: string | null
+  cuadre_inventario_diario?: CuadreInventarioDiario | null
+  correcciones?: {
+    id: number
+    fecha: string
+    motivo: string
+    usuario?: { email_usuario: string }
+    anterior: {
+      efectivo: string | null
+      transferencia: string | null
+      tarjeta: string | null
+    }
+    nuevo: {
+      efectivo: string | null
+      transferencia: string | null
+      tarjeta: string | null
+    }
+  }[]
   tipo_turno: TipoTurno | null
   conteo_inventario_cierre_turno?: EstadoConteoCierre | null
-  conteo_panaderia_cierre_turno?: { valorDiferencia: string; completo: boolean } | null
+  conteo_panaderia_cierre_turno?: {
+    valorDiferencia: string
+    completo: boolean
+  } | null
   id_turno: number
   id_caja_turno: number
   id_usuario_turno: number
@@ -437,6 +485,38 @@ export interface Turno {
   estado_turno: EstadoTurno
   caja?: Caja
   usuario?: { id_usuario: number; email_usuario: string }
+}
+
+export interface CuadreInventarioDiario {
+  fecha: string
+  ventaFisicaEstimada: string
+  turnos: number[]
+  realesPrevios: {
+    efectivoSinBase: string
+    transferencia: string | null
+    tarjeta: string | null
+  }
+  efectivo: {
+    esperadoSinBase: string
+    realSinBase: string
+    diferencia: string
+  }
+  transferencia: {
+    esperado: string
+    real: string | null
+    diferencia: string | null
+  }
+  tarjeta: { esperado: string; real: string | null; diferencia: string | null }
+  detalle: {
+    articuloId: number
+    nombre: string
+    inicial: string
+    entradas: string
+    final: string
+    unidades: string
+    precio: string
+    valor: string
+  }[]
 }
 
 export interface PagoPorMetodo {
@@ -551,7 +631,12 @@ export interface Proveedor {
 }
 
 export interface DetalleCuentaPorPagar {
-  articuloPanaderia?: { id: number; nombre: string; unidad: string; tipo: string } | null
+  articuloPanaderia?: {
+    id: number
+    nombre: string
+    unidad: string
+    tipo: string
+  } | null
   id_detalleCuentaPorPagar: number
   cantidad_detalleCuenta: string
   precio_unitario_detalleCuenta: string

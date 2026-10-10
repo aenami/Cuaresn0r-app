@@ -6,6 +6,7 @@ import { CatalogoPanaderia } from '@/features/panaderia/catalogo'
 import { SeccionProductos } from '@/features/catalogo/seccion-productos'
 import { SeccionCombos } from '@/features/catalogo/seccion-combos'
 import { SeccionCategorias } from '@/features/catalogo/seccion-categorias'
+import { AlmuerzosDiarios } from '@/features/catalogo/almuerzos-diarios'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
@@ -13,12 +14,13 @@ export const Route = createFileRoute('/_auth/catalogo')({
   component: PaginaCatalogo,
 })
 
-type Pestana = 'productos' | 'combos' | 'categorias'
+type Pestana = 'productos' | 'combos' | 'categorias' | 'almuerzos'
 
 const PESTANAS: { id: Pestana; etiqueta: string }[] = [
   { id: 'productos', etiqueta: 'Productos' },
   { id: 'combos', etiqueta: 'Combos' },
   { id: 'categorias', etiqueta: 'Categorias' },
+  { id: 'almuerzos', etiqueta: 'Almuerzos del día' },
 ]
 
 function PaginaCatalogo() {
@@ -26,15 +28,22 @@ function PaginaCatalogo() {
   const area = useAreaTrabajo()
   const [pestana, setPestana] = useState<Pestana>('productos')
   const [busqueda, setBusqueda] = useState('')
-  if (area === 'PANADERIA') return <div className="p-6 md:p-10"><CatalogoPanaderia /></div>
+  if (area === 'PANADERIA')
+    return (
+      <div className="p-6 md:p-10">
+        <CatalogoPanaderia />
+      </div>
+    )
 
   return (
     <div className="p-6 md:p-10">
       {/* Titulo + buscador. El buscador no aplica a Categorias (se listan en
           tabla completa), asi que solo aparece en Productos y Combos. */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="font-heading text-3xl font-semibold uppercase tracking-tighter">Catalogo</h1>
-        {pestana !== 'categorias' ? (
+        <h1 className="font-heading text-3xl font-semibold uppercase tracking-tighter">
+          Catalogo
+        </h1>
+        {pestana !== 'categorias' && pestana !== 'almuerzos' ? (
           <div className="relative w-full sm:max-w-sm">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -48,7 +57,7 @@ function PaginaCatalogo() {
       </div>
 
       {/* Pestañas subrayadas, separadas del titulo */}
-      <div className="mt-10 flex items-center gap-6 border-b border-border">
+      <div className="mt-10 flex items-center gap-6 overflow-x-auto border-b border-border">
         {PESTANAS.map((p) => (
           <button
             key={p.id}
@@ -77,6 +86,8 @@ function PaginaCatalogo() {
           <SeccionProductos esAdmin={esAdmin} busqueda={busqueda} />
         ) : pestana === 'combos' ? (
           <SeccionCombos esAdmin={esAdmin} busqueda={busqueda} />
+        ) : pestana === 'almuerzos' ? (
+          <AlmuerzosDiarios />
         ) : (
           <SeccionCategorias esAdmin={esAdmin} />
         )}

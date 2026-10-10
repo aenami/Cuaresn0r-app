@@ -39,6 +39,8 @@ export interface ItemCarrito {
   precioUnitario: number
   cantidad: number
   indicaciones?: string
+  opcionesMenu?: number[]
+  nombresMenu?: string[]
   // Cuenta elegida al tomar el pedido en modalidad POR_CUENTA.
   idSubcuenta?: number
   // Solo productos directos:
@@ -70,7 +72,9 @@ export const useCarritoStore = create<CarritoState>()(
         set((s) => ({
           carritos: {
             ...s.carritos,
-            [idPedido]: (s.carritos[idPedido] ?? []).filter((i) => i.uid !== uid),
+            [idPedido]: (s.carritos[idPedido] ?? []).filter(
+              (i) => i.uid !== uid,
+            ),
           },
         })),
       limpiar: (idPedido) =>
@@ -84,7 +88,10 @@ export const useCarritoStore = create<CarritoState>()(
 )
 
 export function totalItemCarrito(item: ItemCarrito): number {
-  const adiciones = item.adiciones.reduce((acc, a) => acc + a.precio * a.cantidad, 0)
+  const adiciones = item.adiciones.reduce(
+    (acc, a) => acc + a.precio * a.cantidad,
+    0,
+  )
   return item.precioUnitario * item.cantidad + adiciones
 }
 
@@ -92,10 +99,13 @@ export function totalItemCarrito(item: ItemCarrito): number {
 // TOTALES: cantidadReceta x unidades del producto en el item.
 export function itemAPayload(item: ItemCarrito): ComandaItemPayload {
   const payload: ComandaItemPayload = {
-    ...(item.tipo === 'producto' ? { idProducto: item.id } : { idCombo: item.id }),
+    ...(item.tipo === 'producto'
+      ? { idProducto: item.id }
+      : { idCombo: item.id }),
     cantidad: item.cantidad,
     ...(item.indicaciones ? { indicaciones: item.indicaciones } : {}),
     ...(item.idSubcuenta ? { idSubcuenta: item.idSubcuenta } : {}),
+    ...(item.opcionesMenu ? { opcionesMenu: item.opcionesMenu } : {}),
   }
 
   // Solo "sin": el delta siempre resta (negativo) la cantidad de receta.

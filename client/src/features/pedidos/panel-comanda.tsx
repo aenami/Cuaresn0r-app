@@ -8,11 +8,17 @@ import {
   useCancelarItem,
   useCancelarPedido,
   useEntregarComanda,
+  useEntregarItem,
   useDespacharComanda,
   useEnviarComanda,
 } from '@/features/pedidos/api'
 import { useReimprimirComanda } from '@/features/impresion/api'
-import { itemAPayload, totalItemCarrito, useCarritoStore, type ItemCarrito } from '@/features/pedidos/carrito.store'
+import {
+  itemAPayload,
+  totalItemCarrito,
+  useCarritoStore,
+  type ItemCarrito,
+} from '@/features/pedidos/carrito.store'
 import type { Comanda, DetalleComanda, Pedido } from '@/types/api'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -26,7 +32,13 @@ type VistaPanel = 'comanda' | 'cuenta'
 // `?? []` crea un array nuevo en cada render y dispara un bucle infinito.
 const CARRITO_VACIO: ItemCarrito[] = []
 
-export function PanelComanda({ pedido, editable }: { pedido: Pedido; editable: boolean }) {
+export function PanelComanda({
+  pedido,
+  editable,
+}: {
+  pedido: Pedido
+  editable: boolean
+}) {
   const idPedido = pedido.id_pedido
   const navigate = useNavigate()
   const borrador = useCarritoStore((s) => s.carritos[idPedido]) ?? CARRITO_VACIO
@@ -42,21 +54,39 @@ export function PanelComanda({ pedido, editable }: { pedido: Pedido; editable: b
   } | null>(null)
 
   const comandas = pedido.comandas ?? []
-  const vistaPredeterminada: VistaPanel = pedido.modalidad_cuenta_pedido === 'POR_CUENTA' ? 'cuenta' : 'comanda'
-  const vista = vistaElegida?.idPedido === idPedido ? vistaElegida.vista : vistaPredeterminada
+  const vistaPredeterminada: VistaPanel =
+    pedido.modalidad_cuenta_pedido === 'POR_CUENTA' ? 'cuenta' : 'comanda'
+  const vista =
+    vistaElegida?.idPedido === idPedido
+      ? vistaElegida.vista
+      : vistaPredeterminada
   const cuentasPorId = useMemo(
-    () => new Map((pedido.subcuentas ?? []).map((cuenta) => [cuenta.id_subcuenta, cuenta.nombre_subcuenta])),
+    () =>
+      new Map(
+        (pedido.subcuentas ?? []).map((cuenta) => [
+          cuenta.id_subcuenta,
+          cuenta.nombre_subcuenta,
+        ]),
+      ),
     [pedido.subcuentas],
   )
 
-  const totalBorrador = borrador.reduce((acc, item) => acc + totalItemCarrito(item), 0)
+  const totalBorrador = borrador.reduce(
+    (acc, item) => acc + totalItemCarrito(item),
+    0,
+  )
 
   // Total del pedido: todas las filas no canceladas (padres e hijos) de todas
   // las comandas, igual que factura el backend.
-  const detallesEnviados = (pedido.comandas ?? []).flatMap((c) => c.detalles ?? [])
+  const detallesEnviados = (pedido.comandas ?? []).flatMap(
+    (c) => c.detalles ?? [],
+  )
   const totalEnviado = detallesEnviados
     .filter((d) => d.estado_dc !== 'CANCELADO')
-    .reduce((acc, d) => acc + Number(d.precio_unitario_dc) * d.cantidad_producto_dc, 0)
+    .reduce(
+      (acc, d) => acc + Number(d.precio_unitario_dc) * d.cantidad_producto_dc,
+      0,
+    )
   const pagado = borrador.length === 0 && pedidoEstaPagado(pedido)
 
   function guardarComanda() {
@@ -65,7 +95,9 @@ export function PanelComanda({ pedido, editable }: { pedido: Pedido; editable: b
       .mutateAsync(borrador.map(itemAPayload))
       .then(() => {
         limpiar(idPedido)
-        toast.success('Ronda guardada; ya puede cobrarse o enviarse a preparacion')
+        toast.success(
+          'Ronda guardada; ya puede cobrarse o enviarse a preparacion',
+        )
       })
       .catch((e: unknown) => toast.error(errorATexto(e)))
   }
@@ -84,14 +116,18 @@ export function PanelComanda({ pedido, editable }: { pedido: Pedido; editable: b
               <ItemBorrador
                 key={item.uid}
                 item={item}
-                cuenta={item.idSubcuenta ? cuentasPorId.get(item.idSubcuenta) : null}
+                cuenta={
+                  item.idSubcuenta ? cuentasPorId.get(item.idSubcuenta) : null
+                }
                 onQuitar={() => quitar(idPedido, item.uid)}
               />
             ))}
           </ul>
         ) : (
           <p className="text-sm text-muted-foreground">
-            {editable ? 'Toca productos del menu para armar la comanda.' : 'Sin borrador.'}
+            {editable
+              ? 'Toca productos del menu para armar la comanda.'
+              : 'Sin borrador.'}
           </p>
         )}
 
@@ -102,7 +138,12 @@ export function PanelComanda({ pedido, editable }: { pedido: Pedido; editable: b
           <div className="mt-6">
             <div className="mb-3 flex items-center justify-between gap-2">
               <p className="micro-label">Rondas del pedido</p>
-              <ToggleVista vista={vista} onCambiar={(nuevaVista) => setVistaElegida({ idPedido, vista: nuevaVista })} />
+              <ToggleVista
+                vista={vista}
+                onCambiar={(nuevaVista) =>
+                  setVistaElegida({ idPedido, vista: nuevaVista })
+                }
+              />
             </div>
 
             {vista === 'comanda' ? (
@@ -129,11 +170,15 @@ export function PanelComanda({ pedido, editable }: { pedido: Pedido; editable: b
         {borrador.length > 0 ? (
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Por enviar</span>
-            <span className="font-heading tabular-nums">{formatearPrecio(totalBorrador)}</span>
+            <span className="font-heading tabular-nums">
+              {formatearPrecio(totalBorrador)}
+            </span>
           </div>
         ) : null}
         <div className="flex justify-between">
-          <span className="text-sm text-muted-foreground">Total del pedido</span>
+          <span className="text-sm text-muted-foreground">
+            Total del pedido
+          </span>
           <span className="font-heading text-lg font-semibold tabular-nums text-primary">
             {formatearPrecio(totalEnviado + totalBorrador)}
           </span>
@@ -142,7 +187,11 @@ export function PanelComanda({ pedido, editable }: { pedido: Pedido; editable: b
         {/* Cobrar: solo roles de caja, mientras el pedido siga abierto. Lleva a
             la pantalla de cobro por cuenta. */}
         {editable && esCaja && comandas.length > 0 && !pagado ? (
-          <Button asChild type="button" className="btn-heat w-full gap-2 font-heading uppercase tracking-wide">
+          <Button
+            asChild
+            type="button"
+            className="btn-heat w-full gap-2 font-heading uppercase tracking-wide"
+          >
             <Link to="/cobro/$idPedido" params={{ idPedido: String(idPedido) }}>
               <Wallet className="size-4" /> Cobrar cuenta
             </Link>
@@ -163,12 +212,19 @@ export function PanelComanda({ pedido, editable }: { pedido: Pedido; editable: b
               disabled={borrador.length === 0 || guardar.isPending}
               onClick={guardarComanda}
             >
-              {guardar.isPending ? 'Guardando…' : `Guardar ronda (${borrador.length})`}
+              {guardar.isPending
+                ? 'Guardando…'
+                : `Guardar ronda (${borrador.length})`}
             </Button>
             <Button
               type="button"
               variant="ghost"
-              className={cn('w-full text-xs', confirmandoCancelacion ? 'text-destructive' : 'text-muted-foreground')}
+              className={cn(
+                'w-full text-xs',
+                confirmandoCancelacion
+                  ? 'text-destructive'
+                  : 'text-muted-foreground',
+              )}
               disabled={cancelarPedido.isPending}
               onClick={() => {
                 if (!confirmandoCancelacion) {
@@ -188,7 +244,9 @@ export function PanelComanda({ pedido, editable }: { pedido: Pedido; editable: b
                   .finally(() => setConfirmandoCancelacion(false))
               }}
             >
-              {confirmandoCancelacion ? 'Toca de nuevo para confirmar la cancelacion' : 'Cancelar pedido'}
+              {confirmandoCancelacion
+                ? 'Toca de nuevo para confirmar la cancelacion'
+                : 'Cancelar pedido'}
             </Button>
           </>
         ) : null}
@@ -198,7 +256,13 @@ export function PanelComanda({ pedido, editable }: { pedido: Pedido; editable: b
 }
 
 // Interruptor segmentado entre las dos miradas del panel de enviados.
-function ToggleVista({ vista, onCambiar }: { vista: VistaPanel; onCambiar: (v: VistaPanel) => void }) {
+function ToggleVista({
+  vista,
+  onCambiar,
+}: {
+  vista: VistaPanel
+  onCambiar: (v: VistaPanel) => void
+}) {
   const opciones: { valor: VistaPanel; texto: string }[] = [
     { valor: 'comanda', texto: 'Por comanda' },
     { valor: 'cuenta', texto: 'Por cuenta' },
@@ -213,7 +277,9 @@ function ToggleVista({ vista, onCambiar }: { vista: VistaPanel; onCambiar: (v: V
           onClick={() => onCambiar(o.valor)}
           className={cn(
             'rounded-md px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide transition-colors duration-150 ease-out-quart',
-            vista === o.valor ? 'bg-surface-high text-foreground' : 'text-muted-foreground hover:text-foreground',
+            vista === o.valor
+              ? 'bg-surface-high text-foreground'
+              : 'text-muted-foreground hover:text-foreground',
           )}
         >
           {o.texto}
@@ -223,11 +289,21 @@ function ToggleVista({ vista, onCambiar }: { vista: VistaPanel; onCambiar: (v: V
   )
 }
 
-function ItemBorrador({ item, cuenta, onQuitar }: { item: ItemCarrito; cuenta?: string | null; onQuitar: () => void }) {
+function ItemBorrador({
+  item,
+  cuenta,
+  onQuitar,
+}: {
+  item: ItemCarrito
+  cuenta?: string | null
+  onQuitar: () => void
+}) {
   const personalizaciones =
     item.tipo === 'producto'
       ? item.personalizaciones.map((p) => `Sin ${p.nombre}`)
-      : item.componentes.flatMap((c) => c.personalizaciones.map((p) => `${c.nombre}: sin ${p.nombre}`))
+      : item.componentes.flatMap((c) =>
+          c.personalizaciones.map((p) => `${c.nombre}: sin ${p.nombre}`),
+        )
 
   return (
     <li className="rounded-md border-l-4 border-primary/60 bg-surface-high p-3">
@@ -235,7 +311,9 @@ function ItemBorrador({ item, cuenta, onQuitar }: { item: ItemCarrito; cuenta?: 
         <span className="text-sm font-medium">
           {item.cantidad} × {item.nombre}
         </span>
-        <span className="shrink-0 text-sm tabular-nums">{formatearPrecio(totalItemCarrito(item))}</span>
+        <span className="shrink-0 text-sm tabular-nums">
+          {formatearPrecio(totalItemCarrito(item))}
+        </span>
       </div>
       {personalizaciones.length > 0 ? (
         <ul className="mt-1 text-xs text-tertiary">
@@ -244,18 +322,30 @@ function ItemBorrador({ item, cuenta, onQuitar }: { item: ItemCarrito; cuenta?: 
           ))}
         </ul>
       ) : null}
+      {item.nombresMenu?.length ? (
+        <p className="mt-1 text-xs text-tertiary">
+          {item.nombresMenu.join(' · ')}
+        </p>
+      ) : null}
       {item.adiciones.length > 0 ? (
         <ul className="mt-1 text-xs text-muted-foreground">
           {item.adiciones.map((a) => (
             <li key={a.idProducto}>
-              + {a.cantidad} × {a.nombre} ({formatearPrecio(a.precio * a.cantidad)})
+              + {a.cantidad} × {a.nombre} (
+              {formatearPrecio(a.precio * a.cantidad)})
             </li>
           ))}
         </ul>
       ) : null}
-      {item.indicaciones ? <p className="mt-1 text-xs italic text-muted-foreground">“{item.indicaciones}”</p> : null}
+      {item.indicaciones ? (
+        <p className="mt-1 text-xs italic text-muted-foreground">
+          “{item.indicaciones}”
+        </p>
+      ) : null}
       {cuenta ? (
-        <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-primary">Cuenta · {cuenta}</p>
+        <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-primary">
+          Cuenta · {cuenta}
+        </p>
       ) : null}
       <Button
         type="button"
@@ -284,7 +374,9 @@ function ComandaEnviada({
   const entregarComanda = useEntregarComanda(idPedido)
   const despachar = useDespacharComanda(idPedido)
   const detalles = comanda.detalles ?? []
-  const principales = detalles.filter((d) => d.id_detalleComandaPadre_dc === null)
+  const principales = detalles.filter(
+    (d) => d.id_detalleComandaPadre_dc === null,
+  )
   const hayPendientes = detalles.some((d) => d.estado_dc === 'PREPARANDO')
   const esBorrador = comanda.estado_comanda === 'BORRADOR'
 
@@ -296,7 +388,9 @@ function ComandaEnviada({
           {comanda.autorizada_sin_pago &&
           comanda.fecha_regularizacion_pago_comanda === null &&
           !comandaEstaPagada(comanda) ? (
-            <p className="mt-0.5 text-[10px] uppercase tracking-wide text-destructive">Autorizada sin pago total</p>
+            <p className="mt-0.5 text-[10px] uppercase tracking-wide text-destructive">
+              Autorizada sin pago total
+            </p>
           ) : null}
         </div>
         {editable && esBorrador ? (
@@ -333,13 +427,20 @@ function ComandaEnviada({
         ) : null}
       </div>
       {esBorrador ? (
-        <p className="mt-1.5 text-xs text-muted-foreground">Borrador persistente · aun no descuenta inventario</p>
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          Borrador persistente · aun no descuenta inventario
+        </p>
       ) : (
         <EstadoImpresiones comanda={comanda} />
       )}
       <ul className="mt-2 space-y-2">
         {principales.map((detalle) => (
-          <ItemEnviado key={detalle.id_detalleComanda} detalle={detalle} idPedido={idPedido} editable={editable} />
+          <ItemEnviado
+            key={detalle.id_detalleComanda}
+            detalle={detalle}
+            idPedido={idPedido}
+            editable={editable}
+          />
         ))}
       </ul>
     </div>
@@ -356,15 +457,22 @@ function EstadoImpresiones({ comanda }: { comanda: Comanda }) {
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
       {impresiones.map((impresion) => {
-        const etiqueta = impresion.destino_impresion === 'COCINA' ? 'Cocina' : 'Barra'
+        const etiqueta =
+          impresion.destino_impresion === 'COCINA' ? 'Cocina' : 'Barra'
         return (
-          <span key={impresion.id_impresionComanda} className="flex items-center gap-1">
+          <span
+            key={impresion.id_impresionComanda}
+            className="flex items-center gap-1"
+          >
             <span
               className={cn(
                 'micro-label rounded-full px-2 py-0.5',
-                impresion.estado_impresion === 'IMPRESA' && 'bg-primary/15 !text-primary',
-                impresion.estado_impresion === 'FALLIDA' && 'bg-destructive/15 !text-destructive',
-                impresion.estado_impresion === 'PENDIENTE' && 'animate-pulse bg-tertiary/15 !text-tertiary',
+                impresion.estado_impresion === 'IMPRESA' &&
+                  'bg-primary/15 !text-primary',
+                impresion.estado_impresion === 'FALLIDA' &&
+                  'bg-destructive/15 !text-destructive',
+                impresion.estado_impresion === 'PENDIENTE' &&
+                  'animate-pulse bg-tertiary/15 !text-tertiary',
               )}
               title={impresion.motivo_fallo ?? undefined}
             >
@@ -388,7 +496,11 @@ function EstadoImpresiones({ comanda }: { comanda: Comanda }) {
                       idComanda: comanda.id_comanda,
                       destino: impresion.destino_impresion,
                     })
-                    .then(() => toast.success(`Reimpresion de ${etiqueta.toLowerCase()} enviada`))
+                    .then(() =>
+                      toast.success(
+                        `Reimpresion de ${etiqueta.toLowerCase()} enviada`,
+                      ),
+                    )
                     .catch((e: unknown) => toast.error(errorATexto(e)))
                 }
               >
@@ -427,8 +539,15 @@ function ItemEnviado({
   editable: boolean
 }) {
   const cancelarItem = useCancelarItem(idPedido)
+  const entregarItem = useEntregarItem(idPedido)
+  const entregar = (id: number) =>
+    entregarItem
+      .mutateAsync(id)
+      .then(() => toast.success('Producto entregado'))
+      .catch((e: unknown) => toast.error(errorATexto(e)))
   const cancelado = detalle.estado_dc === 'CANCELADO'
-  const nombre = detalle.producto?.nombre_producto ?? detalle.combo?.nombre_combo ?? 'Item'
+  const nombre =
+    detalle.producto?.nombre_producto ?? detalle.combo?.nombre_combo ?? 'Item'
 
   return (
     <li className={cn(cancelado && 'opacity-50')}>
@@ -438,7 +557,22 @@ function ItemEnviado({
         </span>
         <span className="flex shrink-0 items-center gap-2">
           <EstadoItem estado={detalle.estado_dc} />
-          {editable && (detalle.estado_dc === 'PENDIENTE' || detalle.estado_dc === 'PREPARANDO') ? (
+          {editable && detalle.estado_dc === 'PREPARANDO' ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              disabled={entregarItem.isPending || cancelarItem.isPending}
+              onClick={() => void entregar(detalle.id_detalleComanda)}
+              aria-label={`Entregar ${nombre}`}
+            >
+              Entregar
+            </Button>
+          ) : null}
+          {editable &&
+          (detalle.estado_dc === 'PENDIENTE' ||
+            detalle.estado_dc === 'PREPARANDO') ? (
             <Button
               type="button"
               variant="ghost"
@@ -470,14 +604,40 @@ function ItemEnviado({
             return (
               <li
                 key={hijo.id_detalleComanda}
-                className={cn('text-xs', hijo.estado_dc === 'CANCELADO' && 'line-through opacity-60')}
+                className={cn(
+                  'text-xs',
+                  hijo.estado_dc === 'CANCELADO' && 'line-through opacity-60',
+                )}
               >
-                <span className={cn(esAdicion ? 'text-foreground' : 'text-muted-foreground')}>
+                <span
+                  className={cn(
+                    esAdicion ? 'text-foreground' : 'text-muted-foreground',
+                  )}
+                >
                   {esAdicion ? '+ ' : ''}
-                  {hijo.cantidad_producto_dc} × {hijo.producto?.nombre_producto ?? 'Producto'}
+                  {hijo.cantidad_producto_dc} ×{' '}
+                  {hijo.producto?.nombre_producto ?? 'Producto'}
                   {esAdicion
                     ? ` (${formatearPrecio(Number(hijo.precio_unitario_dc) * hijo.cantidad_producto_dc)})`
                     : ''}
+                </span>
+                <span className="ml-2 inline-flex items-center gap-2">
+                  <EstadoItem estado={hijo.estado_dc} />
+                  {editable && hijo.estado_dc === 'PREPARANDO' ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      disabled={
+                        entregarItem.isPending || cancelarItem.isPending
+                      }
+                      onClick={() => void entregar(hijo.id_detalleComanda)}
+                      aria-label={`Entregar ${hijo.producto?.nombre_producto ?? 'componente'}`}
+                    >
+                      Entregar
+                    </Button>
+                  ) : null}
                 </span>
                 <DetalleExtras detalle={hijo} />
               </li>
@@ -499,13 +659,16 @@ function DetalleExtras({ detalle }: { detalle: DetalleComanda }) {
           {personalizaciones.map((p) => (
             <li key={p.id_detalleComandaIngrediente}>
               {Number(p.cantidad_delta) < 0 ? 'Sin' : 'Extra'}{' '}
-              {p.ingrediente?.nombre_ingrediente ?? `ingrediente ${p.id_ingrediente_dci}`}
+              {p.ingrediente?.nombre_ingrediente ??
+                `ingrediente ${p.id_ingrediente_dci}`}
             </li>
           ))}
         </ul>
       ) : null}
       {detalle.indicaciones_dc ? (
-        <p className="mt-0.5 text-xs italic text-muted-foreground">“{detalle.indicaciones_dc}”</p>
+        <p className="mt-0.5 text-xs italic text-muted-foreground">
+          “{detalle.indicaciones_dc}”
+        </p>
       ) : null}
     </>
   )
@@ -513,7 +676,11 @@ function DetalleExtras({ detalle }: { detalle: DetalleComanda }) {
 
 function EstadoItem({ estado }: { estado: DetalleComanda['estado_dc'] }) {
   if (estado === 'PENDIENTE') {
-    return <span className="micro-label rounded-full bg-surface-high px-2 py-0.5">Borrador</span>
+    return (
+      <span className="micro-label rounded-full bg-surface-high px-2 py-0.5">
+        Borrador
+      </span>
+    )
   }
   if (estado === 'PREPARANDO') {
     return (
@@ -523,18 +690,36 @@ function EstadoItem({ estado }: { estado: DetalleComanda['estado_dc'] }) {
     )
   }
   if (estado === 'ENTREGADO') {
-    return <span className="micro-label rounded-full bg-primary/15 px-2 py-0.5 !text-primary">Entregado</span>
+    return (
+      <span className="micro-label rounded-full bg-primary/15 px-2 py-0.5 !text-primary">
+        Entregado
+      </span>
+    )
   }
-  return <span className="micro-label rounded-full bg-surface-lowest px-2 py-0.5">Cancelado</span>
+  return (
+    <span className="micro-label rounded-full bg-surface-lowest px-2 py-0.5">
+      Cancelado
+    </span>
+  )
 }
 
 function EstadoPagoItem({ detalle }: { detalle: DetalleComanda }) {
   if (Number(detalle.precio_unitario_dc) === 0) return null
-  const registros = (detalle.facturasDetalle ?? []).filter((registro) => registro.factura.estado_factura !== 'ANULADA')
+  const registros = (detalle.facturasDetalle ?? []).filter(
+    (registro) => registro.factura.estado_factura !== 'ANULADA',
+  )
   const pagado = registros
     .filter((registro) => registro.factura.estado_factura === 'PAGADA')
-    .reduce((total, registro) => total + Number(registro.proporcion_facturada_fd), 0)
-  const texto = pagado >= 0.9999 ? 'Pagado' : registros.length > 0 ? 'Facturado · pago pendiente' : 'Por cobrar'
+    .reduce(
+      (total, registro) => total + Number(registro.proporcion_facturada_fd),
+      0,
+    )
+  const texto =
+    pagado >= 0.9999
+      ? 'Pagado'
+      : registros.length > 0
+        ? 'Facturado · pago pendiente'
+        : 'Por cobrar'
   return (
     <span
       className={cn(

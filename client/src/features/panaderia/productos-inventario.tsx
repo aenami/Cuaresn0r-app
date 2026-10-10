@@ -29,7 +29,7 @@ import { articulosQuery, bakeryApi, bakeryKeys } from './api'
 import type { ArticuloPanaderia, TipoArticulo } from './api'
 
 type Grupo = Extract<TipoArticulo, 'PANADERIA' | 'PASTELERIA' | 'EXTERNO'>
-type Accion = 'entrada' | 'salida'
+type Accion = 'entrada' | 'salida' | 'hornada'
 interface MovimientoProducto {
   id: number
   fecha: string
@@ -98,6 +98,11 @@ export function ProductosInventarioPanaderia() {
     puedeEntradaPanaderia(rol, articulo.tipo)
   const articuloActual =
     articulos?.find((articulo) => articulo.id === seleccion?.id) ?? seleccion
+  const puedeHornada = (a: ArticuloPanaderia) =>
+    a.activo &&
+    a.compartido &&
+    ['CAJERO', 'ADMIN_LOCAL'].includes(rol ?? '') &&
+    (a.tipo === 'PANADERIA' || a.tipo === 'PASTELERIA')
   const cantidadNumero = Number(cantidad)
   const cantidadValida =
     cantidad !== '' && Number.isInteger(cantidadNumero) && cantidadNumero > 0
@@ -114,7 +119,9 @@ export function ProductosInventarioPanaderia() {
     if (
       !seleccion ||
       guardando ||
-      !puedeMover(seleccion) ||
+      !(accion === 'hornada'
+        ? puedeHornada(seleccion)
+        : puedeMover(seleccion)) ||
       !cantidadValida ||
       !motivo.trim() ||
       (accion === 'entrada' && seleccion.tipo !== 'EXTERNO')
@@ -123,7 +130,10 @@ export function ProductosInventarioPanaderia() {
     setGuardando(true)
     try {
       const datos = { cantidad: cantidadNumero, concepto: motivo.trim() }
-      if (accion === 'entrada') await bakeryApi.entrada(seleccion.id, datos)
+      if (accion === 'hornada')
+        await api.post(`/bakery/articulos/${seleccion.id}/hornadas-caja`, datos)
+      else if (accion === 'entrada')
+        await bakeryApi.entrada(seleccion.id, datos)
       else await api.post(`/bakery/articulos/${seleccion.id}/salidas`, datos)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: bakeryKeys.all }),
@@ -132,7 +142,7 @@ export function ProductosInventarioPanaderia() {
         }),
       ])
       toast.success(
-        accion === 'entrada'
+        accion === 'entrada' || accion === 'hornada'
           ? 'Entrada registrada'
           : 'Salida justificada registrada',
       )
@@ -156,16 +166,20 @@ export function ProductosInventarioPanaderia() {
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             Las hornadas de panes y postres se registran en Producción, donde
             suman existencias y consumen insumos de la receta. Aquí se reciben
-            productos externos y se documentan salidas manuales, separadas de
-            las ventas.
+            productos externos y se documentan salidas manuales. El cajero puede
+            recibir hornadas de productos compartidos que aún no se hayan
+            registrado.
           </p>
         </div>
-        <Link
-          to="/produccion"
-          className="inline-flex items-center gap-1.5 rounded-md bg-surface-high px-3 py-2 text-sm font-semibold text-primary transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          Ir a Producción <ArrowUpRight className="size-4" aria-hidden="true" />
-        </Link>
+        {rol !== 'CAJERO' ? (
+          <Link
+            to="/produccion"
+            className="inline-flex items-center gap-1.5 rounded-md bg-surface-high px-3 py-2 text-sm font-semibold text-primary transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            Ir a Producción{' '}
+            <ArrowUpRight className="size-4" aria-hidden="true" />
+          </Link>
+        ) : null}
       </div>
       <div
         className="flex flex-wrap gap-2"
@@ -220,7 +234,9 @@ export function ProductosInventarioPanaderia() {
               <DialogTitle>
                 {accion === 'entrada'
                   ? 'Recibir mercancía'
-                  : 'Registrar salida'}{' '}
+                  : accion === 'hornada'
+                    ? 'Registrar hornada recibida'
+                    : 'Registrar salida'}{' '}
                 · {seleccion.nombre}
               </DialogTitle>
               <DialogDescription>
@@ -231,9 +247,19 @@ export function ProductosInventarioPanaderia() {
                 {seleccion.unidad}.{' '}
                 {accion === 'salida'
                   ? 'La salida no se registrará como venta.'
-                  : 'Indica el origen o proveedor de esta recepción.'}
+                  : accion === 'hornada'
+                    ? 'Indica la hornada recién recibida.'
+                    : 'Indica el origen o proveedor de esta recepción.'}
               </DialogDescription>
             </DialogHeader>
+            {accion === 'hornada' ? (
+              <p role="alert" className="text-sm text-tertiary">
+                Registra solo hornadas que el panadero no haya ingresado ya en
+                Producción. Esta recepción aumenta el stock compartido y consume
+                los insumos de la receta, pero no crea una hoja a nombre del
+                panadero.
+              </p>
+            ) : null}
             <form
               className="space-y-4"
               onSubmit={(evento) => {
@@ -258,7 +284,7 @@ export function ProductosInventarioPanaderia() {
                 </div>
                 <div>
                   <Label htmlFor="producto-movimiento-motivo">
-                    {accion === 'entrada'
+                    {accion === 'entrada' || accion === 'hornada'
                       ? 'Concepto de entrada'
                       : 'Motivo de salida'}
                   </Label>
@@ -270,7 +296,9 @@ export function ProductosInventarioPanaderia() {
                     placeholder={
                       accion === 'entrada'
                         ? 'Ej. proveedor y factura'
-                        : 'Ej. consumo interno, daño o cortesía'
+                        : accion === 'hornada'
+                          ? 'Ej. hornada de pandebonos de las 3 p. m.'
+                          : 'Ej. consumo interno, daño o cortesía'
                     }
                     className="mt-1.5"
                   />
@@ -300,7 +328,7 @@ export function ProductosInventarioPanaderia() {
                 >
                   {guardando
                     ? 'Guardando…'
-                    : accion === 'entrada'
+                    : accion === 'entrada' || accion === 'hornada'
                       ? 'Registrar entrada'
                       : 'Confirmar salida'}
                 </Button>
@@ -448,7 +476,7 @@ export function ProductosInventarioPanaderia() {
                     {formatearCantidad(articulo.existencia)}
                   </p>
                 </div>
-                {puedeMover(articulo) ? (
+                {puedeMover(articulo) || puedeHornada(articulo) ? (
                   <div className="flex gap-1">
                     {grupo === 'EXTERNO' ? (
                       <Button
@@ -460,14 +488,26 @@ export function ProductosInventarioPanaderia() {
                         <ArrowDownToLine className="size-4" /> Recibir
                       </Button>
                     ) : null}
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => iniciar(articulo, 'salida')}
-                    >
-                      <ArrowUpFromLine className="size-4" /> Salida
-                    </Button>
+                    {puedeHornada(articulo) ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => iniciar(articulo, 'hornada')}
+                      >
+                        <ArrowDownToLine className="size-4" /> Recibir hornada
+                      </Button>
+                    ) : null}
+                    {puedeMover(articulo) ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => iniciar(articulo, 'salida')}
+                      >
+                        <ArrowUpFromLine className="size-4" /> Salida
+                      </Button>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

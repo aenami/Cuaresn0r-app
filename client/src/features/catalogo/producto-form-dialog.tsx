@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -8,6 +8,7 @@ import { ImagePlus, Loader2, X } from 'lucide-react'
 import { ApiError } from '@/lib/api'
 import {
   categoriasQuery,
+  compartiblesQuery,
   useActualizarProducto,
   useCrearProducto,
   useSubirImagenProducto,
@@ -65,6 +66,13 @@ export function ProductoFormDialog({
   onCerrar: () => void
 }) {
   const { data: categorias } = useQuery(categoriasQuery)
+  const { data: compartibles } = useQuery({
+    ...compartiblesQuery,
+    enabled: abierto,
+  })
+  const [tipoEspecial, setTipoEspecial] = useState('NORMAL')
+  const [compartido, setCompartido] = useState('')
+  const [precioInterno, setPrecioInterno] = useState('')
   const crear = useCrearProducto()
   const actualizar = useActualizarProducto()
   const subir = useSubirImagenProducto()
@@ -73,12 +81,21 @@ export function ProductoFormDialog({
 
   const form = useForm<Valores>({
     resolver: zodResolver(esquema),
-    defaultValues: { name: '', price: 0, description: '', category: SIN_CATEGORIA, image: '' },
+    defaultValues: {
+      name: '',
+      price: 0,
+      description: '',
+      category: SIN_CATEGORIA,
+      image: '',
+    },
   })
 
   // Valida en el cliente (UX) y sube la imagen; el backend re-valida por
   // contenido. `onListo` recibe la ruta guardada para volcarla al form.
-  async function manejarArchivo(file: File | undefined, onListo: (url: string) => void) {
+  async function manejarArchivo(
+    file: File | undefined,
+    onListo: (url: string) => void,
+  ) {
     if (!file) return
     if (!file.type.startsWith('image/')) {
       toast.error('El archivo debe ser una imagen (JPG, PNG, WEBP o GIF)')
@@ -92,7 +109,9 @@ export function ProductoFormDialog({
       const { url } = await subir.mutateAsync(file)
       onListo(url)
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'No se pudo subir la imagen')
+      toast.error(
+        e instanceof ApiError ? e.message : 'No se pudo subir la imagen',
+      )
     } finally {
       // Permite volver a elegir el mismo archivo si se cambia de opinion.
       if (inputImagenRef.current) inputImagenRef.current.value = ''
@@ -101,22 +120,50 @@ export function ProductoFormDialog({
 
   useEffect(() => {
     if (abierto) {
+      setTipoEspecial(
+        producto?.tipoMenu ??
+          (producto?.articuloCompartidoId ? 'COMPARTIDO' : 'NORMAL'),
+      )
+      setCompartido(
+        producto?.articuloCompartidoId
+          ? String(producto.articuloCompartidoId)
+          : '',
+      )
+      setPrecioInterno(producto?.precioInternoCompartido ?? '')
       form.reset({
         name: producto?.nombre_producto ?? '',
         price: producto ? Number(producto.precio_producto) : 0,
         description: producto?.descripcion_producto ?? '',
-        category: producto?.categoria_producto ? String(producto.categoria_producto) : SIN_CATEGORIA,
+        category: producto?.categoria_producto
+          ? String(producto.categoria_producto)
+          : SIN_CATEGORIA,
         image: producto?.imagen_producto ?? '',
       })
     }
   }, [abierto, producto, form])
 
   function enviar(valores: Valores) {
+    if (
+      tipoEspecial === 'COMPARTIDO' &&
+      (!compartido || !(Number(precioInterno) > 0))
+    ) {
+      toast.error('Selecciona el producto de Panadería y su valor interno')
+      return
+    }
     const payload = {
+      articuloCompartidoId:
+        tipoEspecial === 'COMPARTIDO' ? Number(compartido) : null,
+      precioInternoCompartido:
+        tipoEspecial === 'COMPARTIDO' ? Number(precioInterno) : null,
+      tipoMenu: (tipoEspecial === 'EJECUTIVO' || tipoEspecial === 'BANDEJA'
+        ? tipoEspecial
+        : null) as Producto['tipoMenu'],
       name: valores.name,
       price: valores.price,
       ...(valores.description ? { description: valores.description } : {}),
-      ...(valores.category !== SIN_CATEGORIA ? { category: Number(valores.category) } : {}),
+      ...(valores.category !== SIN_CATEGORIA
+        ? { category: Number(valores.category) }
+        : {}),
       ...(valores.image ? { image: valores.image } : {}),
     }
     const promesa = producto
@@ -127,7 +174,9 @@ export function ProductoFormDialog({
         toast.success(producto ? 'Producto actualizado' : 'Producto creado')
         onCerrar()
       })
-      .catch((e: unknown) => toast.error(e instanceof ApiError ? e.message : 'Error de conexion'))
+      .catch((e: unknown) =>
+        toast.error(e instanceof ApiError ? e.message : 'Error de conexion'),
+      )
   }
 
   return (
@@ -138,11 +187,16 @@ export function ProductoFormDialog({
             {producto ? 'Editar producto' : 'Nuevo producto'}
           </DialogTitle>
           <DialogDescription>
-            El precio se snapshotea en cada pedido: cambiarlo no afecta pedidos ya tomados.
+            El precio se snapshotea en cada pedido: cambiarlo no afecta pedidos
+            ya tomados.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(enviar)} className="space-y-4" noValidate>
+          <form
+            onSubmit={form.handleSubmit(enviar)}
+            className="space-y-4"
+            noValidate
+          >
             <div className="grid grid-cols-2 gap-3">
               <FormField
                 control={form.control}
@@ -164,12 +218,77 @@ export function ProductoFormDialog({
                   <FormItem>
                     <FormLabel>Precio</FormLabel>
                     <FormControl>
-                      <Input type="number" min={0} step={100} inputMode="numeric" {...field} />
+                      <Input
+                        type="number"
+                        min={0}
+                        step={100}
+                        inputMode="numeric"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+            </div>
+            <div className="space-y-3">
+              <label className="text-sm font-medium" htmlFor="tipo-producto">
+                Tipo de producto
+              </label>
+              <Select value={tipoEspecial} onValueChange={setTipoEspecial}>
+                <SelectTrigger id="tipo-producto" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NORMAL">Producto normal</SelectItem>
+                  <SelectItem value="COMPARTIDO">
+                    Stock compartido de Panadería
+                  </SelectItem>
+                  <SelectItem value="EJECUTIVO">
+                    Ejecutivo · precio fijo
+                  </SelectItem>
+                  <SelectItem value="BANDEJA">Bandeja · sin caldo</SelectItem>
+                </SelectContent>
+              </Select>
+              {tipoEspecial === 'COMPARTIDO' ? (
+                <>
+                  <Select value={compartido} onValueChange={setCompartido}>
+                    <SelectTrigger
+                      className="w-full"
+                      aria-label="Producto de Panadería"
+                    >
+                      <SelectValue placeholder="Selecciona el producto de Panadería" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {compartibles?.map((a) => (
+                        <SelectItem key={a.id} value={String(a.id)}>
+                          {a.nombre}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <label htmlFor="precio-interno" className="block text-sm">
+                    Valor unitario que Restaurante paga a Panadería
+                  </label>
+                  <Input
+                    id="precio-interno"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={precioInterno}
+                    onChange={(e) => setPrecioInterno(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    No usa receta local: reserva el stock de Panadería y genera
+                    la remisión al entregar.
+                  </p>
+                </>
+              ) : tipoEspecial !== 'NORMAL' ? (
+                <p className="text-xs text-muted-foreground">
+                  Configura arroz y ensalada en la receta base. En «Almuerzos
+                  del día» define las opciones con sus propias recetas.
+                </p>
+              ) : null}
             </div>
             <FormField
               control={form.control}
@@ -184,9 +303,14 @@ export function ProductoFormDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value={SIN_CATEGORIA}>Sin categoria</SelectItem>
+                      <SelectItem value={SIN_CATEGORIA}>
+                        Sin categoria
+                      </SelectItem>
                       {categorias?.map((c) => (
-                        <SelectItem key={c.id_categoria} value={String(c.id_categoria)}>
+                        <SelectItem
+                          key={c.id_categoria}
+                          value={String(c.id_categoria)}
+                        >
                           {c.nombre_categoria}
                         </SelectItem>
                       ))}
@@ -222,7 +346,9 @@ export function ProductoFormDialog({
                         type="file"
                         accept="image/png,image/jpeg,image/webp,image/gif"
                         className="hidden"
-                        onChange={(e) => manejarArchivo(e.target.files?.[0], field.onChange)}
+                        onChange={(e) =>
+                          manejarArchivo(e.target.files?.[0], field.onChange)
+                        }
                       />
                       {field.value ? (
                         <div className="relative h-36 w-full overflow-hidden rounded-lg border border-border">

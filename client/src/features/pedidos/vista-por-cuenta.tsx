@@ -1,11 +1,19 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { toast } from 'sonner'
-import { ArrowRightLeft, Check, Loader2, MessageSquarePlus, Plus, Receipt } from 'lucide-react'
+import {
+  ArrowRightLeft,
+  Check,
+  Loader2,
+  MessageSquarePlus,
+  Plus,
+  Receipt,
+} from 'lucide-react'
 import { formatearPrecio } from '@/lib/formato'
 import {
   useCrearComentarioCuenta,
   useCrearSubcuenta,
+  useEntregarItem,
   useReasignarItem,
   useResolverComentarioCuenta,
 } from '@/features/pedidos/api'
@@ -33,14 +41,22 @@ import { errorATexto } from './comun'
 // Vista "por cuenta": agrupa los items enviados por subcuenta con subtotal,
 // permite mover items entre cuentas y crear nuevas. Solo asignacion directa
 // (un item completo a una cuenta); un header de combo arrastra a sus hijos.
-export function VistaPorCuenta({ pedido, editable }: { pedido: Pedido; editable: boolean }) {
+export function VistaPorCuenta({
+  pedido,
+  editable,
+}: {
+  pedido: Pedido
+  editable: boolean
+}) {
   const idPedido = pedido.id_pedido
   const reasignar = useReasignarItem(idPedido)
   const crearSubcuenta = useCrearSubcuenta(idPedido)
   const [dialogoCuenta, setDialogoCuenta] = useState(false)
   const [nombreCuenta, setNombreCuenta] = useState('')
 
-  const subcuentas = [...(pedido.subcuentas ?? [])].sort((a, b) => a.id_subcuenta - b.id_subcuenta)
+  const subcuentas = [...(pedido.subcuentas ?? [])].sort(
+    (a, b) => a.id_subcuenta - b.id_subcuenta,
+  )
   const detalles = (pedido.comandas ?? []).flatMap((c) => c.detalles ?? [])
 
   // Cuentas con su nombre visible (la primera es siempre la principal).
@@ -54,19 +70,28 @@ export function VistaPorCuenta({ pedido, editable }: { pedido: Pedido; editable:
   // Padres no cancelados de una cuenta (los hijos se muestran anidados).
   const itemsDe = (idSub: number) =>
     detalles.filter(
-      (d) => d.id_detalleComandaPadre_dc === null && d.id_subcuenta_dc === idSub && d.estado_dc !== 'CANCELADO',
+      (d) =>
+        d.id_detalleComandaPadre_dc === null &&
+        d.id_subcuenta_dc === idSub &&
+        d.estado_dc !== 'CANCELADO',
     )
   // Subtotal = todas las filas (padres e hijos) no canceladas de la cuenta,
   // igual que factura el backend.
   const subtotalDe = (idSub: number | null) =>
     detalles
       .filter((d) => d.id_subcuenta_dc === idSub && d.estado_dc !== 'CANCELADO')
-      .reduce((acc, d) => acc + Number(d.precio_unitario_dc) * d.cantidad_producto_dc, 0)
+      .reduce(
+        (acc, d) => acc + Number(d.precio_unitario_dc) * d.cantidad_producto_dc,
+        0,
+      )
 
   // Defensivo: items repartidos (id_subcuenta_dc null) no caen en ninguna
   // cuenta directa. No se crean desde esta UI, pero no deben desaparecer.
   const sinAsignar = detalles.filter(
-    (d) => d.id_detalleComandaPadre_dc === null && d.id_subcuenta_dc === null && d.estado_dc !== 'CANCELADO',
+    (d) =>
+      d.id_detalleComandaPadre_dc === null &&
+      d.id_subcuenta_dc === null &&
+      d.estado_dc !== 'CANCELADO',
   )
 
   function crear() {
@@ -103,16 +128,22 @@ export function VistaPorCuenta({ pedido, editable }: { pedido: Pedido; editable:
             idSubcuenta={cuenta.id}
           >
             {items.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Sin items en esta cuenta.</p>
+              <p className="text-xs text-muted-foreground">
+                Sin items en esta cuenta.
+              </p>
             ) : (
               <ul className="space-y-2.5">
                 {items.map((item) => (
                   <ItemCuenta
                     key={item.id_detalleComanda}
                     item={item}
+                    idPedido={idPedido}
                     editable={editable}
                     destinos={destinos}
-                    moviendo={reasignar.isPending && reasignar.variables?.idItem === item.id_detalleComanda}
+                    moviendo={
+                      reasignar.isPending &&
+                      reasignar.variables?.idItem === item.id_detalleComanda
+                    }
                     onMover={(idSub) => mover(item.id_detalleComanda, idSub)}
                   />
                 ))}
@@ -129,6 +160,7 @@ export function VistaPorCuenta({ pedido, editable }: { pedido: Pedido; editable:
               <ItemCuenta
                 key={item.id_detalleComanda}
                 item={item}
+                idPedido={idPedido}
                 editable={false}
                 destinos={[]}
                 moviendo={false}
@@ -159,9 +191,12 @@ export function VistaPorCuenta({ pedido, editable }: { pedido: Pedido; editable:
       >
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle className="font-heading tracking-tight">Nueva cuenta</DialogTitle>
+            <DialogTitle className="font-heading tracking-tight">
+              Nueva cuenta
+            </DialogTitle>
             <DialogDescription>
-              Divide el pedido en cuentas para cobrar por separado. El nombre es opcional.
+              Divide el pedido en cuentas para cobrar por separado. El nombre es
+              opcional.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -225,7 +260,9 @@ function TarjetaCuenta({
       <div className="mb-2.5 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5">
           <Receipt className="size-3.5 shrink-0 text-muted-foreground" />
-          <h4 className="truncate font-heading text-sm font-semibold tracking-tight">{titulo}</h4>
+          <h4 className="truncate font-heading text-sm font-semibold tracking-tight">
+            {titulo}
+          </h4>
         </div>
         <span className="shrink-0 font-heading text-sm font-semibold tabular-nums text-primary">
           {formatearPrecio(subtotal)}
@@ -233,7 +270,11 @@ function TarjetaCuenta({
       </div>
       {children}
       {idPedido !== undefined && idSubcuenta !== undefined ? (
-        <ComentariosCuenta idPedido={idPedido} idSubcuenta={idSubcuenta} comentarios={comentarios} />
+        <ComentariosCuenta
+          idPedido={idPedido}
+          idSubcuenta={idSubcuenta}
+          comentarios={comentarios}
+        />
       ) : null}
     </section>
   )
@@ -251,15 +292,22 @@ function ComentariosCuenta({
   const crear = useCrearComentarioCuenta(idPedido, idSubcuenta)
   const resolver = useResolverComentarioCuenta(idPedido, idSubcuenta)
   const [texto, setTexto] = useState('')
-  const pendientes = comentarios.filter((comentario) => !comentario.comentario_resuelto)
+  const pendientes = comentarios.filter(
+    (comentario) => !comentario.comentario_resuelto,
+  )
 
   return (
     <div className="mt-3 border-t border-border pt-3">
       {pendientes.length > 0 ? (
         <ul className="mb-2 space-y-1.5">
           {pendientes.map((comentario) => (
-            <li key={comentario.id_comentarioCuenta} className="flex items-start gap-2 rounded-md bg-destructive/[0.07] p-2 text-xs">
-              <span className="min-w-0 flex-1">{comentario.texto_comentarioCuenta}</span>
+            <li
+              key={comentario.id_comentarioCuenta}
+              className="flex items-start gap-2 rounded-md bg-destructive/[0.07] p-2 text-xs"
+            >
+              <span className="min-w-0 flex-1">
+                {comentario.texto_comentarioCuenta}
+              </span>
               <button
                 type="button"
                 title="Marcar resuelto"
@@ -278,11 +326,26 @@ function ComentariosCuenta({
         onSubmit={(event) => {
           event.preventDefault()
           if (!texto.trim()) return
-          crear.mutateAsync(texto.trim()).then(() => setTexto('')).catch((e: unknown) => toast.error(errorATexto(e)))
+          crear
+            .mutateAsync(texto.trim())
+            .then(() => setTexto(''))
+            .catch((e: unknown) => toast.error(errorATexto(e)))
         }}
       >
-        <Input value={texto} onChange={(event) => setTexto(event.target.value)} maxLength={300} className="h-8 text-xs" placeholder="Ej. Debemos $5.000 de regreso" />
-        <Button type="submit" size="icon-sm" variant="secondary" disabled={crear.isPending} title="Agregar recordatorio">
+        <Input
+          value={texto}
+          onChange={(event) => setTexto(event.target.value)}
+          maxLength={300}
+          className="h-8 text-xs"
+          placeholder="Ej. Debemos $5.000 de regreso"
+        />
+        <Button
+          type="submit"
+          size="icon-sm"
+          variant="secondary"
+          disabled={crear.isPending}
+          title="Agregar recordatorio"
+        >
           <MessageSquarePlus className="size-3.5" />
         </Button>
       </form>
@@ -294,41 +357,103 @@ function ComentariosCuenta({
 // del item y menu para moverlo a otra cuenta.
 function ItemCuenta({
   item,
+  idPedido,
   editable,
   destinos,
   moviendo,
   onMover,
 }: {
   item: DetalleComanda
+  idPedido: number
   editable: boolean
   destinos: { id: number; nombre: string }[]
   moviendo: boolean
   onMover: (idSubcuenta: number) => void
 }) {
-  const nombre = item.producto?.nombre_producto ?? item.combo?.nombre_combo ?? 'Item'
+  const entrega = useEntregarItem(idPedido)
+  const entregar = (id: number) =>
+    entrega
+      .mutateAsync(id)
+      .then(() => toast.success('Producto entregado'))
+      .catch((error: unknown) => toast.error(errorATexto(error)))
+  const nombre =
+    item.producto?.nombre_producto ?? item.combo?.nombre_combo ?? 'Item'
+  const hijos = (item.hijos ?? []).filter((h) => h.estado_dc !== 'CANCELADO')
   const adiciones = (item.hijos ?? []).filter(
     (h) => h.estado_dc !== 'CANCELADO' && Number(h.precio_unitario_dc) > 0,
   )
   const total =
     Number(item.precio_unitario_dc) * item.cantidad_producto_dc +
-    adiciones.reduce((acc, h) => acc + Number(h.precio_unitario_dc) * h.cantidad_producto_dc, 0)
+    adiciones.reduce(
+      (acc, h) => acc + Number(h.precio_unitario_dc) * h.cantidad_producto_dc,
+      0,
+    )
 
   return (
     <li className="flex items-start justify-between gap-2">
       <div className="min-w-0">
         <p className="text-sm">
-          <span className="tabular-nums text-muted-foreground">{item.cantidad_producto_dc}×</span> {nombre}
+          <span className="tabular-nums text-muted-foreground">
+            {item.cantidad_producto_dc}×
+          </span>{' '}
+          {nombre}
         </p>
-        {adiciones.map((h) => (
-          <p key={h.id_detalleComanda} className="text-xs text-muted-foreground">
-            + {h.cantidad_producto_dc}× {h.producto?.nombre_producto ?? 'Producto'}
-          </p>
+        <span className="text-xs text-muted-foreground">
+          {item.estado_dc === 'ENTREGADO'
+            ? 'Entregado'
+            : item.estado_dc === 'PREPARANDO'
+              ? 'En preparación'
+              : 'Borrador'}
+        </span>
+        {hijos.map((h) => (
+          <div
+            key={h.id_detalleComanda}
+            className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+          >
+            <span>
+              + {h.cantidad_producto_dc}×{' '}
+              {h.producto?.nombre_producto ?? 'Producto'} ·{' '}
+              {h.estado_dc === 'ENTREGADO'
+                ? 'Entregado'
+                : h.estado_dc === 'PREPARANDO'
+                  ? 'En preparación'
+                  : 'Borrador'}
+            </span>
+            {editable && h.estado_dc === 'PREPARANDO' ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-7 px-2 text-xs"
+                disabled={entrega.isPending}
+                onClick={() => void entregar(h.id_detalleComanda)}
+                aria-label={`Entregar ${h.producto?.nombre_producto ?? 'producto'}`}
+              >
+                Entregar
+              </Button>
+            ) : null}
+          </div>
         ))}
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1.5">
         <span className="text-sm tabular-nums">{formatearPrecio(total)}</span>
+        {editable && item.estado_dc === 'PREPARANDO' ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            className="h-7 px-2 text-xs"
+            disabled={entrega.isPending}
+            onClick={() => void entregar(item.id_detalleComanda)}
+            aria-label={`Entregar ${nombre}`}
+          >
+            Entregar
+          </Button>
+        ) : null}
         {editable && destinos.length > 0 ? (
-          <MenuMover destinos={destinos} moviendo={moviendo} onMover={onMover} />
+          <MenuMover
+            destinos={destinos}
+            moviendo={moviendo}
+            onMover={onMover}
+          />
         ) : null}
       </div>
     </li>
@@ -353,7 +478,11 @@ function MenuMover({
           disabled={moviendo}
           className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors duration-150 ease-out-quart hover:border-primary/50 hover:text-foreground disabled:opacity-50"
         >
-          {moviendo ? <Loader2 className="size-3 animate-spin" /> : <ArrowRightLeft className="size-3" />}
+          {moviendo ? (
+            <Loader2 className="size-3 animate-spin" />
+          ) : (
+            <ArrowRightLeft className="size-3" />
+          )}
           Mover
         </button>
       </DropdownMenuTrigger>
